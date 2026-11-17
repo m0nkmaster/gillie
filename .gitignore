@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+dist/
+*.egg-info/
+# Runtime state if the runner or tests ever use the repo as a workspace
+/.roosta/
+cache/
+desktop/node_modules/
+desktop/dist/
+desktop/assets/
+.DS_Store
+/roosta/

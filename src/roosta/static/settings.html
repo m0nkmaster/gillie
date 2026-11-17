@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings · Roosta</title>
+<link rel="icon" href="/static/favicon.png" type="image/png">
+<link rel="stylesheet" href="/static/vendor/tabler/tabler.min.css">
+<link rel="stylesheet" href="/static/shell.css">
+<script src="/static/theme.js"></script>
+<script src="/static/nav-count.js" defer></script>
+<style>
+  .settings-shell{max-width:900px;margin:0 auto;padding:1.75rem var(--shell-gutter) 4rem}
+  .ai-account-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}
+  .ai-account-heading h3{margin:0;font-size:1rem}
+  .ai-account-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin-top:1rem}
+  .ai-account-details{margin-top:1rem}
+  .ai-account-details summary{cursor:pointer;color:var(--console-secondary)}
+  #ai-form{scroll-margin-top:2rem}
+  @media(max-width:540px){.ai-account-heading{flex-direction:column;gap:.5rem}}
+  .setting{display:flex;align-items:center;justify-content:space-between;gap:1.5rem}
+  .setting-copy strong{display:block;font-size:.9rem;font-weight:550}
+  .setting-copy span{display:block;margin-top:.2rem;font-size:.8rem;color:var(--console-tertiary)}
+  .setting .form-switch{margin:0;padding-left:2.5rem;min-height:0}
+  .setting .form-check-input{width:2.25rem;height:1.25rem;margin-left:-2.5rem;cursor:pointer}
+  #workspace-card .setting-copy{min-width:0}
+  #workspace-card .setting-copy code{overflow-wrap:anywhere}
+  #workspace-card .setting-copy small{font-weight:400}
+  #workspace-card .setting-actions{display:flex;flex-shrink:0;gap:.5rem}
+  .ws-panel{margin-top:1rem;padding:1rem;border:1px solid var(--tblr-border-color);border-radius:var(--tblr-border-radius)}
+  .ws-panel-actions{display:flex;gap:.5rem;margin-top:1rem}
+  .ws-note{margin-top:.75rem;font-size:.8rem}
+  .ws-browser{max-height:260px;overflow-y:auto;border:1px solid var(--tblr-border-color);border-radius:var(--tblr-border-radius)}
+  .ws-browser.ws-loading{opacity:.6}
+  .ws-folder{display:flex;align-items:center;gap:.6rem;text-align:left}
+  .ws-folder-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  @media(max-width:540px){#workspace-card .setting{flex-direction:column;align-items:flex-start;gap:.75rem}}
+</style></head>
+<body>
+<header class="workspace-header navbar" aria-label="Workspace"></header>
+<main class="settings-shell">
+  <div class="page-header dashboard-page-header"><div><div class="page-pretitle">Roosta</div><h1 class="page-title">Settings</h1>
+    <p class="page-subtitle">Choose the AI Roosta uses, manage your workspace and adjust your appearance.</p></div></div>
+  <div class="alert alert-info mb-3" id="setup-notice" role="status" hidden>
+    <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+      <div><div class="alert-title">Finish setting up your workspace</div>
+        <div class="text-secondary" id="setup-missing"></div></div>
+      <a class="btn btn-primary" id="setup-continue" href="/assistant?item=roosta-setup">Continue workspace setup</a>
+    </div>
+  </div>
+  <section class="card mb-3" aria-labelledby="current-ai-title">
+    <div class="card-header"><h2 class="card-title" id="current-ai-title">Your AI</h2></div>
+    <div class="card-body">
+      <div id="ai-current" role="status" aria-live="polite">Checking your AI setup…</div>
+      <p class="text-secondary small mt-2">Roosta runs Claude Code or Pi on this computer to handle chats and workers. Your chosen AI service processes the requests.</p>
+      <details class="mt-3" id="model-settings">
+      <summary class="mb-2">Model and reasoning</summary>
+      <label class="form-label" for="settings-model">Model</label>
+      <select class="form-select" id="settings-model" disabled><option>Loading models…</option></select>
+      <div class="mt-3" id="settings-effort-field" hidden>
+        <label class="form-label" for="settings-effort">Effort</label>
+        <select class="form-select" id="settings-effort" disabled><option value="">Default</option></select>
+        <p class="text-secondary small mt-2 mb-0">Higher effort allows more reasoning and may take longer or cost more.</p>
+      </div>
+      <p class="text-secondary small mt-2 mb-0">Used for chats on this provider and workers that follow the default. Existing chats keep their account.</p>
+      <div id="model-message" role="status" aria-live="polite" class="small mt-2"></div>
+      </details>
+    </div>
+  </section>
+  <details class="mb-3" id="account-setup">
+    <summary class="mb-2">Change AI or manage accounts</summary>
+  <section class="card mb-3" aria-labelledby="ai-title">
+    <div class="card-header justify-content-between gap-2"><h2 class="card-title" id="ai-title">AI accounts</h2><button class="btn btn-sm" id="ai-add-toggle" type="button" hidden>Add account</button></div>
+    <div class="card-body">
+      <p class="text-secondary">Use your existing Claude Code sign-in, or connect another AI account. Each account below shows the software Roosta runs and the next step to get ready.</p>
+      <div id="ai-message" role="status" aria-live="polite"></div>
+      <div id="ai-connections" class="list-group list-group-flush mb-3"></div>
+      <form id="ai-form" class="border-top pt-3" hidden>
+        <h3 id="ai-form-title">Add account</h3>
+        <label class="form-label" for="ai-provider">AI service</label>
+        <select id="ai-provider" class="form-select mb-2" required></select>
+        <p id="ai-billing" class="text-secondary"></p>
+        <details class="mb-3"><summary>Account name (optional)</summary>
+          <label class="form-label mt-2" for="ai-label">Name</label>
+          <input id="ai-label" class="form-control" maxlength="80" placeholder="e.g. Work account">
+        </details>
+        <div id="ai-auth-wrap">
+          <label class="form-label" for="ai-auth">Connect using</label>
+          <select id="ai-auth" class="form-select mb-2"><option value="api_key">API key · API billing</option><option value="cli">Account sign-in · including enterprise</option></select>
+        </div>
+        <div id="ai-key-wrap">
+          <label class="form-label" for="ai-key">API key</label>
+          <input id="ai-key" class="form-control mb-2" type="password" autocomplete="off" spellcheck="false">
+          <p class="text-secondary">Stored in your OS credential store. <a id="ai-key-link" target="_blank" rel="noopener">Get an API key</a></p>
+        </div>
+        <p id="ai-signin" class="text-secondary" hidden></p>
+        <div class="d-flex gap-2"><button class="btn btn-primary" type="submit">Add account</button><button class="btn btn-ghost-secondary" id="ai-cancel" type="button">Cancel</button></div>
+      </form>
+      <p class="text-secondary small mt-3 mb-0">Testing sends a small, billable model request and reads a harmless temporary file. An account must pass before it can be the default.</p>
+      <details class="mt-3 border-top pt-3" id="ai-runtime-details">
+        <summary>AI software <span class="text-secondary small">· installed tools</span></summary>
+        <p class="text-secondary small mt-2">Claude Code runs Anthropic models. Pi runs OpenAI, OpenRouter and local models.</p>
+        <p class="text-secondary small">Open in Terminal starts an interactive session in your workspace using the tool’s own login and settings. Accounts connected only in Roosta are separate.</p>
+        <div id="ai-engines" class="list-group list-group-flush"></div>
+      </details>
+    </div>
+  </section>
+  </details>
+  <section class="card mb-3" aria-labelledby="workspace-title" id="workspace-card">
+    <div class="card-header"><h2 class="card-title" id="workspace-title">Workspace and runner</h2></div>
+    <div class="list-group list-group-flush" id="ws-rows"><div class="list-group-item text-secondary">Loading…</div></div>
+  </section>
+  <section class="card">
+    <div class="card-header"><h2 class="card-title">Appearance</h2></div>
+    <div class="card-body">
+      <label class="setting" for="light-mode">
+        <span class="setting-copy"><strong>Light mode</strong><span>A light background for daytime use. The Office scene and the constellation stay as they are.</span></span>
+        <span class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="light-mode"></span>
+      </label>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const toggle = document.getElementById('light-mode');
+  const sync = () => { toggle.checked = window.roostaTheme.get() === 'light'; };
+  sync();
+  toggle.addEventListener('change', () => window.roostaTheme.set(toggle.checked ? 'light' : 'dark'));
+  window.addEventListener('roosta-theme', sync);
+})();
+</script>
+<script src="/static/ai-settings.js" defer></script>
+<script src="/static/workspace-settings.js" defer></script>
+</body></html>

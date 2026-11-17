@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Assistant · Roosta</title>
+<link rel="icon" href="/static/favicon.png" type="image/png">
+<link rel="stylesheet" href="/static/vendor/tabler/tabler.min.css">
+<link rel="stylesheet" href="/static/shell.css">
+<script src="/static/theme.js"></script>
+<script src="/static/nav-count.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"></script>
+<script src="/static/markdown-copy.js"></script>
+<style>
+  :root{
+    --canvas:var(--console-canvas);--canvas-text:var(--console-text);
+    --panel:var(--console-panel);--panel-raised:var(--console-raised);
+    --line:var(--console-line);--text:var(--console-text);
+    --secondary:var(--console-secondary);--tertiary:var(--console-tertiary);
+    --accent:var(--signal-violet);--success:var(--signal-mint);
+    --warning:var(--signal-amber);--danger:var(--signal-coral)
+  }
+  .assistant-page{height:100dvh;display:flex;flex-direction:column;padding:calc(var(--shell-header-height) + 1.25rem) var(--shell-gutter) 0}
+  .dashboard-page-header .board-status{max-width:48%;font-size:.75rem;text-align:right;line-height:1.5}
+  .dot-down,.err-line{color:var(--danger)}
+  .health-warn{color:var(--warning)}
+  .main{flex:1;display:flex;flex-direction:row;min-height:0;overflow:hidden;border-top:1px solid var(--tblr-border-color-translucent)}
+  .attention-queue{width:304px;flex:none;display:flex;flex-direction:column;min-height:0;
+    background:var(--console-rail);border-right:1px solid var(--tblr-border-color-translucent)}
+  .queue-header{padding:1.4rem 1.15rem 1rem;border-bottom:1px solid var(--tblr-border-color-translucent)}
+  .rail-tabs{display:flex;gap:.25rem;margin:0 0 .9rem;padding:.2rem;background:var(--console-tint);border-radius:7px}
+  .rail-tabs button{flex:1;border:0;background:none;color:var(--secondary);font-size:.8125rem;font-weight:550;
+    padding:.4rem .5rem;border-radius:5px}
+  .rail-tabs button[aria-selected="true"]{background:var(--console-selected);color:var(--text)}
+  .rail-tabs b{margin-left:.3rem;font-weight:500;color:var(--tertiary)}
+  .ask-box{font-size:.8125rem;width:100%;margin:0 0 .6rem;resize:none;field-sizing:content;min-height:2.4rem;max-height:8rem}
+  .chat-when{font-size:.65rem;color:var(--tertiary)}
+  .rail-search{font-size:.8125rem;width:100%}
+  .rail{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:.35rem 0 1rem}
+  .rail-toolbar{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.8rem 1rem}
+  .rail-item{position:relative;margin:.2rem .6rem;padding:1rem 2.8rem 1rem .8rem;border:1px solid transparent;
+    border-left:3px solid transparent;border-radius:6px;cursor:pointer;min-width:0;overflow-wrap:anywhere}
+  .rail-item:hover{background:var(--console-tint-faint)}
+  .rail-item.active{background:var(--console-selected);border-color:var(--console-selected-line);border-left-color:var(--item-colour,var(--accent))}
+  .rail-item.pinned{border-left-color:var(--warning)}
+  .rail-item .t{font-size:.875rem;font-weight:550;line-height:1.4;color:var(--text);margin-bottom:.3rem}
+  .rail-item .w{font-size:.75rem;color:var(--secondary);line-height:1.5}
+  .rail-item .raised{display:flex;flex-wrap:wrap;gap:.25rem .5rem;margin-top:.5rem;font-size:.625rem;color:var(--tertiary)}
+  .rail-item .new{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--item-colour,var(--accent));margin-right:.4rem}
+  .general-item{display:grid;grid-template-columns:30px minmax(0,1fr);column-gap:.65rem;align-items:center}
+  .general-item .t{margin-bottom:.1rem}.general-item .w{grid-column:2;font-size:.7rem}
+  .general-mark{grid-row:1/3;width:30px;height:30px;display:grid;place-items:center;border-radius:6px;
+    background:color-mix(in srgb,var(--signal-violet) 10%,transparent);color:var(--signal-violet);font-size:.9rem}
+  .thread-close,.pin-item{position:absolute;top:.8rem;right:.4rem}
+  .thread-close,.pin-item,#docpane-hide{width:24px;height:24px;min-width:0;padding:0;display:inline-grid;place-items:center}
+  .pin-item.on{color:var(--warning)}
+  .thread-close .icon,.pin-item .icon,#docpane-hide .icon{width:14px;height:14px;margin:0}
+  .general-mark .icon{width:16px;height:16px}
+  .rail-item .ctas{margin-top:.6rem}
+  .doc-thread .w{display:flex;align-items:center;gap:.5rem;min-width:0}
+  .doc-thread-path{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.65rem;color:var(--tertiary)}
+  .rail-toolbar{align-items:flex-start;border-top:1px solid var(--tblr-border-color-translucent);margin-top:.8rem}
+  .rail-toolbar>span{color:var(--secondary);font-size:.75rem;white-space:nowrap;padding-top:.4rem}
+  .rail-toolbar b{display:inline-block;margin-left:.2rem;padding:.05rem .35rem;background:var(--console-tint);border-radius:4px;color:var(--text)}
+  .order-control{display:flex;align-items:center;gap:.35rem;font-size:.65rem;color:var(--tertiary)}
+  .order-control>span{display:none}
+  .order-control .form-select{width:135px;padding:.35rem 1.7rem .35rem .5rem;font-size:.65rem}
+  .rail-meta{display:flex;align-items:center;gap:.5rem;margin-bottom:.6rem;padding-right:1.25rem}
+  .queue-index{margin-left:auto;font-size:.625rem;color:var(--tertiary);font-variant-numeric:tabular-nums}
+  .action-badge{--tag-colour:var(--accent);--tblr-badge-color:var(--tag-colour);
+    --tblr-badge-font-size:.625rem;--tblr-badge-font-weight:500;min-height:22px}
+  .action-icon{font-size:.625rem;font-weight:600;opacity:.8}
+  .item-chat,.action-chat,.item-teams,.action-teams{--item-colour:#b4a5ff;--tag-colour:#b4a5ff}
+  .item-ticket,.action-ticket,.item-jira,.action-jira{--item-colour:#8cbaff;--tag-colour:#8cbaff}
+  .item-email,.action-email{--item-colour:#efc078;--tag-colour:#efc078}
+  .item-standup,.action-standup{--item-colour:#79d4b0;--tag-colour:#79d4b0}
+  .item-meeting,.action-meeting{--item-colour:#c6a3eb;--tag-colour:#c6a3eb}
+  .item-document,.action-document{--item-colour:#dacf84;--tag-colour:#dacf84}
+  .item-review,.action-review{--item-colour:#8ecdd8;--tag-colour:#8ecdd8}
+  .item-decision,.action-decision{--item-colour:#eba3cc;--tag-colour:#eba3cc}
+  .item-task,.action-task{--item-colour:#ff8c93;--tag-colour:#ff8c93}
+  [data-bs-theme="light"] :is(.item-chat,.action-chat,.item-teams,.action-teams){--item-colour:#6a4fc9;--tag-colour:#6a4fc9}
+  [data-bs-theme="light"] :is(.item-ticket,.action-ticket,.item-jira,.action-jira){--item-colour:#2f6fd0;--tag-colour:#2f6fd0}
+  [data-bs-theme="light"] :is(.item-email,.action-email){--item-colour:#9a6410;--tag-colour:#9a6410}
+  [data-bs-theme="light"] :is(.item-standup,.action-standup){--item-colour:#16805b;--tag-colour:#16805b}
+  [data-bs-theme="light"] :is(.item-meeting,.action-meeting){--item-colour:#8a4fb8;--tag-colour:#8a4fb8}
+  [data-bs-theme="light"] :is(.item-document,.action-document){--item-colour:#7d6d12;--tag-colour:#7d6d12}
+  [data-bs-theme="light"] :is(.item-review,.action-review){--item-colour:#1d7a8b;--tag-colour:#1d7a8b}
+  [data-bs-theme="light"] :is(.item-decision,.action-decision){--item-colour:#b13f7c;--tag-colour:#b13f7c}
+  [data-bs-theme="light"] :is(.item-task,.action-task){--item-colour:#c2414d;--tag-colour:#c2414d}
+  .rail-section{padding:1rem 1rem .5rem;color:var(--tertiary);font-size:.7rem;font-weight:500}
+  .later-item{display:flex;align-items:center;gap:.5rem;padding:.6rem 1rem}
+  .later-copy{min-width:0;flex:1}
+  .later-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.75rem;color:var(--secondary)}
+  .later-until{color:var(--tertiary);font-size:.625rem;margin-top:.3rem}
+  .later-until .action-badge{min-height:18px;font-size:.6rem;padding:.1rem .3rem}.later-until .action-icon{display:none}
+  .rail-closed-head{cursor:pointer;user-select:none}.rail-closed-head:hover{color:var(--text)}
+  .pane{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--panel)}
+  .conversation-header{min-height:80px;padding:1.2rem 1.75rem;flex:none;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+  .conversation-heading{flex:1;min-width:0}
+  .conversation-header .page-pretitle{font-size:.6rem;letter-spacing:.08em;margin-bottom:.3rem}
+  .conversation-header .card-title{overflow-wrap:anywhere;font-size:.9375rem;line-height:1.4;margin:0;font-weight:550}
+  .logwrap{flex:1;min-height:0;overflow-y:auto}
+  .log{width:100%;display:flex;flex-direction:column;padding:.5rem 1.75rem .75rem;margin:0;gap:0}
+  .msg{display:grid;grid-template-columns:64px minmax(0,1fr);gap:1rem;align-items:start;padding:.65rem 0}
+  .msg .who{font-size:.625rem;color:var(--tertiary);font-weight:500;padding-top:.2rem}
+  .msg .who .ts{display:block;margin-top:.15rem;font-size:.6rem;font-weight:400}
+  .msg .bubble{min-width:0;overflow-wrap:anywhere;font-size:.9375rem;line-height:1.5;color:var(--text)}
+  .msg.you .bubble{margin:0;background:var(--console-bubble);border:1px solid var(--console-tint);border-radius:8px;padding:.5rem 1rem}
+  .msg.you.queued .bubble{opacity:.8;border-style:dashed}
+  .queued-note{font-size:.75rem;color:var(--tertiary);margin-top:.4rem}
+  .action-hero{margin-bottom:.9rem}
+  .bubble .brief-title{font-size:1.6rem;line-height:1.25;font-weight:600;letter-spacing:-.035em;margin:0 0 1.25rem}
+  .brief-raised{color:var(--tertiary);font-size:.75rem;margin:-.5rem 0 1rem}
+  .brief-section{margin-top:1.15rem}
+  .brief-label{font-size:.6875rem;color:var(--tertiary);font-weight:550;margin-bottom:.4rem}
+  .brief-copy{color:var(--secondary)}.brief-why{color:var(--text)}
+  .recommendation{margin-top:1.5rem;padding:1.2rem;border-left:3px solid var(--signal-violet);background:var(--console-callout)}
+  .recommendation.user-owned{border-left-color:var(--warning)}
+  .recommendation-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem}
+  .recommendation-head .brief-label{margin:0;color:var(--signal-violet)}
+  .recommendation .brief-copy{color:var(--text);font-weight:500}
+  .recommendation-actions{margin-top:1rem}
+  .owner-cue{font-size:.625rem;color:var(--tertiary);font-weight:400}
+  .ctas{display:flex;flex-wrap:wrap;gap:.5rem .8rem;margin-top:.8rem}
+  .cta{font-size:.7rem;color:var(--tblr-link-color);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--signal-violet) 35%,transparent)}
+  .cta:hover{color:var(--tblr-link-hover-color);border-color:currentColor}
+  .md>*:first-child,.bubble>*:first-child{margin-top:0}.md>*:last-child,.bubble>*:last-child{margin-bottom:0}
+  .md p,.bubble p{margin:.4rem 0}.md ul,.md ol,.bubble ul,.bubble ol{margin:.35rem 0;padding-left:1.3rem}
+  .md li,.bubble li{margin:.1rem 0}
+  .md h1,.md h2,.md h3,.md h4,.bubble h1,.bubble h2,.bubble h3,.bubble h4{font-size:1rem;line-height:1.4;margin:.75rem 0 .35rem}
+  .md code,.bubble code{background:var(--console-tint);border:1px solid var(--console-tint);border-radius:4px;padding:.05rem .3rem;font-size:.85em;color:var(--console-code)}
+  .md pre,.bubble pre{background:var(--canvas);border:1px solid var(--line);border-radius:6px;padding:.8rem;overflow:auto}
+  .md pre code,.bubble pre code{background:none;border:0;padding:0;color:inherit}
+  .md table,.bubble table{display:block;max-width:100%;overflow:auto;border-collapse:collapse;margin:.75rem 0;font-size:.8125rem}
+  .md th,.md td,.bubble th,.bubble td{border:1px solid var(--line);padding:.45rem .6rem;text-align:left;vertical-align:top}
+  .md th,.bubble th{background:var(--console-tint-faint);font-weight:600}
+  .md blockquote,.bubble blockquote{border-left:2px solid var(--line);padding-left:.8rem;margin:.75rem 0;color:var(--tertiary)}
+  .form{display:flex;align-items:flex-end;flex-wrap:wrap;gap:.5rem;margin:0 1.75rem 1.4rem;padding:.5rem;
+    background:var(--canvas);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 12px #0000000d}
+  .input{flex:1;min-height:40px;max-height:180px;min-width:0;field-sizing:content;resize:none;overflow-y:hidden;
+    background:transparent;border:0;box-shadow:none;padding:.5rem 0;font-size:.875rem;line-height:1.5}
+  .input:focus{background:transparent;box-shadow:none;outline:none}
+  .form:focus-within{border-color:color-mix(in srgb,var(--signal-violet) 50%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--signal-violet) 8%,transparent)}
+  .snooze-wrap{position:relative;flex-shrink:0}
+  .composer-files{display:flex;flex-wrap:wrap;gap:.5rem;flex-basis:100%;min-width:0}
+  .composer-files:empty{display:none}
+  .composer-files .tag{max-width:100%;min-width:0;--tblr-tag-close-size:1.5rem}
+  .snooze-menu{top:calc(100% + .5rem);bottom:auto;right:0;left:auto;min-width:180px}
+  .snooze-menu.open{display:block}
+  .attach-wrap{position:relative;flex-shrink:0}
+  .attach-menu{top:auto;bottom:calc(100% + .5rem);left:0;right:auto;min-width:200px}
+  .attach-menu.open{display:block}
+  .form.drop-target{outline:2px dashed var(--signal-violet);outline-offset:2px}
+  .composer-files .tag img{width:24px;height:24px;object-fit:cover;border-radius:4px;flex-shrink:0}
+  .chat-attachments{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}
+  .chat-attachment-image img{display:block;max-width:min(320px,100%);max-height:240px;border:1px solid var(--line);border-radius:6px}
+  .chat-attachment-file{max-width:100%;text-decoration:none}
+  .empty{margin:auto;padding:2rem;text-align:center;color:var(--tertiary);font-size:.8125rem}
+  .empty .icon{width:36px;height:36px;margin-bottom:1rem;color:var(--signal-violet)}
+  .examples{margin:1.25rem auto 0;max-width:46rem;text-align:left}
+  .examples-head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;margin:0 0 .5rem}
+  .examples h3{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--tertiary);margin:0}
+  .bubble .examples{margin:1rem 0 0}
+  .examples-source{font-size:.7rem;color:var(--tertiary)}
+  .examples-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(14rem,1fr));gap:.5rem}
+  .examples a.idea{display:flex;flex-direction:column;gap:.25rem;padding:.6rem .75rem;border:1px solid var(--line);border-radius:6px;
+    color:var(--secondary);text-decoration:none;font-size:.8125rem;line-height:1.4}
+  .examples a.idea:hover,.examples a.idea:focus-visible{border-color:var(--signal-violet);color:var(--primary);background:var(--console-tint)}
+  .idea-kind{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--signal-violet)}
+  .new-chat-row .general-mark{color:var(--signal-violet)}
+  .empty h2{font-size:1.15rem;font-weight:500;color:var(--secondary)}.empty p{font-size:.8rem}
+  .daysep{display:flex;align-items:center;gap:.75rem;font-size:.65rem;color:var(--tertiary);padding:.75rem 0}
+  .daysep::before,.daysep::after{content:"";flex:1;border-top:1px solid var(--tblr-border-color-translucent)}
+  .thinking{color:var(--tertiary);font-style:italic}
+  .busy{display:inline-flex;gap:3px;align-items:center;margin:0 .3rem;vertical-align:middle}
+  .busy i{width:4px;height:4px;border-radius:50%;background:currentColor;animation:dot 1.2s ease-in-out infinite}
+  .busy i:nth-child(2){animation-delay:.15s}.busy i:nth-child(3){animation-delay:.3s}
+  @keyframes dot{0%,70%,100%{opacity:.25}35%{opacity:1}}
+  .defer-line{display:inline-flex;gap:.35rem;align-self:flex-start;padding:.4rem .6rem;background:var(--console-raised);border-radius:5px;font-size:.75rem;color:var(--secondary)}
+  .defer-line::before{content:"◷";color:var(--signal-violet)}
+  .capture-line{margin-top:.7rem;padding-top:.6rem;border-top:1px solid var(--line);font-size:.7rem;color:var(--tertiary)}
+  .approval{margin-top:1rem;border-top:1px solid var(--line);padding-top:1rem}
+  .approval-summary{color:var(--warning);font-size:.8125rem;margin-bottom:.6rem}
+  .approval-draft{min-height:90px;font-size:.8125rem}
+  .approval-preview,.approval-raw pre{font-size:.8125rem}
+  .approval-preview>*:first-child{margin-top:0}.approval-preview>*:last-child{margin-bottom:0}
+  .approval-raw summary{font-size:.75rem;color:var(--tertiary);cursor:pointer;margin-top:.6rem}
+  .approval-raw pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--secondary);font-size:.75rem}
+  .approval-buttons{display:flex;gap:.6rem;margin-top:.8rem}.approval-result{margin-top:.6rem}
+  .docpane{flex:1;min-width:0;border-left:1px solid var(--line);overflow-y:auto;padding:0 1.25rem 2rem;font-size:.875rem;line-height:1.65;background:var(--canvas)}
+  .docpane[hidden]{display:none}
+  .docpane-head{position:sticky;top:0;z-index:1;display:flex;gap:.5rem;align-items:center;padding:1rem 0;background:var(--canvas);border-bottom:1px solid var(--line);margin-bottom:1rem}
+  .docpane-head .path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.65rem;color:var(--tertiary)}
+  .docpane h1,.docpane h2,.docpane h3{font-weight:550;line-height:1.3;margin:1.2rem 0 .5rem}
+  .docpane h1{font-size:1.3rem}.docpane h2{font-size:1.1rem}.docpane h3{font-size:1rem}
+  .docpane p{margin:.7rem 0}.docpane ul,.docpane ol{padding-left:1.2rem}
+  .docpane pre{overflow:auto;background:var(--panel);padding:.75rem}.docpane table{display:block;overflow:auto}
+  .docpane th,.docpane td{border:1px solid var(--line);padding:.4rem;font-size:.75rem}
+  @media (max-width:1100px){.docpane{display:none}}
+  @media (max-width:900px){
+    .attention-queue{width:260px}.queue-header{padding:1rem}
+    .conversation-header{padding:1rem}.log{padding:.5rem 1rem}
+    .msg{grid-template-columns:48px minmax(0,1fr);gap:.65rem}
+    .form{margin:0 1rem 1rem}.bubble .brief-title{font-size:1.35rem}
+    .dashboard-page-header .board-status{font-size:.65rem}
+  }
+  @media (max-width:650px){
+    .assistant-page{padding:calc(var(--shell-header-height) + 1rem) .75rem 0}.dashboard-page-header{margin-bottom:1rem}
+    .dashboard-page-header .page-title{font-size:1.4rem}
+    .main{flex-direction:column}.attention-queue{width:100%;height:36%;min-height:190px;border-right:0;border-bottom:1px solid var(--line)}
+    .queue-header{padding:.75rem}.queue-header p,.queue-header h2{display:none}.queue-header .form-control{padding:.4rem .6rem}
+    .conversation-header{min-height:62px}.conversation-header .page-pretitle{display:none}
+    .msg{grid-template-columns:minmax(0,1fr);gap:.3rem}.msg .who .ts{display:inline;margin-left:.5rem}
+    .input{min-height:40px}
+  }
+  @media (prefers-reduced-motion:reduce){.busy i{animation:none;opacity:.6}}
+</style></head>
+<body class="assistant-page">
+<header class="workspace-header navbar" aria-label="Workspace"></header>
+<div class="page-header dashboard-page-header">
+  <div><div class="page-pretitle">Your workspace</div><h1 class="page-title">Assistant</h1></div>
+  <div class="board-status text-secondary" id="status" role="status"></div>
+</div>
+<div class="main">
+  <aside class="attention-queue" aria-label="Attention inbox">
+    <div class="queue-header">
+      <div class="rail-tabs" role="tablist" aria-label="Rail">
+        <button type="button" role="tab" id="tab-inbox" data-tab="inbox" aria-selected="true">Inbox<b id="inbox-count"></b></button>
+        <button type="button" role="tab" id="tab-chats" data-tab="chats" aria-selected="false">Chats</button></div>
+      <textarea id="ask-box" class="form-control ask-box" hidden placeholder="Ask anything…" aria-label="Start a new chat"></textarea>
+      <input id="search" class="form-control rail-search" type="search" autocomplete="off" placeholder="Search inbox…" aria-label="Search the rail">
+
+    </div>
+    <div class="rail" id="rail"></div>
+  </aside>
+  <div class="pane" id="pane"><div class="empty"><svg class="icon" aria-hidden="true"><use href="/static/ui-icons.svg#assistant"/></svg><h2>Your workspace is ready</h2><p>Select an inbox item or start a chat.</p></div></div>
+  <aside class="docpane" id="docpane" hidden aria-label="Linked document"></aside>
+</div>
+<script>
+const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const allowedMarkdownTags=new Set([
+  'A','BLOCKQUOTE','BR','CODE','DEL','EM','H1','H2','H3','H4','H5','H6','HR',
+  'LI','OL','P','PRE','STRONG','TABLE','TBODY','TD','TH','THEAD','TR','UL'
+]);
+function vaultMarkdownPath(text){
+  const path=String(text||'').trim();
+  if(!path||path.startsWith('/')||path.toLowerCase().startsWith('dashboard/')||path.includes('\\')) return '';
+  if(!/\.md$/i.test(path)||/^[a-z][a-z0-9+.-]*:/i.test(path)) return '';
+  const parts=path.split('/');
+  return parts.some(part=>!part||part==='.'||part==='..')?'':path;
+}
+function md(source){
+  try{
+    const template=document.createElement('template');
+    template.innerHTML=marked.parse(String(source||'').replace(/\\n/g,'\n'));
+    [...template.content.querySelectorAll('*')].forEach(element=>{
+      if(!allowedMarkdownTags.has(element.tagName)){
+        element.replaceWith(document.createTextNode(element.textContent||''));
+        return;
+      }
+      const href=element.tagName==='A'?element.getAttribute('href'):null;
+      [...element.attributes].forEach(attribute=>element.removeAttribute(attribute.name));
+      if(element.tagName==='A'&&href){
+        try{
+          if(!/^[a-z][a-z0-9+.-]*:/i.test(href)&&/\.(md|html|txt|json|ya?ml|csv)$/i.test(href)){
+            element.href=documentHref(href.replace(/^\//,''));
+            element.target='_blank'; element.rel='noopener';
+            return;
+          }
+          const url=new URL(href,location.origin);
+          if(!['http:','https:'].includes(url.protocol)) throw new Error('unsafe link');
+          element.href=url.toString(); element.target='_blank'; element.rel='noopener';
+        }catch(error){ element.removeAttribute('href'); }
+      }
+    });
+    [...template.content.querySelectorAll('code')].forEach(element=>{
+      if(element.closest('pre,a')) return;
+      const path=vaultMarkdownPath(element.textContent);
+      if(!path) return;
+      const link=document.createElement('a');
+      link.href=documentHref(path); link.target='_blank'; link.rel='noopener';
+      link.textContent=element.textContent;
+      element.replaceWith(link);
+    });
+    return template.innerHTML;
+  }catch(error){ return esc(source).replace(/\n/g,'<br>'); }
+}
+const escAttr=s=>esc(s).replace(/"/g,'&quot;');
+const currentFrom=()=>encodeURIComponent(location.pathname+location.search);
+const documentHref=(path,itemId)=>{
+  let href='/document?path='+encodeURIComponent(path)+'&from='+currentFrom();
+  if(itemId) href+='&item='+encodeURIComponent(itemId);
+  return href;
+};
+const visibleReply=s=>String(s||'').replace(
+  /<<<(STATE|PAUSE|DEFER|REMIND|DONE|ERROR)>>>[\s\S]*$/,'').trimEnd();
+const ctas=(links,documents,itemId)=>{
+  const external=(links||[]).map(l=>
+    `<a class="cta" href="${escAttr(l.url)}" target="_blank" rel="noopener">${esc(l.label)}&nbsp;↗</a>`);
+  const vault=(documents||[]).map(d=>
+    `<a class="cta vault-document" href="${documentHref(d.path,itemId)}" target="_blank" rel="noopener">${esc(d.label)}&nbsp;▤</a>`);
+  return external.length||vault.length?`<div class="ctas">${external.concat(vault).join('')}</div>`:'';
+};
+const ACTIONS={
+  chat:{label:'Chat',icon:'C'}, ticket:{label:'Ticket',icon:'#'},
+  teams:{label:'Chat',icon:'C'}, jira:{label:'Ticket',icon:'#'},
+  email:{label:'Email',icon:'@'}, standup:{label:'Stand-up',icon:'S'},
+  meeting:{label:'Meeting',icon:'M'}, document:{label:'Document',icon:'D'},
+  review:{label:'Review',icon:'R'}, decision:{label:'Decision',icon:'?'},
+  task:{label:'Next action',icon:'→'}
+};
+function actionBadge(type){
+  const key=ACTIONS[type]?type:'task', a=ACTIONS[key];
+  return `<span class="badge action-badge action-${key}"><span class="action-icon">${a.icon}</span>${a.label}</span>`;
+}
+function ownerCue(owner){ return owner==='user'?'Your action':'Assistant can do this'; }
+function healthWarning(h){
+  if(!h) return '';
+  const sensors=Array.isArray(h.degraded)?h.degraded:[];
+  const automations=Array.isArray(h.automation_failures)?h.automation_failures:[];
+  const restart=h.restart_pending
+    ? ` · <span class="health-restart" title="Roosta's code changed after the runner started. The change takes effect on the next restart.">Restart Roosta to load the latest update</span>`
+    : '';
+  if(!sensors.length&&!automations.length) return restart;
+  const parts=[];
+  if(h.claude_signin_expired) parts.push('Claude sign-in expired - run claude /login');
+  if(h.github_signin_expired) parts.push('GitHub sign-in expired - run gh auth refresh');
+  const sick=sensors.length+automations.length;
+  parts.push(`${sick} worker${sick===1?' is':'s are'} sick`);
+  const who=x=>x.nickname&&x.nickname!==x.id?`${x.nickname} (${x.id})`:x.id;
+  const detail=(sensors.length?'Board picture may be incomplete.\n':'')
+    + sensors.concat(automations).map(x=>`${who(x)}: ${x.reason||'failed'}`).join('\n');
+  return ` · <a class="health-warn" href="/runner" title="${escAttr(detail)}">⚠ ${parts.join(', ')}</a>`+restart;
+}
+function freshness(iso){
+  if(!iso) return '';
+  const t=new Date(iso); if(isNaN(t)) return '';
+  const mins=Math.round((Date.now()-t.getTime())/60000);
+  const when=mins<1?'just now':mins<60?mins+'m ago':t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  return ` · ${when}`;
+}
+function laterLabel(iso){
+  const t=new Date(iso); if(isNaN(t)) return 'later';
+  return t.toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit'});
+}
+function raisedLabel(iso){
+  if(!iso) return '';
+  const t=new Date(iso); if(isNaN(t)) return '';
+  const mins=Math.round((Date.now()-t.getTime())/60000);
+  if(mins<1) return 'Raised just now';
+  if(mins<60) return `Raised ${mins}m ago`;
+  if(mins<24*60) return `Raised ${Math.round(mins/60)}h ago`;
+  return `Raised ${t.toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit'})}`;
+}
+const icon=n=>`<svg class="icon" aria-hidden="true"><use href="/static/ui-icons.svg#${n}"/></svg>`;
+const ORDER_KEY='assistant-order-v1', PINS_KEY='assistant-pins-v1';
+function readPreference(key,fallback){
+  try{ const value=JSON.parse(localStorage.getItem(key)); return value==null?fallback:value; }
+  catch(error){ return fallback; }
+}
+function writePreference(key,value){
+  try{ localStorage.setItem(key,JSON.stringify(value)); }catch(error){}
+}
+function trackUsage(event,properties={}){
+  fetch('/api/usage',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({event,properties}),keepalive:true}).catch(()=>{});
+}
+let orderMode=readPreference(ORDER_KEY,'recommended');
+if(!['recommended','importance','date','type'].includes(orderMode)) orderMode='recommended';
+let pinnedIds=new Set(Array.isArray(readPreference(PINS_KEY,[]))?readPreference(PINS_KEY,[]):[]);
+function importanceScore(item){
+  const text=[item.title,item.why,item.situation,item.opening_move].join(' ').toLowerCase();
+  let score=1;
+  if(item.action_owner==='user') score+=1;
+  if(item.new) score+=1;
+  if(/\b(incident|outage|security|escalation|overdue|production down|p[01])\b/.test(text)) score+=2;
+  else if(/\b(today|tomorrow|deadline|blocked|waiting|approval|risk|urgent)\b/.test(text)) score+=1;
+  if(item.action_type==='decision') score+=1;
+  return Math.min(5,score);
+}
+function orderedItems(source){
+  return source.map((item,index)=>({item,index})).sort((a,b)=>{
+    const pin=(pinnedIds.has(b.item.id)?1:0)-(pinnedIds.has(a.item.id)?1:0);
+    if(pin) return pin;
+    if(orderMode==='importance'){
+      const importance=importanceScore(b.item)-importanceScore(a.item);
+      if(importance) return importance;
+    }else if(orderMode==='date'){
+      const date=(Date.parse(b.item.raised_at)||0)-(Date.parse(a.item.raised_at)||0);
+      if(date) return date;
+    }else if(orderMode==='type'){
+      const type=String(a.item.action_type||'task').localeCompare(String(b.item.action_type||'task'));
+      if(type) return type;
+    }
+    return a.index-b.index;
+  }).map(entry=>entry.item);
+}
+function togglePin(id){
+  if(pinnedIds.has(id)) pinnedIds.delete(id); else pinnedIds.add(id);
+  writePreference(PINS_KEY,[...pinnedIds]);
+  trackUsage('item_pinned',{state:pinnedIds.has(id)?'on':'off'});
+  renderRail();
+}
+// Every question the user asks is its own chat, minted here as chat:<12 hex>. The
+// server only learns of it when the first message is sent.
+const NEW_CHAT='new';
+const CHAT_PREFIX='chat:';
+const isGeneralChatId=id=>typeof id==='string'&&/^chat:[0-9a-f]{12}$/.test(id);
+// Ideas for a new chat. The chat-ideas skill writes ones built from this workspace
+// (/api/chat-ideas); until it has, these starters stand in. Picking one puts the text in the
+// composer, never sends it, so the user can edit first (the same ?item=new&ask= path the
+// Workspace page uses).
+const EXAMPLES=[
+  {kind:'focus',text:'What should I focus on this week, given my priorities?'},
+  {kind:'project',text:'Start a project for the thing I spend most time on, and ask me what you need to know.'},
+  {kind:'remember',text:'Remind me on Friday at 4pm to review where my priorities stand.'},
+  {kind:'tool',text:'Connect GitHub so you can tell me when a pull request needs me.'},
+  {kind:'build',text:'Build me a page that lists my projects by status.'},
+  {kind:'build',text:'Write a skill that drafts my weekly update from my project notes.'},
+  {kind:'learn',text:'What can you do for me, and what should I set up next?'},
+];
+const IDEA_KINDS={focus:'Focus',project:'Project',tool:'Tools',remember:'Remember',build:'Build',learn:'Explore'};
+let chatIdeas={ideas:[],generated:null};
+function ideasToShow(){
+  return chatIdeas.ideas.length?{ideas:chatIdeas.ideas,source:'workspace'}:{ideas:EXAMPLES,source:'starter'};
+}
+function examplesInner(heading){
+  const {ideas,source}=ideasToShow();
+  const when=source==='workspace'&&chatIdeas.generated?relativeWhen(chatIdeas.generated):'';
+  const note=source==='workspace'?`From your workspace${when?' · '+when:''}`:'';
+  return `<div class="examples-head"><h3>${esc(heading)}</h3>${note?`<span class="examples-source">${esc(note)}</span>`:''}</div>
+    <div class="examples-grid">${ideas.map(idea=>{
+      const kind=idea.label||IDEA_KINDS[idea.kind]||'';
+      return `<a class="idea" data-idea-source="${source}" href="/assistant?item=new&amp;ask=${encodeURIComponent(idea.text)}">
+        ${kind?`<span class="idea-kind">${esc(kind)}</span>`:''}<span>${esc(idea.text)}</span></a>`;}).join('')}</div>`;
+}
+function examplesHtml(heading='Try asking'){
+  return `<div class="examples" data-examples="${escAttr(heading)}">${examplesInner(heading)}</div>`;
+}
+function relativeWhen(iso){
+  const t=new Date(iso); if(isNaN(t)) return '';
+  const hours=(Date.now()-t)/36e5;
+  if(hours<1) return 'just now';
+  if(hours<24) return `${Math.floor(hours)}h ago`;
+  return t.toLocaleDateString([],{day:'numeric',month:'short'});
+}
+async function loadChatIdeas(){
+  try{
+    const d=await (await fetch('/api/chat-ideas')).json();
+    if(!d||!Array.isArray(d.ideas)) return;
+    const changed=JSON.stringify(d)!==JSON.stringify(chatIdeas);
+    chatIdeas={ideas:d.ideas,generated:d.generated||null};
+    if(changed) document.querySelectorAll('[data-examples]').forEach(el=>{ el.innerHTML=examplesInner(el.dataset.examples); });
+  }catch(e){}
+}
+// An idea fills the composer of the new chat already open, else opens one; never sends.
+function useIdea(text,source){
+  trackUsage('idea_used',{source});
+  if(!(isGeneralChatId(activeId)&&!(chatHistories[activeId]||[]).length&&!chats.some(r=>r.id===activeId))) openItem(NEW_CHAT);
+  const input=document.getElementById('input'); if(!input) return;
+  input.value=text; input.dispatchEvent(new Event('input')); autosizeComposer(input); input.focus();
+}
+function mintChatId(){
+  return CHAT_PREFIX+[...crypto.getRandomValues(new Uint8Array(6))].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+// Document threads are opened from the /document viewer and work the same way:
+// one thread per document, so the conversation about it builds up.
+const DOC_PREFIX='doc:';
+const isDocId=id=>typeof id==='string'&&id.startsWith(DOC_PREFIX);
+function docItem(id){
+  const path=id.slice(DOC_PREFIX.length);
+  if(!/^[^/].*\.md$/i.test(path)||path.split('/').includes('..')) return null;
+  return {id,path,title:contextLabel(path),
+    action_type:'document'};
+}
+// The id only carries the path, so the real title is fetched once and cached.
+const docTitles={};
+function loadDocTitle(item){
+  if(!item||item.path in docTitles) return;
+  docTitles[item.path]=null;
+  fetch('/api/vault-document?path='+encodeURIComponent(item.path))
+    .then(r=>r.ok?r.json():null)
+    .then(d=>{ if(d&&d.title){
+      docTitles[item.path]=d.title; renderRail();
+      document.querySelectorAll('[data-context-path]').forEach(link=>{
+        if(link.dataset.contextPath===item.path) link.textContent=contextLabel(item.path);
+      });
+    } })
+    .catch(()=>{});
+}
+// Worker 1:1s are opened from an Office dossier or a Workers row: one standing thread per
+// scheduled task, where the model speaks as that worker to refine its skill.
+const WORKER_PREFIX='worker:';
+const isWorkerId=id=>typeof id==='string'&&id.startsWith(WORKER_PREFIX);
+function workerItem(id){
+  const task=id.slice(WORKER_PREFIX.length);
+  if(!/^[A-Za-z0-9._-]{1,100}$/.test(task)) return null;
+  return {id,task,title:'1:1 with '+task,action_type:'task'};
+}
+// New worker on the Workers page opens ?item=hire: each one is its own thread, minted
+// here as hire:<12 hex>, where the Assistant writes the skill and adds it to the schedule.
+const NEW_HIRE='hire';
+const HIRE_PREFIX='hire:';
+const isHireId=id=>typeof id==='string'&&/^hire:[0-9a-f]{12}$/.test(id);
+function mintHireId(){ return HIRE_PREFIX+mintChatId().slice(CHAT_PREFIX.length); }
+const isChatId=id=>isGeneralChatId(id)||isDocId(id)||isWorkerId(id)||isHireId(id);
+function chatTitle(id,fallback='New chat'){
+  const row=chats.find(r=>r.id===id);
+  const text=(row&&row.preview)||(convos[id]&&convos[id].firstMessage)||'';
+  return text?(text.length>80?text.slice(0,79)+'…':text):fallback;
+}
+function chatItem(id){
+  if(isGeneralChatId(id)) return {id,title:chatTitle(id),action_type:'task'};
+  if(isHireId(id)){
+    const t=chatTitle(id,'');
+    return {id,title:t?'New worker: '+t:'New worker',action_type:'task'};
+  }
+  return isDocId(id)?docItem(id):isWorkerId(id)?workerItem(id):null;
+}
+// The Chats tab lists every chat the user started, from the server. Chats opened in
+// this page session are named to /api/board so their transcripts come back.
+let chats=[];
+const openedChats=new Set();
+const historyFetched=new Set();
+let railTab='inbox';
+const searchInput=document.getElementById('search');
+function setRailTab(tab){
+  if(tab===railTab) return;
+  railTab=tab;
+  trackUsage('chat_tab_opened',{scope:tab});
+  // Chats opens on a new chat, with its ideas, unless a chat is already showing.
+  if(tab==='chats'&&!isChatId(activeId)){ openItem(NEW_CHAT); return; }
+  renderRail();
+}
+async function archiveChat(id){
+  let ok=false;
+  try{ ok=(await fetch('/api/chats/archive',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({item_id:id})})).ok; }catch(e){}
+  if(!ok) return;
+  trackUsage('chat_archived',{});
+  chats=chats.filter(r=>r.id!==id);
+  if(activeId===id) openItem(NEW_CHAT); else renderRail();
+}
+function itemById(id){
+  if(isChatId(id)) return chatItem(id);
+  return items.find(x=>x.id===id)||null;
+}
+function syncItemUrl(id){
+  const url=new URL(location.href);
+  if(id) url.searchParams.set('item',id);
+  else url.searchParams.delete('item');
+  // A prefilled question is consumed once; a reload must not re-seed it.
+  url.searchParams.delete('ask');
+  url.searchParams.delete('file');
+  if(url.searchParams.get('from')==='workspace') url.searchParams.delete('from');
+  history.replaceState(null,'',url);
+  const ret=new URLSearchParams();if(id) ret.set('item',id);
+  window.setAssistantReturn?.(id?'?'+ret:'');
+}
+// A chat isn't a work item, so its name says nothing; fall back to the result line.
+function closedLabel(id,fallback){
+  const it=items.find(x=>x.id===id)||later.find(x=>x.id===id);
+  // A board poll can drop the item before its Done event lands; the convo keeps its title.
+  return (!isGeneralChatId(id) && ((it && it.title) || (convos[id] && convos[id].title))) || fallback || '';
+}
+function showClosedNotice(title){
+  document.getElementById('closed-notice')?.remove();
+  const notice=document.createElement('div');
+  notice.id='closed-notice';
+  notice.className='toast-container position-fixed bottom-0 end-0 p-3';
+  notice.innerHTML=`<div class="toast show" role="status" aria-live="polite" aria-atomic="true">
+    <div class="toast-header"><span class="status-dot bg-success me-2" aria-hidden="true"></span>
+      <strong class="me-auto">Action closed</strong>
+      <button type="button" class="btn-close" aria-label="Dismiss confirmation"></button></div>
+    <div class="toast-body">${esc(title||'One less thing on your list.')}</div></div>`;
+  notice.querySelector('.btn-close').onclick=()=>notice.remove();
+  document.body.appendChild(notice);
+  setTimeout(()=>notice.remove(),5000);
+}
+let items=[], later=[], closed=[], activeId=null;
+let query='', closedOpen=false;
+function matchesQuery(it){
+  if(!query) return true;
+  return [it.title,it.why,it.situation,it.opening_move]
+    .map(x=>String(x||'')).join(' ').toLowerCase().includes(query);
+}
+function matchesClosed(it){
+  if(!query) return true;
+  return [it.title,it.result].map(x=>String(x||'')).join(' ').toLowerCase().includes(query);
+}
+function closedAt(iso){
+  if(!iso) return '';
+  const t=new Date(iso); if(isNaN(t)) return '';
+  return t.toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit'});
+}
+let chatHistories={};
+let pendingApprovals={};
+let activeChats=new Set();
+let requestedItem=new URLSearchParams(location.search).get('item');
+// ?ask= links carry the question to ask. It is prefilled in the
+// composer, never auto-sent, so the user always sees the request before a turn runs.
+const requestedAsk=new URLSearchParams(location.search).get('ask');
+const requestedFiles=[...new Set(new URLSearchParams(location.search).getAll('file').map(vaultMarkdownPath).filter(Boolean))].slice(0,8);
+const requestedContext=new URLSearchParams(location.search).get('from')==='workspace';
+let requestedFilesUsed=false;
+function contextFor(id){
+  const paths=readPreference('assistant-context:'+id,[]);
+  return Array.isArray(paths)?paths.map(vaultMarkdownPath).filter(Boolean).slice(0,8):[];
+}
+function contextLabel(path){
+  const title=docTitles[path];
+  if(title&&!/^readme(?:\.md)?$/i.test(title.trim())) return title;
+  const stem=path.split('/').pop().replace(/\.md$/i,'');
+  const name=stem.toLowerCase()==='readme'&&path.includes('/')?path.split('/').slice(-2)[0]:stem;
+  return name.split(/[-_]+/).map(word=>word.charAt(0).toUpperCase()+word.slice(1)).join(' ');
+}
+function renderContextFiles(id){
+  const paths=contextFor(id),node=document.getElementById('context-files'),attach=document.getElementById('attach-files');
+  if(!node||!attach) return;
+  const picker=new URLSearchParams({item:id});paths.forEach(path=>picker.append('file',path));
+  attach.href='/workspace?'+picker;
+  node.innerHTML=paths.map((path,index)=>`<span class="tag"><a class="text-reset text-truncate text-decoration-none" data-context-path="${esc(path)}" href="/document?${esc(new URLSearchParams({path,from:'/assistant?item='+encodeURIComponent(id)}).toString())}" title="${esc(path)}">${esc(contextLabel(path))}</a><button type="button" class="btn-close flex-shrink-0" data-remove-context="${index}" aria-label="Remove ${esc(path)}"></button></span>`).join('');
+  paths.forEach(path=>loadDocTitle({path}));
+  node.onclick=event=>{
+    const button=event.target.closest('[data-remove-context]');if(!button) return;
+    const index=Number(button.dataset.removeContext);
+    paths.splice(index,1);writePreference('assistant-context:'+id,paths);renderContextFiles(id);
+    (node.querySelectorAll('[data-remove-context]')[Math.min(index,paths.length-1)]||document.getElementById('attach-menu-button')).focus();
+  };
+}
+const UPLOAD_ID=/^[0-9a-f]{12}$/, MAX_UPLOAD=20*1024*1024, MAX_UPLOADS=8;
+const uploadState={};
+function fileSize(bytes){
+  const n=Number(bytes)||0;
+  return n<1024?`${n} B`:n<1048576?`${Math.round(n/1024)} KB`:`${(n/1048576).toFixed(1)} MB`;
+}
+function uploadUrl(id,uploadId){
+  return '/api/board/chat/upload/'+encodeURIComponent(uploadId)+'?item_id='+encodeURIComponent(id);
+}
+function attachmentsHtml(id,attachments){
+  const files=(Array.isArray(attachments)?attachments:[]).filter(a=>a&&UPLOAD_ID.test(String(a.id)));
+  if(!files.length) return '';
+  return `<div class="chat-attachments">${files.map(a=>{
+    const url=escAttr(uploadUrl(id,a.id)), name=escAttr(a.name);
+    return a.image
+      ?`<a class="chat-attachment-image" href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${name}" loading="lazy"></a>`
+      :`<a class="chat-attachment-file tag" href="${url}" download="${name}">${esc(a.name)} <span class="text-secondary">${esc(fileSize(a.size))}</span></a>`;
+  }).join('')}</div>`;
+}
+function pendingUploads(id){
+  const list=readPreference('assistant-uploads:'+id,[]);
+  return Array.isArray(list)?list.filter(u=>u&&UPLOAD_ID.test(String(u.id))&&typeof u.name==='string').slice(0,MAX_UPLOADS)
+    .map(u=>({id:u.id,name:u.name,size:Number(u.size)||0,image:u.image===true})):[];
+}
+function setPendingUploads(id,list){
+  if(list.length) writePreference('assistant-uploads:'+id,list); else localStorage.removeItem('assistant-uploads:'+id);
+}
+function uploadingState(id){ return uploadState[id]||(uploadState[id]={busy:[],errors:[]}); }
+function renderUploads(id){
+  const node=document.getElementById('upload-files');
+  if(!node||activeId!==id) return;
+  const state=uploadingState(id);
+  node.innerHTML=pendingUploads(id).map((u,index)=>`<span class="tag">${u.image?`<img src="${escAttr(uploadUrl(id,u.id))}" alt="">`:''}<span class="text-truncate" title="${escAttr(u.name)}">${esc(u.name)}</span><button type="button" class="btn-close flex-shrink-0" data-remove-upload="${index}" aria-label="Remove ${escAttr(u.name)}"></button></span>`).join('')
+    +state.busy.map(name=>`<span class="tag text-secondary">Uploading ${esc(name)}…</span>`).join('')
+    +state.errors.map((message,index)=>`<span class="text-danger small" role="alert">${esc(message)} <button type="button" class="btn-close" data-dismiss-upload="${index}" aria-label="Dismiss"></button></span>`).join('');
+  const sendButton=document.getElementById('send-message');
+  if(sendButton) sendButton.disabled=state.busy.length>0;
+  node.onclick=e=>{
+    const remove=e.target.closest('[data-remove-upload]'), dismiss=e.target.closest('[data-dismiss-upload]');
+    if(remove){ const list=pendingUploads(id); list.splice(Number(remove.dataset.removeUpload),1); setPendingUploads(id,list); }
+    else if(dismiss) state.errors.splice(Number(dismiss.dataset.dismissUpload),1);
+    else return;
+    renderUploads(id);
+  };
+}
+async function uploadOne(id,file,name,state){
+  try{
+    const res=await fetch('/api/board/chat/upload?'+new URLSearchParams({item_id:id,name}),
+      {method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});
+    const out=await res.json().catch(()=>({}));
+    if(!res.ok||!out.id) throw new Error(out.error||`Could not upload ${name}.`);
+    const list=pendingUploads(id);
+    list.push({id:out.id,name:out.name,size:out.size,image:out.image===true});
+    setPendingUploads(id,list);
+  }catch(error){
+    state.errors.push(error instanceof TypeError?`Could not upload ${name}.`:error.message);
+  }
+  state.busy.splice(state.busy.indexOf(name),1);
+  renderUploads(id);
+}
+async function uploadFiles(id,fileList){
+  const state=uploadingState(id), accepted=[];
+  for(const file of fileList){
+    const name=file.name||'pasted-image.png';
+    if(pendingUploads(id).length+state.busy.length+accepted.length>=MAX_UPLOADS){
+      state.errors.push(`Attach up to ${MAX_UPLOADS} files per message.`); break; }
+    if(file.size>MAX_UPLOAD){ state.errors.push(`${name} exceeds the 20 MB upload limit.`); continue; }
+    accepted.push({file,name});
+  }
+  accepted.forEach(({name})=>state.busy.push(name));
+  renderUploads(id);
+  await Promise.all(accepted.map(({file,name})=>uploadOne(id,file,name,state)));
+}
+function setAttachMenu(open){
+  const menu=document.getElementById('attach-menu'), button=document.getElementById('attach-menu-button');
+  if(!menu||!button) return;
+  menu.classList.toggle('open',open);
+  button.setAttribute('aria-expanded',String(open));
+}
+document.addEventListener('click',e=>{ if(!e.target.closest('.attach-wrap')) setAttachMenu(false); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') setAttachMenu(false); });
+let requestedAskUsed=false;
+let requestedItemOpened=false;
+// Each attention item has its own visible conversation. A project can surface several
+// independent items, so project/thread metadata must never merge their chat histories.
+const BUSY_DOTS='<span class="busy" title="working…"><i></i><i></i><i></i></span>';
+// convos[item_id] = { log, busy, seeded, historyCount, queuedCount }
+const convos={};
+
+function convo(id){
+  if(!convos[id]){
+    const log=document.createElement('div'); log.className='log';
+    convos[id]={log, busy:false, seeded:false, historyCount:0, queuedCount:0};
+  }
+  return convos[id];
+}
+function scrollLog(c){ const w=c.log.parentElement; if(w) w.scrollTop=w.scrollHeight; }
+function autosizeComposer(input){
+  if(!input) return;
+  const style=getComputedStyle(input);
+  const min=parseInt(style.minHeight,10)||38;
+  const max=parseInt(style.maxHeight,10)||180;
+  input.style.height='0px';
+  const next=Math.max(input.scrollHeight,min);
+  input.style.height=Math.min(next,max)+'px';
+  input.style.overflowY=next>max?'auto':'hidden';
+}
+function pastedLinkText(html,plain){
+  // Rich copies from Teams or Outlook can carry a link only in text/html; keep the URL.
+  const decode=s=>String(s||'').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ')
+    .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"')
+    .replace(/&#39;/g,"'").replace(/&amp;/g,'&');
+  let text=String(plain||''), changed=false;
+  const anchor=/<a\b[^>]*?\bhref\s*=\s*("([^"]*)"|'([^']*)')[^>]*>([\s\S]*?)<\/a>/gi;
+  for(const m of String(html||'').matchAll(anchor)){
+    const href=decode(m[2]??m[3]).trim();
+    if(!/^https?:\/\//i.test(href)||text.includes(href)) continue;
+    const label=decode(m[4]).replace(/\s+/g,' ').trim();
+    const at=label?text.indexOf(label):-1;
+    text=at>=0
+      ?text.slice(0,at)+`[${label}](${href})`+text.slice(at+label.length)
+      :(text?text.replace(/\s*$/,' ')+href:href);
+    changed=true;
+  }
+  return changed?text:null;
+}
+function bindComposerInput(input){
+  if(!input||input.dataset.autosize==='1') return;
+  input.dataset.autosize='1';
+  const grow=()=>autosizeComposer(input);
+  input.addEventListener('input',grow);
+  input.addEventListener('keydown',grow);
+  input.addEventListener('paste',e=>{
+    const data=e.clipboardData;
+    const text=data&&pastedLinkText(data.getData('text/html'),data.getData('text/plain'));
+    if(!text) return;
+    e.preventDefault();
+    input.setRangeText(text,input.selectionStart,input.selectionEnd,'end');
+    grow();
+  });
+  grow();
+}
+function dayLabel(d){
+  const days=Math.round((new Date().setHours(0,0,0,0)-new Date(d).setHours(0,0,0,0))/864e5);
+  return days===0?'Today':days===1?'Yesterday'
+    :d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+}
+// Adds a day separator when the day changes; returns the time label for the "who" line.
+function stamp(log,at){
+  const d=new Date(at); if(!at||isNaN(d)) return '';
+  const day=d.toDateString();
+  if(log.dataset.day!==day){
+    log.insertAdjacentHTML('beforeend',`<div class="daysep">${dayLabel(d)}</div>`);
+    log.dataset.day=day;
+  }
+  return `<span class="ts">${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</span>`;
+}
+function renderHistory(log,id,start=0){
+  (chatHistories[id]||[]).slice(start).forEach(message=>{
+    const role=message.role==='user'?'you':'ai';
+    const who=role==='you'?'You':'Assistant';
+    const text=role==='ai'
+      ?md(visibleReply(message.text))
+      :esc(message.text).replace(/\n/g,'<br>');
+    const files=role==='you'?attachmentsHtml(id,message.attachments):'';
+    if(!text&&!files) return;
+    log.insertAdjacentHTML('beforeend',
+      `<div class="msg ${role}"><div class="who">${who}${stamp(log,message.at)}</div><div class="bubble">${text}${files}</div></div>`);
+  });
+}
+function syncConversation(id){
+  const c=convos[id]; if(!c||!c.seeded||c.busy) return;
+  const history=chatHistories[id]||[];
+  let changed=false;
+  if(history.length>c.historyCount){
+    renderHistory(c.log,id,c.historyCount);
+    c.historyCount=history.length;
+    clearQueuedNotes(c);
+    changed=true;
+  }
+  // A card the live stream never delivered (queued turn, dropped stream, reload).
+  (pendingApprovals[id]||[]).forEach(p=>{
+    if(!p.run_id||c.log.querySelector(`.approval[data-run="${CSS.escape(p.run_id)}"]`)) return;
+    const ai=document.createElement('div'); ai.className='msg ai';
+    ai.innerHTML='<div class="who">Assistant</div><div class="bubble"></div>';
+    c.log.appendChild(ai); renderApproval(id,ai,p.run_id,p); changed=true;
+  });
+  const pending=c.log.querySelector('.server-thinking');
+  if(activeChats.has(id)&&!pending){
+    c.log.insertAdjacentHTML('beforeend',
+      '<div class="msg ai server-thinking"><div class="who">Assistant</div><div class="bubble"><span class="thinking">thinking<span class="busy"><i></i><i></i><i></i></span></span></div></div>');
+    changed=true;
+  }else if(!activeChats.has(id)&&pending){
+    pending.remove();
+    changed=true;
+  }
+  // Polls with nothing new must leave the user's scroll position alone.
+  if(changed) scrollLog(c);
+}
+
+async function load(){
+  let d;
+  try{ d=await (await fetch('/api/board?threads='+encodeURIComponent([...openedChats].slice(-20).join(',')))).json(); }catch(e){ return; }
+  document.getElementById('status').innerHTML =
+    // The engine only earns a mention when chats cannot start.
+    (d.document.items.some(it=>it.id==='roosta-ai-setup')?'Connect your AI · ':d.agent_up?'':`<span class="dot-down">●</span> ${esc(d.ai_backend||'Chat engine')} unavailable · `)
+    + `${d.document.items.length} need you`
+    + (d.document.later&&d.document.later.length?` · ${d.document.later.length} later`:'')
+    + freshness(d.last_run)
+    + healthWarning(d.health);
+  items=d.document.items;
+  if(window.setNavCount) setNavCount(items.length);
+  later=d.document.later||[];
+  closed=d.document.closed||[];
+  chatHistories=d.chat_histories&&typeof d.chat_histories==='object'?d.chat_histories:{};
+  if(Array.isArray(d.chats)) chats=d.chats;
+  pendingApprovals=d.pending_approvals&&typeof d.pending_approvals==='object'?d.pending_approvals:{};
+  activeChats=new Set(Array.isArray(d.active_chat_ids)?d.active_chat_ids:[]);
+  Object.keys(convos).forEach(syncConversation);
+  renderRail();
+  if(activeId==='roosta-ai-setup'&&!items.some(it=>it.id===activeId)){
+    activeId=null;
+    if(requestedItem==='roosta-ai-setup') requestedItem='';
+  }
+  tryOpenRequested();
+  openDefaultItem();
+}
+// Deep link from a notification click (/assistant?item=<id>). The item may be missing from the
+// first board fetch (merge lag), or have been snoozed/closed since the alert fired, so retry
+// across polls and only latch once it actually opens - never latch on a miss.
+function tryOpenRequested(){
+  if(!requestedItem||requestedItemOpened) return;
+  if(activeId&&activeId!==requestedItem){ requestedItemOpened=true; return; }
+  // ?item=new opens a fresh chat; it takes the minted id so ask/file params apply to it.
+  if(requestedItem===NEW_CHAT) requestedItem=mintChatId();
+  if(requestedItem===NEW_HIRE) requestedItem=mintHireId();
+  if(isChatId(requestedItem)||items.some(it=>it.id===requestedItem)){
+    requestedItemOpened=true; openItem(requestedItem); return;
+  }
+  if(later.some(it=>it.id===requestedItem)){ requestedItemOpened=true; unsnoozeItem(requestedItem); return; }
+  if(closed.some(it=>it.id===requestedItem)){ requestedItemOpened=true; reopenItem(requestedItem); return; }
+}
+function defaultItemId(requested,active,attentionIds){
+  if(requested||active) return null;
+  return attentionIds[0]||NEW_CHAT;
+}
+function openDefaultItem(){
+  const id=defaultItemId(requestedItem,activeId,orderedItems(items).map(it=>it.id));
+  if(id) openItem(id);
+}
+function chatWhen(iso){
+  if(!iso) return '';
+  const t=new Date(iso); if(isNaN(t)) return '';
+  const today=new Date().toDateString()===t.toDateString();
+  return today?t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+    :t.toLocaleDateString([],{day:'numeric',month:'short'});
+}
+function chatRailItem(row){
+  const id=row.id, thread=chatItem(id);
+  if(!thread) return '';
+  const isDoc=isDocId(id), isWorker=isWorkerId(id), isHire=isHireId(id);
+  if(isDoc) loadDocTitle(thread);
+  const busy=(convos[id]&&convos[id].busy)||activeChats.has(id);
+  const sub=isDoc?`<span class="doc-thread-path" title="${escAttr(thread.path)}">${esc(thread.path)}</span>
+        <a class="btn btn-sm" href="/document?path=${encodeURIComponent(thread.path)}&amp;item=${encodeURIComponent(id)}">Open doc</a>`
+    :isWorker?`<a class="btn btn-sm" href="/runner?task=${encodeURIComponent(thread.task)}">Workers</a>
+        <a class="btn btn-sm" href="/office?worker=${encodeURIComponent(thread.task)}">The Office</a>`
+    :isHire?'<a class="btn btn-sm" href="/runner">Workers</a>':'';
+  return `<div class="rail-item general-item thread-item ${isDoc?'doc-thread item-document':''} ${id===activeId?'active':''}" data-id="${escAttr(id)}">
+      <button class="btn btn-sm btn-ghost-secondary thread-close" type="button" data-archive-chat="${escAttr(id)}"
+        title="Archive chat" aria-label="Archive ${escAttr(thread.title)}">${icon('close')}</button>
+      <div class="general-mark">${icon(isDoc?'doc':isWorker||isHire?'people':'sparkle')}</div>
+      <div class="t">${busy?BUSY_DOTS+' ':''}${esc(thread.title)}</div>
+      <div class="w">${sub}${row.at?` <span class="chat-when">${esc(chatWhen(row.at))}</span>`:''}</div></div>`;
+}
+// A question chat the user has opened but not yet sent anything in.
+function isUnsentChat(id){
+  return isGeneralChatId(id)&&!chats.some(r=>r.id===id)&&!(chatHistories[id]||[]).length
+    &&!(convos[id]&&convos[id].busy)&&!activeChats.has(id);
+}
+// The Chats tab always starts with New chat, so its ideas are one click away even with no
+// chats yet. An open, unsent chat is that row rather than a second "New chat" entry.
+function newChatRow(){
+  const id=isUnsentChat(activeId)?activeId:NEW_CHAT;
+  return `<div class="rail-item general-item thread-item new-chat-row ${id===activeId?'active':''}" data-id="${escAttr(id)}">
+      <div class="general-mark">${icon('sparkle')}</div>
+      <div class="t">New chat</div><div class="w">Ask anything, or pick an idea</div></div>`;
+}
+function renderChats(){
+  // The open chat shows even before its first message reaches the server.
+  const rows=isChatId(activeId)&&!isUnsentChat(activeId)&&!chats.some(r=>r.id===activeId)?[{id:activeId},...chats]:chats;
+  const shown=rows.filter(r=>!query||[chatItem(r.id)?.title,r.preview,r.id].join(' ').toLowerCase().includes(query));
+  return (query?'':newChatRow())+(shown.length?shown.map(chatRailItem).join('')
+    :query?'<div class="empty" style="padding:1rem">No matches.</div>':'');
+}
+function renderRail(){
+  const rail=document.getElementById('rail');
+  document.getElementById('inbox-count').textContent=items.length?String(items.length):'';
+  document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===railTab)));
+  document.getElementById('ask-box').hidden=railTab!=='chats';
+  searchInput.placeholder=railTab==='chats'?'Search chats…':'Search inbox…';
+  if(railTab==='chats'){ rail.innerHTML=renderChats(); return; }
+  let html=`<div class="rail-toolbar"><span>Needs you <b>${items.length}</b></span>
+      <label class="order-control"><span>Order</span><select class="form-select" data-order aria-label="Order attention items">
+        <option value="recommended"${orderMode==='recommended'?' selected':''}>Recommended</option>
+        <option value="importance"${orderMode==='importance'?' selected':''}>Importance</option>
+        <option value="date"${orderMode==='date'?' selected':''}>Newest</option>
+        <option value="type"${orderMode==='type'?' selected':''}>Type</option>
+      </select></label></div>`;
+  const shownItems=orderedItems(items).filter(matchesQuery);
+  html+=shownItems.length?shownItems.map((it,index)=>{
+    const c=convos[it.id];
+    const busyDot=((c&&c.busy)||activeChats.has(it.id))?BUSY_DOTS+' ':'';
+    const pinned=pinnedIds.has(it.id);
+    return `<div class="rail-item item-${escAttr(it.action_type||'task')} ${it.id===activeId?'active':''} ${pinned?'pinned':''}" data-id="${escAttr(it.id)}">
+      <button class="btn btn-sm btn-ghost-secondary pin-item ${pinned?'on':''}" type="button" data-pin-id="${escAttr(it.id)}"
+        title="${pinned?'Unpin':'Pin to top'}" aria-label="${pinned?'Unpin':'Pin'} ${escAttr(it.title)}" aria-pressed="${pinned}">${icon('pin')}</button>
+      <div class="rail-meta">${actionBadge(it.action_type)}
+        <span class="queue-index">${String(index+1).padStart(2,'0')}</span></div>
+      <div class="t">${it.new?'<span class="new"></span>':''}${busyDot}${esc(it.title)}</div>
+      <div class="w">${esc(it.why)}</div>
+      <div class="raised"><span class="importance" title="Calculated from urgency, ownership and item state">Importance ${importanceScore(it)}/5</span>
+        ${it.raised_at?`<span>${esc(raisedLabel(it.raised_at))}</span>`:''}</div>
+      ${ctas(it.links,it.documents,it.id)}</div>`;}).join('')
+    :`<div class="empty" style="padding:1rem">${query?'No matches.':'Nothing needs you now.'}</div>`;
+  const shownLater=later.filter(matchesQuery);
+  if(shownLater.length){
+    html+='<div class="rail-section">Later</div>'+shownLater.map(it=>`
+      <div class="later-item">
+        <div class="later-copy"><div class="later-title">${esc(it.title)}</div>
+          <div class="later-until">${actionBadge(it.action_type)} ${esc(laterLabel(it.snoozed_until))}</div></div>
+        <button class="btn btn-sm" data-wake-id="${escAttr(it.id)}">Bring back</button>
+      </div>`).join('');
+  }
+  if(closed.length){
+    const shownClosed=closed.filter(matchesClosed);
+    html+=`<div class="rail-section rail-closed-head" data-toggle-closed role="button" tabindex="0">Recently closed (${closed.length}) ${closedOpen?'▾':'▸'}</div>`;
+    if(closedOpen){
+      html+=shownClosed.length?shownClosed.map(it=>`
+        <div class="later-item closed-item">
+          <div class="later-copy"><div class="later-title">${esc(it.title)}</div>
+            <div class="later-until">${esc(it.result||'Closed')}${it.at?' · '+esc(closedAt(it.at)):''}</div></div>
+          <button class="btn btn-sm" data-reopen-id="${escAttr(it.id)}">Reopen</button>
+        </div>`).join('')
+        :'<div class="empty" style="padding:.6rem 1rem">No matches.</div>';
+    }
+  }
+  rail.innerHTML=html;
+}
+// Items that link a vault document (and document threads) show it beside the
+// chat. ponytail: first linked document only, tabs if an item ever needs more.
+let docPaneToken=0,docPaneMarkdown='';
+// Anywhere on the board copies as Markdown: items, chats and the document pane.
+markdownCopy.watch('.main');
+function showDocPane(it){
+  const el=document.getElementById('docpane');
+  const path=it&&(it.path||(it.documents&&it.documents[0]&&it.documents[0].path));
+  const token=++docPaneToken;
+  if(!path){ el.hidden=true; el.innerHTML=''; return; }
+  fetch('/api/vault-document?path='+encodeURIComponent(path))
+    .then(r=>r.ok?r.json():Promise.reject())
+    .then(d=>{
+      if(token!==docPaneToken) return;
+      el.innerHTML=`<div class="docpane-head"><span class="path" title="${escAttr(d.path)}">${esc(d.path)}</span>
+        <button class="btn btn-sm" type="button" id="docpane-copy" title="Copy the document as Markdown">Copy</button>
+        <a class="btn btn-sm" href="${documentHref(d.path,it.id)}" target="_blank" rel="noopener">Open full</a>
+        <button class="btn btn-sm btn-ghost-secondary" type="button" id="docpane-hide" title="Hide document" aria-label="Hide document">${icon('close')}</button></div>
+        <div class="md">${md(d.content)}</div>`;
+      el.hidden=false;
+      docPaneMarkdown=d.content;
+      document.getElementById('docpane-copy').onclick=()=>markdownCopy.copyMarkdown(docPaneMarkdown.trim()+'\n','Document copied as Markdown');
+      document.getElementById('docpane-hide').onclick=()=>{ el.hidden=true; }; // reopens with the next item
+    })
+    .catch(()=>{ if(token===docPaneToken){ el.hidden=true; el.innerHTML=''; } });
+}
+// The chat often edits the document beside it, so re-read it after each reply.
+// Only the body is swapped, and only when the file changed, so scroll holds.
+function refreshDocPane(){
+  const el=document.getElementById('docpane');
+  const path=el.querySelector('.docpane-head .path');
+  const body=el.querySelector('.md');
+  if(el.hidden||!path||!body) return;
+  const token=docPaneToken;
+  fetch('/api/vault-document?path='+encodeURIComponent(path.textContent))
+    .then(r=>r.ok?r.json():null)
+    .then(d=>{
+      if(!d||token!==docPaneToken) return;
+      docPaneMarkdown=d.content;
+      const html=md(d.content);
+      if(body.innerHTML===html) return;
+      const top=el.scrollTop; body.innerHTML=html; el.scrollTop=top;
+    })
+    .catch(()=>{});
+}
+function openItem(id){
+  if(id===NEW_CHAT) id=mintChatId();
+  if(id===NEW_HIRE) id=mintHireId();
+  const persistent=isChatId(id);
+  const isGeneral=isGeneralChatId(id);
+  const isDoc=isDocId(id), isWorker=isWorkerId(id), isHire=isHireId(id);
+  if(persistent){
+    railTab='chats'; openedChats.add(id);
+    // An earlier chat's transcript only comes with the board, so fetch it before seeding.
+    if(!chatHistories[id]&&chats.some(r=>r.id===id)&&!historyFetched.has(id)){
+      historyFetched.add(id); activeId=id; renderRail();
+      load().then(()=>{ if(activeId===id) openItem(id); });
+      return;
+    }
+  }else railTab='inbox';
+  activeId=id; syncItemUrl(id); renderRail();
+  // Chats (questions, people, documents) are standing surfaces: no Close, no
+  // Not now, and no attention-item brief to seed.
+  const it=itemById(id); if(!it) return;
+  trackUsage('item_opened',persistent?{scope:isDoc?'document':isWorker?'worker':isHire?'hire':'general'}:
+    {scope:'item',action_type:it.action_type||'task'});
+  const c=convo(id); c.title=it.title;
+  showDocPane(it);
+  // (Re)build the chrome but reuse the persistent log node for this item.
+  const pane=document.getElementById('pane');
+  const aiSetup=id==='roosta-ai-setup';
+  const itemControls=persistent||aiSetup?'':`
+      <div class="btn-group btn-group-sm snooze-wrap" role="group" aria-label="Action controls">
+        <button class="btn" id="snooze">Not now</button>
+        <button class="btn" id="close" title="Mark this resolved and remove it">Close</button>
+        <div class="dropdown-menu snooze-menu" id="snooze-menu">
+          <button class="dropdown-item" data-preset="one_hour">In an hour</button>
+          <button class="dropdown-item" data-preset="tomorrow">Tomorrow morning</button>
+          <button class="dropdown-item" data-preset="next_monday">Next Monday</button>
+        </div></div>`;
+  pane.innerHTML=`<div class="conversation-header card-header"><div class="conversation-heading"><div class="page-pretitle">${persistent?'Conversation':'Needs your attention'}</div><h2 class="card-title">${esc(it.title)}</h2></div>${itemControls}</div>
+    <div class="logwrap" id="logwrap"></div>
+    <div class="form ${aiSetup?'d-none':''}"><div id="upload-files" class="composer-files" role="group" aria-label="Files to send"></div><div id="context-files" class="composer-files" role="group" aria-label="Selected context files"></div>
+      <div class="d-flex align-items-end gap-2 w-100">
+        <div class="attach-wrap">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" id="attach-menu-button" aria-label="Add files" title="Add images or files" aria-haspopup="true" aria-expanded="false"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 7l-6.5 6.5a1.5 1.5 0 0 0 3 3l6.5 -6.5a3 3 0 0 0 -6 -6l-6.5 6.5a4.5 4.5 0 0 0 9 9l6.5 -6.5"/></svg></button>
+          <div class="dropdown-menu attach-menu" id="attach-menu">
+            <button class="dropdown-item" id="upload-from-computer" type="button">Upload from this computer</button>
+            <a class="dropdown-item" id="attach-files" href="/workspace">Add from Workspace</a>
+          </div>
+          <input type="file" class="form-control" id="upload-input" multiple hidden>
+        </div>
+        <textarea aria-label="Message" class="form-control input" id="input" placeholder="Ask, redirect, or tell me what to do…"></textarea>
+        <button class="btn btn-primary" id="send-message">Send</button>
+      </div></div>`;
+  if(!requestedFilesUsed&&id===requestedItem){
+    requestedFilesUsed=true;
+    if(requestedContext||requestedFiles.length) writePreference('assistant-context:'+id,requestedFiles);
+  }
+  renderContextFiles(id);
+  renderUploads(id);
+  if(!c.seeded){
+    if(persistent){
+      if((chatHistories[id]||[]).length){
+        renderHistory(c.log,id);
+      }else{
+        const greeting=isWorker?`Your 1:1 with <b>${esc(it.task)}</b>. Ask how the role is going; it answers as the worker, and any change you agree goes into its skill.`
+          :isHire?'Describe the job you want done on a schedule: what it should look at, what it should tell you, and how often. I\'ll write the worker\'s skill and add it to the schedule, checking with you before each step.'
+          :isDoc?`Ask me about <b>${esc(it.path)}</b>.`:'What can I help with?'+examplesHtml('Ideas to start with');
+        c.log.insertAdjacentHTML('beforeend',
+          `<div class="msg ai"><div class="who">Assistant</div><div class="bubble">${greeting}</div></div>`);
+      }
+    }else{
+      c.log.insertAdjacentHTML('beforeend',`<div class="msg ai"><div class="who">Assistant</div>
+      <div class="bubble"><div class="item-brief">
+        <div class="action-hero">${actionBadge(it.action_type)}</div>
+        <h2 class="brief-title">${esc(it.title)}</h2>
+        ${it.raised_at?`<div class="brief-raised">${esc(raisedLabel(it.raised_at))}</div>`:''}
+        ${it.why?`<div class="brief-section"><div class="brief-label">Why now</div>
+          <div class="brief-copy brief-why md">${md(it.why)}</div></div>`:''}
+        ${it.situation?`<div class="brief-section"><div class="brief-label">Situation</div>
+          <div class="brief-copy md">${md(it.situation)}</div></div>`:''}
+        <div class="card recommendation ${it.action_owner==='user'?'user-owned':''}">
+          <div class="recommendation-head"><span class="brief-label">Recommended action</span>
+            <span class="owner-cue">${ownerCue(it.action_owner)}</span></div>
+          <div class="brief-copy md">${md(it.opening_move)}</div>
+          ${aiSetup?'<div class="recommendation-actions"><a class="btn btn-primary" href="/settings">Open AI settings</a></div>':it.action_owner==='assistant'?`<div class="recommendation-actions">
+            <button class="btn btn-primary recommendation-btn" type="button">
+              ${esc(it.action_label||'Take next step')}</button></div>`:''}
+        </div>
+        ${ctas(it.links,it.documents,id)}
+      </div></div></div>`);
+      renderHistory(c.log,id);
+    }
+    c.historyCount=(chatHistories[id]||[]).length;
+    c.seeded=true;
+  }
+  document.getElementById('logwrap').appendChild(c.log);
+  syncConversation(id);
+  scrollLog(c);
+  if(!persistent){
+    const recommendationButtons=c.log.querySelectorAll('.recommendation-btn');
+    const recommendationButton=recommendationButtons[recommendationButtons.length-1];
+    if(recommendationButton) recommendationButton.onclick=()=>send(id,'');
+  }
+  const input=document.getElementById('input');
+  input.addEventListener('paste',e=>{
+    const files=e.clipboardData&&e.clipboardData.files;
+    if(!files||!files.length) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    uploadFiles(id,[...files]);
+  });
+  bindComposerInput(input);
+  const form=pane.querySelector('.form'), fileInput=document.getElementById('upload-input');
+  const droppable=e=>activeId===id&&!aiSetup&&form.isConnected&&e.dataTransfer;
+  pane.ondragover=e=>{
+    if(!droppable(e)||![...e.dataTransfer.types].includes('Files')) return;
+    e.preventDefault(); form.classList.add('drop-target');
+  };
+  pane.ondragleave=e=>{ if(!pane.contains(e.relatedTarget)) form.classList.remove('drop-target'); };
+  pane.ondrop=e=>{
+    form.classList.remove('drop-target');
+    if(!droppable(e)||!e.dataTransfer.files.length) return;
+    e.preventDefault(); uploadFiles(id,[...e.dataTransfer.files]);
+  };
+  document.getElementById('attach-menu-button').onclick=()=>
+    setAttachMenu(!document.getElementById('attach-menu').classList.contains('open'));
+  document.getElementById('upload-from-computer').onclick=()=>{ setAttachMenu(false); fileInput.click(); };
+  document.getElementById('attach-files').onclick=()=>setAttachMenu(false);
+  fileInput.onchange=()=>{ uploadFiles(id,[...fileInput.files]); fileInput.value=''; };
+  const draftKey='assistant-draft:'+id;
+  input.value=readPreference(draftKey,'');
+  autosizeComposer(input);
+  input.addEventListener('input',()=>input.value?writePreference(draftKey,input.value):localStorage.removeItem(draftKey));
+  if(requestedAsk&&!requestedAskUsed&&id===requestedItem){
+    requestedAskUsed=true;
+    input.value=requestedAsk;
+    autosizeComposer(input);
+    input.focus();
+  }
+  const sendInput=()=>{
+    const value=input.value.trim();
+    if(!uploadingState(id).busy.length&&(value||pendingUploads(id).length)&&send(id,value)){ input.value=''; localStorage.removeItem(draftKey); autosizeComposer(input); }
+  };
+  document.getElementById('send-message').onclick=sendInput;
+  if(!persistent&&!aiSetup){
+    document.getElementById('close').onclick=()=>closeItem(id);
+    document.getElementById('snooze').onclick=()=>{
+      document.getElementById('snooze-menu').classList.toggle('open');};
+    document.getElementById('snooze-menu').onclick=e=>{
+      const choice=e.target.closest('[data-preset]');
+      if(choice) snoozeItem(id,choice.dataset.preset);};
+  }
+  input.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendInput();}});
+}
+function askNewChat(text){
+  const message=String(text||'').trim(); if(!message) return;
+  trackUsage('chat_started',{});
+  openItem(NEW_CHAT);
+  send(activeId,message);
+}
+async function closeItem(id){
+  let ok=false;
+  try{
+    const res=await fetch('/api/board/close',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({item_id:id})});
+    ok=res.ok;
+  }catch(e){}
+  if(ok) showClosedNotice(closedLabel(id));
+  if(ok) trackUsage('item_closed',{});
+  dropItem(id);
+}
+async function snoozeItem(id,preset){
+  let out={};
+  try{ out=await (await fetch('/api/board/snooze',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({item_id:id,preset})})).json(); }
+  catch(e){}
+  if(!out.snoozed) return;
+  trackUsage('item_snoozed',{preset});
+  const it=items.find(x=>x.id===id);
+  items=items.filter(x=>x.id!==id);
+  if(it) later.push({...it,snoozed_until:out.until});
+  later.sort((a,b)=>String(a.snoozed_until).localeCompare(String(b.snoozed_until)));
+  if(activeId===id){ activeId=null; syncItemUrl(null);
+    document.getElementById('pane').innerHTML='<div class="empty">Parked. I will revisit it then if it still needs you.</div>'; }
+  renderRail();
+}
+async function reopenItem(id){
+  let ok=false;
+  try{ const res=await fetch('/api/board/reopen',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({item_id:id})});
+    ok=res.ok; }catch(e){}
+  if(!ok) return;
+  trackUsage('item_reopened',{});
+  await load();
+  if(items.some(x=>x.id===id)) openItem(id);
+}
+async function unsnoozeItem(id){
+  let out={};
+  try{ out=await (await fetch('/api/board/unsnooze',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({item_id:id})})).json(); }
+  catch(e){}
+  if(!out.unsnoozed) return;
+  trackUsage('item_unsnoozed',{});
+  const it=later.find(x=>x.id===id);
+  later=later.filter(x=>x.id!==id);
+  if(it){ delete it.snoozed_until; items.unshift(it); openItem(id); }
+  renderRail();
+}
+function dropItem(id){
+  items=items.filter(x=>x.id!==id);
+  if(activeId===id){ activeId=null; syncItemUrl(null);
+    document.getElementById('pane').innerHTML='<div class="empty">Done. Select another.</div>'; }
+  renderRail();
+}
+// A turn targets a specific item id, so it streams into THAT item's log even if
+// The user has switched to another topic. Per-item busy allows parallel turns.
+function send(id,message){
+  const c=convo(id);
+  const uploads=pendingUploads(id), sent=Boolean(message||uploads.length);
+  if(uploads.length){ setPendingUploads(id,[]); renderUploads(id); }
+  const payload=JSON.stringify({item_id:id,message,context_paths:contextFor(id),
+    ...(uploads.length?{uploads:uploads.map(u=>u.id)}:{})});
+  const files=attachmentsHtml(id,uploads), label=message||(uploads[0]&&uploads[0].name)||'';
+  if(sent) c.log.querySelectorAll('.examples').forEach(el=>el.remove());  // ideas only help an empty chat
+  if(isChatId(id)&&sent&&!chats.some(r=>r.id===id)){
+    // Name and list a new chat at once rather than on the next poll.
+    if(!c.firstMessage) c.firstMessage=label;
+    chats.unshift({id,at:new Date().toISOString(),preview:label,turns:1});
+    renderRail();
+    const heading=document.querySelector('.conversation-heading .card-title');
+    if(activeId===id&&heading) heading.textContent=chatItem(id)?.title||chatTitle(id);
+  }
+  trackUsage('chat_sent',{
+    scope:isGeneralChatId(id)?'general':isDocId(id)?'document':isWorkerId(id)?'worker':isHireId(id)?'hire':'item',
+    mode:sent?'message':'recommendation'
+  });
+  if(c.busy||activeChats.has(id)){
+    if(sent){
+      c.log.insertAdjacentHTML('beforeend',
+        `<div class="msg you queued" data-queued="1"><div class="who">You${stamp(c.log,new Date())}</div><div class="bubble">${esc(message)}${files}<div class="queued-note">Queued…</div></div></div>`);
+      scrollLog(c);
+    }
+    fetch('/api/board/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:payload}).then(async res=>{
+        if(res.status===202){
+          const out=await res.json();
+          c.queuedCount=Math.max(c.queuedCount,out.position||1);
+          if(sent) c.historyCount+=1;
+          clearQueuedNotes(c);
+          return;
+        }
+        if(!res.ok){
+          const detail=await res.json().catch(()=>({}));
+          const err=c.log.querySelector('[data-queued="1"] .queued-note');
+          if(err) err.textContent=detail.error||'Could not queue - try again.';
+          return;
+        }
+        beginStream(id,res,sent,c);
+      }).catch(()=>{
+        const err=c.log.querySelector('[data-queued="1"] .queued-note');
+        if(err) err.textContent='Could not queue - try again.';
+      });
+    return true;
+  }
+  if(sent){ c.log.insertAdjacentHTML('beforeend',
+    `<div class="msg you"><div class="who">You${stamp(c.log,new Date())}</div><div class="bubble">${esc(message)}${files}</div></div>`); }
+  const ai=document.createElement('div'); ai.className='msg ai';
+  ai.innerHTML='<div class="who">Assistant'+stamp(c.log,new Date())+'</div><div class="bubble"><span class="thinking">thinking<span class="busy"><i></i><i></i><i></i></span></span></div>';
+  ai._raw=''; ai._got=false; ai._closed=false; ai._userMessage=sent;
+  c.log.appendChild(ai); scrollLog(c); c.busy=true; activeChats.add(id); renderRail();
+  fetch('/api/board/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:payload}).then(res=>beginStream(id,res,sent,c,ai))
+    .catch(e=>{ ai.querySelector('.bubble').innerHTML='<span class="err-line">Connection lost. The reply will continue in the background.</span>';
+      c.busy=false; load(); renderRail(); });
+  return true;
+}
+function beginStream(id,res,sent,c,ai){
+  if(!ai){
+    ai=document.createElement('div'); ai.className='msg ai';
+    ai.innerHTML='<div class="who">Assistant</div><div class="bubble"><span class="thinking">thinking<span class="busy"><i></i><i></i><i></i></span></span></div>';
+    ai._raw=''; ai._got=false; ai._closed=false; ai._userMessage=sent;
+    c.log.appendChild(ai); scrollLog(c); c.busy=true; activeChats.add(id); renderRail();
+  }
+  streamBody(id,res,ai);
+}
+function clearQueuedNotes(c){
+  c.log.querySelectorAll('[data-queued="1"] .queued-note').forEach(el=>el.remove());
+  c.log.querySelectorAll('[data-queued="1"]').forEach(el=>el.classList.remove('queued'));
+  c.queuedCount=0;
+}
+async function streamBody(id,res,ai){
+  const c=convo(id);
+  if(!res.ok){ const detail=await res.json().catch(()=>({}));
+    ai.querySelector('.bubble').innerHTML='<span class="err-line">'+esc(detail.error||'Could not start ('+res.status+').')+'</span>';
+    c.busy=false; activeChats.delete(id); renderRail(); return; }
+  if(ai._userMessage) c.historyCount+=1;
+  try{
+    const reader=res.body.getReader(), dec=new TextDecoder(); let buf='';
+    for(;;){ const {value,done}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true}); let i;
+      while((i=buf.indexOf('\n\n'))>=0){ const chunk=buf.slice(0,i); buf=buf.slice(i+2);
+        if(!chunk.startsWith('data: ')) continue; handle(id,JSON.parse(chunk.slice(6)),ai); } }
+  }catch(e){ ai.insertAdjacentHTML('beforeend','<div class="err-line">Connection lost. The reply will continue in the background.</div>'); }
+  finally{
+    c.busy=false;
+    if(ai._closed) activeChats.delete(id); else load();
+    renderRail();
+    if(activeId===id) refreshDocPane();
+  }
+}
+function showLearned(ai,learned,itemId){
+  if(!Array.isArray(learned)||!learned.length) return;
+  const lines=learned.map(x=>{
+    const path=esc(x.path||''), fact=esc(x.fact||'');
+    let href=documentHref(x.path||'',itemId);
+    return fact?`<div class="capture-line">Saved to <a href="${href}" target="_blank" rel="noopener">${path}</a> - ${fact}</div>`
+      : `<div class="capture-line">Saved to <a href="${href}" target="_blank" rel="noopener">${path}</a></div>`;
+  }).join('');
+  const bubble=ai.querySelector('.bubble');
+  if(bubble) bubble.insertAdjacentHTML('beforeend',lines);
+}
+function handle(id,ev,ai){
+  const c=convo(id), b=ai.querySelector('.bubble');
+  if(ev.kind==='text'){ ai._got=true; ai._raw+=ev.text; b.innerHTML=md(visibleReply(ai._raw)); }
+  else if(ev.kind==='pause'){ renderApproval(id,ai,ev.run_id,ev.payload||{}); }
+  else if(ev.kind==='defer'){
+    const p=ev.payload||{}, it=items.find(x=>x.id===id);
+    items=items.filter(x=>x.id!==id);
+    later=later.filter(x=>x.id!==id);
+    if(it) later.push({...it,snoozed_until:p.until});
+    later.sort((a,b)=>String(a.snoozed_until).localeCompare(String(b.snoozed_until)));
+    b.insertAdjacentHTML('beforeend',
+      `<div class="defer-line">Revisit ${esc(laterLabel(p.until))}${p.reason?' - '+esc(p.reason):''}</div>`);
+    if(activeId===id){ activeId=null; syncItemUrl(null); }
+    renderRail();
+  }
+  else if(ev.kind==='done'){
+    if(!ai._got){ b.innerHTML=md((ev.payload||{}).result||'Done'); }
+    showLearned(ai,(ev.payload||{}).learned,id);
+    // Chats, documents, people and workers are standing threads: the server never
+    // marks them handled, so neither announce a close nor drop them from the rail.
+    if((ev.payload||{}).acted && !isChatId(id) && !String(id).startsWith('person:')){
+      const label=closedLabel(id,(ev.payload||{}).result);
+      showClosedNotice(label);
+      // The actor actually changed something - resolve and drop from the rail.
+      b.insertAdjacentHTML('beforeend',`<div class="alert alert-success mt-3 mb-0" role="status" aria-live="polite">
+        <div class="d-flex align-items-start gap-3"><div class="flex-fill">
+          <div class="alert-title">Action closed</div>
+          <div>${esc(label||'One less thing on your list.')}</div></div>
+          <button class="btn btn-sm resolution-undo">Undo</button>
+        </div></div>`);
+      const undoBtn=b.querySelector('.resolution-undo');
+      if(undoBtn) undoBtn.onclick=()=>{ undoBtn.disabled=true; undoBtn.textContent='Reopening…'; reopenItem(id); };
+      items=items.filter(x=>x.id!==id); renderRail();
+    }
+    // else: it just answered - keep the item, conversation continues.
+  }
+  else if(ev.kind==='error'){ if(!ai._got) b.innerHTML=''; b.insertAdjacentHTML('beforeend',`<div class="err-line">${esc((ev.payload||{}).reason||'Failed')}</div>`); }
+  else if(ev.kind==='reply_end'||ev.kind==='_close'){
+    if(ev.payload&&ev.payload.learned) showLearned(ai,ev.payload.learned,id);
+    if(!ai._got && b.querySelector('.thinking')) b.innerHTML='<span class="err-line">No reply.</span>';
+    if(ev.kind==='_close'){
+      ai._closed=true;
+      const visible=visibleReply(ai._raw).trim();
+      if(visible) c.historyCount+=1;
+    }
+  }
+  scrollLog(c);
+}
+// A message is the user's own text, editable up to send. Anything else is an
+// action: the chat names the button ("Create", "Reply", "Move to Done") and
+// shows a readable preview, with the exact instruction tucked behind a
+// details toggle so the card isn't a wall of JSON.
+function approvalVerbs(kind,verb){
+  if(verb) return [verb,'Working…','Done ✓',verb+' failed'];
+  return kind==='message' ? ['Send','Sending…','Sent ✓','Send failed']
+                           : ['Approve','Working…','Done ✓','Failed'];
+}
+function renderApproval(id,ai,runId,p){
+  const isMessage=p.kind==='message';
+  const [verb]=approvalVerbs(p.kind,p.verb);
+  const div=document.createElement('div'); div.className='approval'; div.dataset.run=runId||'';
+  let body;
+  if(isMessage){
+    body=`<textarea class="form-control approval-draft" aria-label="Draft to approve">${esc(p.draft||'')}</textarea>`;
+  }else{
+    body=`<div class="card card-body approval-preview">${md(p.preview||p.draft||'')}</div>`;
+    if(p.instruction){
+      body+=`<details class="approval-raw"><summary>Show details</summary>
+        <pre>${esc(p.instruction)}</pre></details>`;
+    }
+  }
+  div.innerHTML=`<div class="approval-summary">${esc(p.summary||'Approve this?')}</div>
+    ${body}
+    <div class="approval-buttons"><button class="btn btn-danger aps">${verb}</button>
+      <button class="btn apc">Cancel</button></div>`;
+  (ai.querySelector('.bubble')||ai).appendChild(div);
+  const edited=()=>isMessage ? div.querySelector('.approval-draft').value : null;
+  div.querySelector('.aps').onclick=()=>resolve(id,runId,true,edited(),div,p.kind,p.verb);
+  div.querySelector('.apc').onclick=()=>resolve(id,runId,false,null,div,p.kind,p.verb);
+}
+async function resolve(id,runId,approved,edit,div,kind,verb){
+  const [,doing,done,failed]=approvalVerbs(kind,verb);
+  div.querySelector('.approval-buttons').textContent=approved?doing:'Cancelling…';
+  let out={};
+  try{ out=await (await fetch(`/api/board/chat/${runId}/approve`,{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({approved,edit})})).json(); }catch(e){}
+  const bb=div.querySelector('.approval-buttons');
+  if(bb) bb.textContent = out.sent?done:(approved?failed:'Cancelled');
+  // The sender's own summary carries the result, e.g. the new ticket key and link.
+  if(approved && out.summary){
+    const note=document.createElement('div'); note.className='approval-result';
+    note.innerHTML=md(out.summary); div.appendChild(note);
+  }
+  if(out.sent){ showClosedNotice(closedLabel(id,out.summary)); items=items.filter(x=>x.id!==id); renderRail(); }
+}
+document.getElementById('rail').addEventListener('click',e=>{
+  const archive=e.target.closest('[data-archive-chat]');
+  if(archive){ archiveChat(archive.dataset.archiveChat); return; }
+  const pin=e.target.closest('[data-pin-id]');
+  if(pin){ togglePin(pin.dataset.pinId); return; }
+  const wake=e.target.closest('[data-wake-id]');
+  if(wake){ unsnoozeItem(wake.dataset.wakeId); return; }
+  const reopen=e.target.closest('[data-reopen-id]');
+  if(reopen){ reopenItem(reopen.dataset.reopenId); return; }
+  if(e.target.closest('[data-toggle-closed]')){ closedOpen=!closedOpen; renderRail(); return; }
+  if(e.target.closest('.cta, .general-item a')) return;  // let links open without switching panes
+  const el=e.target.closest('.rail-item'); if(el) openItem(el.dataset.id);
+});
+searchInput.addEventListener('input',()=>{
+  query=searchInput.value.trim().toLowerCase(); renderRail(); });
+document.querySelector('.rail-tabs').addEventListener('click',e=>{
+  const tab=e.target.closest('[data-tab]'); if(tab) setRailTab(tab.dataset.tab); });
+const askBox=document.getElementById('ask-box');
+askBox.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){
+    e.preventDefault(); const text=askBox.value; askBox.value=''; askNewChat(text); }});
+document.getElementById('rail').addEventListener('change',e=>{
+  const order=e.target.closest('[data-order]');
+  if(order){ orderMode=order.value; writePreference(ORDER_KEY,orderMode);
+    trackUsage('order_changed',{order:orderMode}); renderRail(); }
+});
+// Nothing selected yet: show where to start.
+{ const empty=document.querySelector('#pane > .empty'); if(empty) empty.insertAdjacentHTML('beforeend',examplesHtml()); }
+document.getElementById('pane').addEventListener('click',e=>{
+  const idea=e.target.closest('a.idea'); if(!idea||e.metaKey||e.ctrlKey||e.shiftKey) return;
+  e.preventDefault();
+  useIdea(new URL(idea.href).searchParams.get('ask')||'',idea.dataset.ideaSource==='workspace'?'workspace':'starter');
+});
+loadChatIdeas();
+setInterval(loadChatIdeas,10*60*1000);
+trackUsage('assistant_opened',{});
+load();
+setInterval(load,5000);
+setInterval(()=>{ if(activeChats.size) load(); },2000);
+</script></body></html>

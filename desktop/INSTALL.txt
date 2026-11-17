@@ -1,0 +1,20 @@
+Install Roosta
+
+1. Drag Roosta.app onto Applications.
+2. Eject this disk image, then open Roosta from Applications.
+3. This release is self-signed, not notarised by Apple. If macOS blocks it,
+   open System Settings > Privacy & Security and use Open Anyway for Roosta,
+   then confirm. Only do this for a download you trust.
+
+Choose arm64 for Apple Silicon (M-series), or x64 for Intel.
+Python and the Roosta backend are included. No uv or Node installation is needed.
+The first launch creates ~/workspace, unless you already configured a Roosta
+workspace. An existing non-Roosta folder is never adopted automatically.
+Open Settings to add an AI connection, install its runtime, test it and choose
+it as the default. OpenAI and Anthropic support API keys or account sign-in;
+enterprise access depends on organisation policy. OpenRouter uses an API key.
+Local models require Ollama and a model download. Subscriptions and API usage
+are separate from Roosta.
+
+Updates: quit Roosta, download the new DMG and replace the app in Applications.
+Your workspace stays outside the app and is preserved. There is no auto-updater.

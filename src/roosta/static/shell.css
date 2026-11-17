@@ -1,0 +1,255 @@
+@font-face {
+    font-family: Inter;
+    src: url("/static/fonts/InterVariable.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+:root,
+[data-bs-theme="dark"] {
+    --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --shell-header-height: 52px;
+    --shell-gutter: 1.75rem;
+    --console-canvas: #101720;
+    --console-panel: #192330;
+    --console-raised: #243143;
+    --console-line: #303e50;
+    --console-text: #e9eef5;
+    --console-secondary: #bdc8d6;
+    --console-tertiary: #96a6b9;
+    --signal-coral: #ff8c93;
+    --signal-amber: #efc078;
+    --signal-mint: #79d4b0;
+    --signal-violet: #b4a5ff;
+    --signal-blue: #8cbaff;
+    --signal-pink: #eba3cc;
+    --signal-cyan: #8ecdd8;
+    --signal-yellow: #dacf84;
+    /* Surfaces pages share instead of hardcoding a dark hex. */
+    --console-header: #141e2a;
+    --console-header-line: #ffffff0b;
+    --console-rail: #141f2c;
+    --console-selected: #243247;
+    --console-selected-line: #354760;
+    --console-tint: #ffffff08;
+    --console-tint-faint: #ffffff04;
+    --console-bubble: #222f40;
+    --console-callout: #202c3d;
+    --console-code: #d5caff;
+    --console-target: #241f14;
+    --tblr-font-sans-serif: var(--font-ui);
+    --tblr-body-font-family: var(--font-ui);
+    --tblr-body-bg: var(--console-canvas);
+    --tblr-body-color: var(--console-text);
+    --tblr-secondary-color: var(--console-tertiary);
+    --tblr-heading-color: var(--console-text);
+    --tblr-bg-surface: var(--console-panel);
+    --tblr-bg-surface-secondary: var(--console-canvas);
+    --tblr-bg-surface-tertiary: #1d2938;
+    --tblr-border-color: var(--console-line);
+    --tblr-border-color-translucent: #ffffff10;
+    --tblr-primary: #7961d3;
+    --tblr-primary-fg: #ffffff;
+    --tblr-primary-rgb: 121, 97, 211;
+    --tblr-link-color: #c0b4ff;
+    --tblr-link-hover-color: #dad3ff;
+    --tblr-danger: #ca5967;
+    --tblr-danger-fg: #ffffff;
+    --tblr-border-radius: 6px;
+    --tblr-border-radius-lg: 10px;
+    --tblr-btn-input-font-size: .875rem;
+    --tblr-btn-input-bg: var(--console-canvas);
+    --tblr-btn-input-fg: var(--console-text);
+}
+
+/* Light mode (Settings): theme.js sets data-bs-theme="light" on <html> before first paint.
+   Signals darken so they stay legible as text on white. */
+[data-bs-theme="light"] {
+    color-scheme: light;
+    --console-canvas: #f4f6fa;
+    --console-panel: #ffffff;
+    --console-raised: #eef1f6;
+    --console-line: #dce2ea;
+    --console-text: #18212d;
+    --console-secondary: #3d4a5c;
+    --console-tertiary: #627287;
+    --signal-coral: #c2414d;
+    --signal-amber: #9a6410;
+    --signal-mint: #16805b;
+    --signal-violet: #6a4fc9;
+    --signal-blue: #2f6fd0;
+    --signal-pink: #b13f7c;
+    --signal-cyan: #1d7a8b;
+    --signal-yellow: #7d6d12;
+    --console-header: #ffffff;
+    --console-header-line: #18212d14;
+    --console-rail: #f8f9fc;
+    --console-selected: #ece8fb;
+    --console-selected-line: #d3cbf3;
+    --console-tint: #18212d0a;
+    --console-tint-faint: #18212d05;
+    --console-bubble: #eef1f6;
+    --console-callout: #f3f0fc;
+    --console-code: #5b3fc4;
+    --console-target: #fdf4e3;
+    --tblr-body-bg: var(--console-canvas);
+    --tblr-body-color: var(--console-text);
+    --tblr-secondary-color: var(--console-tertiary);
+    --tblr-heading-color: var(--console-text);
+    --tblr-bg-surface: var(--console-panel);
+    --tblr-bg-surface-secondary: var(--console-canvas);
+    --tblr-bg-surface-tertiary: var(--console-raised);
+    --tblr-border-color: var(--console-line);
+    --tblr-border-color-translucent: #18212d14;
+    --tblr-primary: #6a4fc9;
+    --tblr-primary-rgb: 106, 79, 201;
+    --tblr-link-color: #5b3fc4;
+    --tblr-link-hover-color: #3f279c;
+    --tblr-danger: #c2414d;
+    --tblr-btn-input-bg: #ffffff;
+    --tblr-btn-input-fg: var(--console-text);
+}
+
+body {
+    margin: 0;
+    padding-top: var(--shell-header-height);
+    font-family: var(--font-ui);
+    background: var(--console-canvas);
+    color: var(--console-text);
+    -webkit-font-smoothing: antialiased;
+}
+
+.workspace-header.navbar {
+    position: fixed;
+    inset: 0 0 auto;
+    min-height: var(--shell-header-height);
+    height: var(--shell-header-height);
+    padding: 0 var(--shell-gutter);
+    background: var(--console-header);
+    border-bottom: 1px solid var(--console-header-line);
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 1.5rem;
+    z-index: 100;
+}
+.workspace-brand.navbar-brand {
+    display: flex;
+    gap: .6rem;
+    margin: 0;
+    padding: 0;
+    color: var(--console-text);
+    font-size: .95rem;
+    font-weight: 600;
+    letter-spacing: -.025em;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.workspace-brand img { width: 24px; height: 24px; filter: none; image-rendering: pixelated; }
+.workspace-nav.nav {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: .25rem;
+    padding: 0;
+}
+.workspace-nav .nav-link {
+    display: flex;
+    align-items: center;
+    height: var(--shell-header-height);
+    padding: 0 .7rem;
+    border-radius: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--console-tertiary);
+    font-size: .8rem;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+    position: relative;
+}
+.workspace-nav .nav-link:hover { color: var(--console-text); }
+.workspace-nav .nav-link[href^="/assistant"] { margin-right: .6rem; }
+/* Out of flow, so the count arriving or changing never shifts the nav. */
+.workspace-nav .nav-count {
+    position: absolute;
+    top: calc(50% - 1.3rem);
+    left: calc(100% - .75rem);
+    min-width: 1.15rem;
+    padding: 0 .35rem;
+    pointer-events: none;
+    border-radius: 999px;
+    background: var(--signal-violet);
+    color: #fff;
+    font-size: .68rem;
+    font-weight: 600;
+    line-height: 1.15rem;
+    text-align: center;
+}
+.workspace-nav .nav-link[aria-current="page"] {
+    color: var(--console-text);
+    background: transparent;
+    border-bottom-color: var(--signal-violet);
+}
+.workspace-tools {
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    margin-left: auto;
+}
+.workspace-settings {
+    display: flex;
+    color: var(--console-tertiary);
+}
+.workspace-settings:hover, .workspace-settings[aria-current="page"] { color: var(--console-text); }
+.workspace-version {
+    color: var(--console-tertiary);
+    font: .72rem ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.workspace-version:hover, .workspace-version[aria-current="page"] { color: var(--console-text); }
+.dashboard-page-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    gap: 1.5rem;
+    margin: 0 0 1.5rem;
+}
+.dashboard-page-header .page-pretitle { font-size: .65rem; letter-spacing: .1em; margin-bottom: .5rem; }
+.dashboard-page-header .page-title { font-size: 1.8rem; letter-spacing: -.04em; line-height: 1.2; font-weight: 600; }
+.dashboard-page-header .page-subtitle { margin: .5rem 0 0; font-size: .85rem; color: var(--console-tertiary); }
+
+/* Tabler owns controls, forms and cards; local rules describe page geometry. */
+.btn { font-family: var(--font-ui); white-space: nowrap; }
+.btn:active { transform: translateY(1px); }
+.control-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.btn:focus-visible, a:focus-visible, [role="button"]:focus-visible {
+    outline: 2px solid var(--signal-violet);
+    outline-offset: 3px;
+}
+.btn[hidden], .card[hidden] { display: none; }
+.text-link, .prose a:not(.btn), .md a:not(.btn, .cta), .bubble a:not(.btn, .cta) {
+    color: var(--tblr-link-color);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--signal-violet) 40%, transparent);
+    text-underline-offset: 3px;
+}
+.text-link:hover, .prose a:hover, .md a:hover, .bubble a:hover { color: var(--tblr-link-hover-color); }
+
+@media (max-width: 900px) {
+    :root { --shell-gutter: 1.25rem; }
+}
+@media (max-width: 650px) {
+    .workspace-brand span { display: none; }
+    .workspace-header.navbar { gap: .75rem; padding-inline: .75rem; }
+    .workspace-nav { min-width: 0; overflow-x: auto; gap: .1rem; }
+    .workspace-nav .nav-link { padding-inline: .35rem; font-size: .75rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .btn { transition: none; }
+}

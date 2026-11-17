@@ -1,0 +1,25 @@
+{
+  "name": "roosta-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Your agentic office: a desktop app for a team of AI workers that learns your work",
+  "main": "src/main.js",
+  "scripts": {
+    "icons": "node scripts/create-icons.js",
+    "prestart": "npm run icons",
+    "start": "electron .",
+    "test": "node --test",
+    "predist": "npm run icons && npm test",
+    "dist": "node scripts/package.js",
+    "setup:signing": "node scripts/setup-signing.js",
+    "install:mac": "npm run dist && node scripts/install-mac.js",
+    "dmg": "npm run dist && node scripts/dmg.js"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.0.4",
+    "electron": "^43.2.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

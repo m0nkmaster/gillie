@@ -1,0 +1,174 @@
+# Roosta
+
+<img src="assets/roosta-pixel.png" alt="Roosta, an orange-hooded pixel character with glowing eyes and goggles" width="160" align="right">
+
+**Your agentic office.**
+
+A desktop app where your own team of AI workers gets to know your work and gets on with it.
+
+Give your workers jobs. They research, organise, build and keep your projects moving, drawing on shared knowledge of your priorities, projects and preferences. They learn from your feedback, improve their skills and bring you the decisions that need your attention.
+
+Watch them work in your pixel-art office, talk to them directly, and shape the team around what you need. You set the direction. Your agents get to work.
+
+- **A team that knows your work.** Workers share a workspace of project knowledge, priorities and preferences, so each job can build on what came before.
+- **Work that keeps moving.** Give recurring jobs to workers that run on a schedule, from researching a topic to keeping project notes current.
+- **An office that gets better.** Workers maintain shared knowledge, learn from your conversations, refine skills and improve your setup.
+- **You stay in charge.** Review findings, guide workers and approve messages or other external actions before they happen.
+
+Named for a resourceful, unconventional problem-solver, Roosta is about taking initiative and finding a way through the chaos.
+
+![Roosta's pixel-art Office, with AI workers at desks, in meeting rooms and around shared spaces](assets/office.png)
+
+## Get started
+
+### Download the macOS app
+
+Download the DMG for your Mac from [GitHub Releases](https://github.com/m0nkmaster/roosta/releases):
+**arm64** for Apple Silicon, **x64** for Intel. Drag Roosta into Applications, eject the disk
+image, then open it. Python and the backend are included; no Python, Node or uv setup is needed.
+
+These releases are **self-signed and not notarised**. If macOS blocks the first launch, use
+**System Settings → Privacy & Security → Open Anyway** for Roosta and confirm.
+The first launch creates `~/workspace` (or uses your previously configured workspace).
+An existing folder with unrelated files is not automatically adopted. Settings downloads verified standalone AI runtimes without Node or terminal commands. Accounts are yours; local Ollama still requires Ollama and a downloaded tool-capable model.
+
+To update, quit Roosta and replace the app using the newer DMG. Your workspace stays in place.
+There is no automatic updater. See [desktop build and release instructions](desktop/README.md)
+for local builds, or the [release guide](docs/development/releases.md) for one-command publishing.
+
+### Set up your office
+
+1. **Connect your AI.** On a fresh workspace, the board offers **Connect your AI**, or **Check your Claude Code connection** if Claude Code is already installed. Open AI settings to check that login or connect another account and install its software. The first account that passes the check becomes the default.
+2. **Tell Roosta about your work.** Choose **Continue workspace setup**, then open **Set up your workspace** on the board. Roosta helps you describe your priorities, projects and tools, sets up a starter schedule and creates your first board card.
+3. **Build your team.** Open Workers and choose **New worker** to describe a job. Each worker runs a named skill on a schedule; chat with it to refine the job, and see it in the Office.
+
+Your AI accounts are yours. API usage is billed separately from ChatGPT/Claude subscriptions. OpenAI and Anthropic also offer account sign-in, including enterprise accounts subject to organisation policy: OpenAI uses Pi’s Sign in with ChatGPT flow; Anthropic uses Claude Code sign-in.
+
+### Run with Python
+
+You can also run Roosta in a browser on macOS or Linux. Python installs need Python 3.11+ and git; no separately installed agent CLI is required.
+
+```bash
+uv tool install roosta            # or: pipx install roosta
+roosta init ~/workspace
+roosta start                      # http://127.0.0.1:7667/assistant (7667: R-O-O-S on a phone keypad)
+```
+
+Connect your AI and follow the setup steps above. Run Roosta in the background with `roosta service install` (launchd on macOS, systemd on Linux). Settings also covers the workspace, address, background service and core-skills sync, without a terminal. Converting a folder of notes you already have? `roosta init --adopt <folder>` adds Roosta without touching your files.
+
+## Inside your office
+
+The Assistant board brings together what needs you now. Workers handle recurring jobs; the Office shows the team at work. Ask Roosta to build custom pages when you need another view of your work.
+
+| Page | What you can do |
+|------|----------------|
+| Assistant (`/assistant`) | Review findings, make decisions and continue your chats |
+| Office (`/office`) | See your scheduled workers in a pixel-art office |
+| Workers (`/runner`) | Give workers jobs, set schedules, check run history and chat to refine their skills |
+| Workspace (`/workspace`) | Search your shared knowledge and choose files as chat context |
+| Pulse (`/pulse`) | Explore workspace activity and connections between projects |
+| Custom pages (`/pages/<name>/`) | Use views Roosta builds for you with the `page-builder` skill |
+
+### Skills give your workers their jobs
+
+A skill is a set of instructions for a job. Roosta includes skills for keeping knowledge current, learning from feedback, improving the office and handling work that needs your approval. Add your own as your team grows.
+
+| Skill | Job |
+|-------|-----|
+| `assistant` | Conductor: ranks what needs you into board cards |
+| `chat-ideas` | Suggests useful new chats from your priorities, projects and tools |
+| `actor` | The live chat on a card; drafts actions, never sends them |
+| `sender` | Performs one action you approved |
+| `workspace-gardener` | Digests, verifies, connects and tidies the workspace |
+| `workspace-learner` | Learns from your AI chats and connected tools |
+| `skill-auditor` | Reviews and improves the skill set |
+| `workspace-new-project` | Scaffolds a project |
+| `setup` | First-run and re-runnable setup; merges skill updates |
+| `connectors` | Connects a tool safely, with a catalogue of common ones |
+| `page-builder` | Builds custom pages |
+| `write-a-skill` | Writes and sharpens skills |
+| `roosta-engineer` | Evolves your pages, tasks and skills from how you use them |
+
+Core skills are copied into your workspace and become yours. `roosta skills sync` updates the ones you haven't edited; the `setup` skill helps merge updates into ones you have.
+
+### Shared knowledge you own
+
+Your office's knowledge lives in a local folder of Markdown files: your profile, priorities, project notes and skills. You can read and edit them yourself, or work with them directly from Claude Code, Codex, Cursor or pi. The operating model is the set of conventions that helps agents use that knowledge consistently.
+
+```
+~/workspace/
+  AGENTS.md            # your rules; links the operating model (CLAUDE.md points here)
+  PROFILE.md           # who you are and how the assistant should sound
+  PRIORITIES.md        # what matters now
+  CONTEXT.md TOOLS.md  # your domain and your tools
+  projects/ notes/ drafts/ analysis/ templates/
+  .agents/skills/      # core skills, then yours (.claude/skills points here)
+  .roosta/
+    operating-model.md # Roosta's rules, replaced on update
+    tasks.yaml         # the schedule
+    connectors.yaml    # tool sign-in checks and write denials
+    pages/             # your custom pages
+    state/             # runtime state (gitignored)
+```
+
+## Safety
+
+- External writes (messages, tickets, pages, email) pause for **Send/Cancel** on the board. Only then does the `sender` skill run. The sole standing exception is an explicitly approved task that may run exactly `git push origin main` in one named repository; scheduled pushes also require `push_on_schedule`.
+- Standard runs use permission guardrails that block secret access, destructive git, write-shaped MCP tools and configured connector write commands. These are tool policies, not an OS sandbox; explicitly unrestricted tasks bypass them.
+- Tasks marked as writers run one at a time; other tasks may run concurrently.
+- Posts the assistant sends end with `[AI]`.
+
+Connector write denials can be loosened per connector, never globally.
+
+## AI connections
+
+Settings → **Your AI** shows the account Roosta uses. Open **Model and reasoning** to choose a
+model and its supported reasoning effort, or **Change AI or manage accounts** to connect another
+account. Each account records its provider and billing route; model choice is saved separately.
+API keys live in the OS credential store (Keychain on macOS). Account sign-in credentials stay in
+Claude Code's or Pi's authentication storage; Roosta can also use your existing Claude Code login.
+The connection test makes one small billable request and proves a safe local file read before an
+account can become the default.
+
+Anthropic models run through the unmodified Claude Code runtime. OpenAI, non-Anthropic OpenRouter
+models and local Ollama models run through Pi. Anthropic models on OpenRouter are rejected: choose
+an Anthropic connection explicitly. Roosta never automatically changes an account or billing route.
+
+Chats retain their account when the default changes. Model changes in Settings apply to subsequent
+turns on that provider; account and model controls live in Settings. Workers can use a
+named connection or `connection: default`; existing Cursor and OpenCode/Ollama settings remain
+until you explicitly choose a replacement. Disconnect lists affected chats, approvals and workers.
+**Install / Update to latest** downloads the publisher's latest release and verifies its checksum,
+preserving other CLI installs. Roosta runs the newest installed copy of Claude Code or Pi, preferring
+your own installation when versions match. Updates are explicit and wait for active AI turns to finish;
+there are no Roosta version pins or background downloads. Managed downloads support macOS and glibc
+Linux on Apple/ARM64 and x64; Windows runtime installation is not implemented yet.
+
+## Develop
+
+**From a local checkout**, to work on Roosta:
+
+```bash
+git clone https://github.com/m0nkmaster/roosta.git && cd roosta
+uv tool install --editable .      # `roosta` now runs this checkout
+roosta init ~/workspace
+cd desktop && npm install
+npm start                         # run the app from source, no install
+npm run setup:signing && npm run install:mac   # or install it into /Applications
+```
+
+With the editable install, dashboard HTML and CSS changes show on reload, Python changes after **Restart Roosta**, and core skill changes after `roosta skills sync`; none needs a rebuild. Only changes under `desktop/` need `npm start` again or a fresh `npm run install:mac`. Notifications, signing and troubleshooting: [desktop/README.md](desktop/README.md).
+
+Run checks from the repository root:
+
+```bash
+uv venv && uv pip install -e '.[dev]'
+.venv/bin/python -m pytest -q
+cd desktop && node --test
+```
+
+Architecture, decisions and gotchas: [AGENTS.md](AGENTS.md). Release notes: [CHANGELOG.md](CHANGELOG.md).
+
+## Licence
+
+Apache-2.0. The Office uses the [LPC Revised](https://github.com/ElizaWy/LPC) sprites (OGA-BY 3.0) and OFL fonts; Tabler is MIT. Credits are beside each vendored asset.

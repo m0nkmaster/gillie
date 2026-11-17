@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roosta is starting</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 2rem;
+      background: #0b0d13;
+      color: #e8ecf2;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+    /* Generative backdrop — repainted with a fresh scene every morning. */
+    #art {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 0;
+    }
+    #art-tint {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background: radial-gradient(130% 110% at 50% 18%, transparent 30%, #0b0d13dd 100%);
+    }
+    main {
+      position: relative;
+      z-index: 2;
+      width: min(540px, 100%);
+      padding: 2.4rem 2.2rem;
+      background: #12161fcc;
+      backdrop-filter: blur(18px) saturate(1.2);
+      -webkit-backdrop-filter: blur(18px) saturate(1.2);
+      border: 1px solid #ffffff1f;
+      border-radius: 20px;
+      box-shadow: 0 30px 90px #000a, inset 0 1px 0 #ffffff14;
+    }
+    .mark {
+      display: grid;
+      grid-template-columns: repeat(2, 22px);
+      gap: 5px;
+      width: max-content;
+      margin-bottom: 1.5rem;
+    }
+    .mark span {
+      width: 22px; height: 22px; border-radius: 6px;
+      background: #2d333b;
+      animation: markpulse 2.4s ease-in-out infinite;
+    }
+    .mark span:nth-child(2) { animation-delay: .3s; }
+    .mark span:nth-child(3) { animation-delay: .9s; }
+    .mark span:nth-child(4) { animation-delay: .6s; }
+    .mark span.lit-a { background: var(--spark-a, #58a6ff); box-shadow: 0 0 18px -2px var(--spark-a, #58a6ff); }
+    .mark span.lit-b { background: var(--spark-b, #3fb950); box-shadow: 0 0 18px -2px var(--spark-b, #3fb950); }
+    @keyframes markpulse {
+      0%, 100% { opacity: .55; transform: translateY(0); }
+      50% { opacity: 1; transform: translateY(-2px); }
+    }
+    #greeting {
+      margin: 0 0 .4rem;
+      font-size: 1.75rem;
+      font-weight: 650;
+      letter-spacing: -.01em;
+      line-height: 1.15;
+    }
+    #flavour {
+      margin: 0 0 1.1rem;
+      font-size: .95rem;
+      color: #aeb8c6;
+      line-height: 1.5;
+      min-height: 1.4em;
+    }
+    .statusline {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      font-size: .82rem;
+      color: #8a94a3;
+      line-height: 1.5;
+    }
+    .statusline .dot {
+      flex: none;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--spark-a, #58a6ff);
+      box-shadow: 0 0 0 0 var(--spark-a, #58a6ff);
+      animation: ping 1.8s ease-out infinite;
+    }
+    @keyframes ping {
+      0% { box-shadow: 0 0 0 0 var(--spark-a, #58a6ff)88; }
+      70%, 100% { box-shadow: 0 0 0 9px #58a6ff00; }
+    }
+    #status { margin: 0; white-space: pre-wrap; }
+    .actions { display: flex; flex-wrap: wrap; gap: .65rem; margin-top: 1.7rem; }
+    button {
+      border: 1px solid #ffffff26;
+      border-radius: 10px;
+      padding: .6rem 1rem;
+      background: #ffffff10;
+      color: #e8ecf2;
+      cursor: pointer;
+      font: inherit;
+      transition: background .15s ease, border-color .15s ease, transform .05s ease;
+    }
+    button:hover { background: #ffffff1c; border-color: #ffffff4a; }
+    button:active { transform: translateY(1px); }
+    button.primary {
+      background: var(--spark-b, #62d7a5);
+      border-color: transparent;
+      color: #09150f;
+      font-weight: 600;
+    }
+    button.primary:hover { filter: brightness(1.08); }
+    button:disabled { opacity: .5; cursor: wait; }
+    #repair[hidden] { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .mark span, .statusline .dot { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="art" aria-hidden="true"></canvas>
+  <div id="art-tint" aria-hidden="true"></div>
+  <main>
+    <div class="mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <h1 id="greeting">Waking Roosta</h1>
+    <p id="flavour"></p>
+    <div class="statusline">
+      <span class="dot" aria-hidden="true"></span>
+      <p id="status">Starting the dashboard runner...</p>
+    </div>
+    <div class="actions">
+      <button class="primary" id="retry">Retry</button>
+      <button id="repair" hidden>Set up or repair dashboard</button>
+      <button id="logs">View logs</button>
+    </div>
+  </main>
+  <script src="boot-art.js"></script>
+  <script src="recovery.js"></script>
+</body>
+</html>

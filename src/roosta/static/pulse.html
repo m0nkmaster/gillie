@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulse · Roosta</title>
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <link rel="stylesheet" href="/static/vendor/tabler/tabler.min.css">
+<link rel="stylesheet" href="/static/shell.css">
+<script src="/static/theme.js"></script>
+<script src="/static/nav-count.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/vault-markdown.js"></script>
+    <style>
+        .pulse-main { padding: 1.75rem var(--shell-gutter) 2.5rem; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: .75rem;
+            margin-bottom: 1.25rem;
+        }
+        .stat-value { font-variant-numeric: tabular-nums; }
+        .stat-label { color: var(--tblr-secondary-color); font-size: .75rem; }
+        .panel-head { justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+        .panel-head .card-title { margin: 0; }
+        .panel-tools { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+        .constellation-search { width: 220px; font-size: .75rem; }
+        .chip-count { margin-left: .3rem; font-variant-numeric: tabular-nums; }
+        .constellation-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 272px;
+            gap: .85rem;
+        }
+        .constellation-wrap { position: relative; min-width: 0; }
+        #constellation {
+            display: block;
+            width: 100%;
+            height: 600px;
+            border-radius: var(--tblr-border-radius);
+            background: radial-gradient(circle at center, var(--console-panel), var(--console-canvas));
+            cursor: default;
+        }
+        .constellation-zoom { position: absolute; top: .5rem; right: .5rem; z-index: 1; display: flex; gap: .25rem; }
+        .constellation-tooltip {
+            position: absolute;
+            z-index: 2;
+            max-width: 250px;
+            padding: .55rem .65rem;
+            pointer-events: none;
+            opacity: 0;
+            transform: translate(10px, 10px);
+            transition: opacity .12s;
+        }
+        .constellation-tooltip.open { opacity: 1; }
+        .constellation-tooltip strong { font-size: .8rem; }
+        .constellation-tooltip span { font-size: .7rem; color: var(--tblr-secondary-color); }
+        .constellation-detail { max-height: 600px; overflow-y: auto; display: flex; flex-direction: column; gap: .6rem; }
+        .constellation-layout { grid-template-columns: minmax(0, 1fr) 340px; }
+        /* Full-screen constellation: same page, everything else hidden. */
+        body.constellation-full .pulse-main { padding-top: 1rem; padding-bottom: 1rem; }
+        body.constellation-full .dashboard-page-header,
+        body.constellation-full .running-panel,
+        body.constellation-full #stats,
+        body.constellation-full .hot-panel { display: none; }
+        body.constellation-full .constellation-panel { margin-bottom: 0 !important; }
+        body.constellation-full #constellation { height: calc(100vh - 13.5rem); min-height: 520px; }
+        body.constellation-full .constellation-layout { grid-template-columns: minmax(0, 1fr) 420px; }
+        body.constellation-full .constellation-detail { max-height: calc(100vh - 13.5rem); min-height: 520px; }
+        .brief-section { font-size: .8125rem; }
+        .brief-section > strong { display: block; color: var(--tblr-secondary-color); font-size: .75rem; font-weight: 500; margin-bottom: .2rem; }
+        .brief-md { overflow-wrap: anywhere; }
+        .brief-md p, .brief-md ul, .brief-md ol { margin-bottom: .4rem; }
+        .brief-md ul, .brief-md ol { padding-left: 1.1rem; }
+        .brief-md table { font-size: .75rem; }
+        .brief-clamp { max-height: 14rem; overflow: hidden; -webkit-mask-image: linear-gradient(#000 75%, transparent); mask-image: linear-gradient(#000 75%, transparent); }
+        .brief-toggle { padding: 0; font-size: .75rem; }
+        .brief-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .25rem; }
+        .brief-list a { text-decoration: none; }
+        .brief-list .meta { color: var(--tblr-secondary-color); font-size: .7rem; margin-left: .35rem; }
+        .link-kind { color: var(--tblr-secondary-color); font-size: .65rem; margin-right: .25rem; }
+        .prov-pill { --pill: var(--tblr-secondary-color); --tblr-badge-color: var(--pill); }
+        .prov-pill.human { --pill: var(--signal-mint); }
+        .prov-pill.machine { --pill: var(--signal-blue); }
+        .prov-pill.due { --pill: var(--signal-amber); }
+        .review-box { border: 1px solid var(--console-line); border-radius: var(--tblr-border-radius); padding: .55rem; display: grid; gap: .45rem; }
+        .review-box.reviewing { border-color: var(--signal-violet); }
+        .review-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; font-size: .75rem; color: var(--tblr-secondary-color); }
+        .review-reason { color: var(--signal-amber); font-size: .75rem; }
+        .review-buttons { display: flex; flex-wrap: wrap; gap: .3rem; }
+        .review-buttons .btn.current { border-color: var(--signal-mint); color: var(--signal-mint); }
+        .review-error { color: var(--signal-coral); font-size: .75rem; }
+        kbd.hint { font-size: .65rem; padding: .05rem .25rem; }
+        .constellation-legend { display: flex; flex-wrap: wrap; gap: .35rem .85rem; margin-top: .75rem; color: var(--tblr-secondary-color); font-size: .7rem; }
+        .legend-key::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: .3rem; background: var(--console-line); border-radius: 50%; }
+        .legend-key.important::before { background: var(--signal-amber); }
+        .legend-key.active::before { background: var(--signal-cyan); }
+        .legend-key.drift::before { background: var(--signal-coral); }
+        .legend-key.link::before { background: var(--tblr-secondary-color); }
+        .legend-key.keys::before { display: none; }
+        .legend-key.shape-person::before { background: var(--signal-violet); border-radius: 0; transform: rotate(45deg) scale(.85); }
+        .legend-key.shape-incident::before { background: #f778ba; border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+        .legend-key.shape-note::before { background: #8fa3bf; border-radius: 1px; }
+        .legend-key.moon::before { width: 4px; height: 4px; background: #c9d1d9; }
+        .layer-btn[aria-pressed="true"].person { color: var(--signal-violet); }
+        .layer-btn[aria-pressed="true"].incident { color: #f778ba; }
+        .layer-btn[aria-pressed="true"].note { color: #8fa3bf; }
+        .layer-btn[aria-pressed="false"] { opacity: .55; }
+        .kind-pill { --pill: #8fa3bf; --tblr-badge-color: var(--pill); }
+        .kind-pill.person { --pill: var(--signal-violet); }
+        .kind-pill.incident { --pill: #f778ba; }
+        .running-list, .hot-list { list-style: none; padding: 0; margin: 0; gap: .5rem; }
+        .hot-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
+        .hot-item { height: 100%; overflow-wrap: anywhere; font-size: .8125rem; }
+        .hot-title { font-weight: 500; }
+        .hot-meta, .running-meta { display: block; margin-top: .25rem; color: var(--tblr-secondary-color); font-size: .75rem; }
+        .empty-hot { color: var(--tblr-secondary-color); font-size: .8125rem; padding: .5rem 0; }
+        .running-item { display: flex; align-items: center; gap: .65rem; min-height: 48px; text-decoration: none; font: inherit; cursor: pointer; }
+        .running-item.selected { --tblr-list-group-bg: var(--tblr-primary-lt); border-color: var(--signal-violet); }
+        .running-body { flex: 1; min-width: 0; }
+        .running-name { font-size: .875rem; font-weight: 500; }
+        .running-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--signal-blue); animation: runpulse 1.2s ease-in-out infinite; }
+        .running-dot.queued { background: var(--signal-violet); animation: none; }
+        @keyframes runpulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+        .running-badge { --tag-colour: #8d949e; --tblr-badge-color: var(--tag-colour); }
+        .running-badge.task { --tag-colour: var(--signal-blue); }
+        .running-badge.skill { --tag-colour: var(--signal-mint); }
+        .running-badge.chat { --tag-colour: var(--signal-violet); }
+        .running-badge.action, .running-badge.send { --tag-colour: var(--signal-amber); }
+        .trace-panel { display: none; margin-top: .75rem; animation: trace-in .35s ease-out; }
+        .trace-panel.open { display: block; }
+        @keyframes trace-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+        .trace-title { color: var(--signal-cyan); font-size: .75rem; margin-bottom: .35rem; }
+        .trace-quip { margin-bottom: .45rem; }
+        .trace-meta { color: var(--tblr-secondary-color); font-size: .75rem; }
+        .trace-elapsed { font-variant-numeric: tabular-nums; }
+        .constellation-panel.tracing { border-color: var(--signal-violet); }
+        .detail-title { font-size: 1rem; font-weight: 500; }
+        .detail-meta, .chip-list { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
+        .status-pill { --pill: var(--tblr-secondary-color); --tblr-badge-color: var(--pill); }
+        .status-pill.active { --pill: var(--signal-mint); }
+        .status-pill.blocked { --pill: var(--signal-coral); }
+        .status-pill.paused { --pill: var(--signal-amber); }
+        .status-pill.completed { --pill: var(--signal-blue); }
+        .detail-owner, .detail-hint { font-size: .75rem; color: var(--tblr-secondary-color); }
+        .detail-row { font-size: .8125rem; }
+        .detail-row strong { display: block; color: var(--tblr-secondary-color); font-size: .75rem; font-weight: 500; }
+        .detail-flag { border-left: 2px solid var(--signal-coral); padding-left: .5rem; font-size: .8125rem; color: var(--signal-coral); }
+        .link-chip { white-space: normal; text-align: left; }
+        .link-chip.stale { color: var(--signal-coral); }
+        .detail-actions { margin-top: auto; display: grid; gap: .4rem; }
+        body.hyperdrive::after { content: ''; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle at 35% 50%, #ff6b7233, transparent 35%), radial-gradient(circle at 65% 50%, #8b83f633, transparent 35%); animation: hyper 1.2s ease-out; z-index: 9999; }
+        @keyframes hyper { 0% { opacity: 1; transform: scale(.2); } 100% { opacity: 0; transform: scale(2); } }
+        @media (max-width: 900px) {
+            .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .constellation-layout { grid-template-columns: 1fr; }
+            .constellation-detail { max-height: none; }
+            body.constellation-full .constellation-layout { grid-template-columns: 1fr; }
+            body.constellation-full .constellation-detail { max-height: none; min-height: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) { .running-dot, .trace-panel, body.hyperdrive::after { animation: none; } }
+    </style>
+</head>
+<body>
+    <header class="workspace-header navbar" aria-label="Workspace"></header>
+
+    <main class="container-fluid pulse-main">
+<div class="page-header dashboard-page-header"><div><div class="page-pretitle">Workspace health</div><h1 class="page-title">Pulse</h1><p class="page-subtitle">Activity, attention and the shape of your vault</p></div></div>
+        <section class="card constellation-panel mb-4" id="constellation-panel">
+            <div class="card-header panel-head">
+                <h2 class="card-title">Project constellation</h2>
+                <div class="panel-tools">
+                <input type="search" class="form-control constellation-search" id="constellation-search"
+                    placeholder="Search title, tags, people…" aria-label="Search projects by title or front matter">
+                <div class="btn-group" id="constellation-filters" role="group" aria-label="Constellation focus">
+                    <button type="button" class="btn btn-sm active" data-filter="all" aria-pressed="true">All</button>
+                    <button type="button" class="btn btn-sm" data-filter="attention" aria-pressed="false">Needs me<span class="chip-count" data-count="attention"></span></button>
+                    <button type="button" class="btn btn-sm" data-filter="stale" aria-pressed="false">Drifting<span class="chip-count" data-count="stale"></span></button>
+                    <button type="button" class="btn btn-sm" data-filter="due" aria-pressed="false" title="Not verified, or past stale_after">Unverified<span class="chip-count" data-count="due"></span></button>
+                </div>
+                <div class="btn-group" id="constellation-layers" role="group" aria-label="Layers">
+                    <button type="button" class="btn btn-sm layer-btn person" data-layer="person" aria-pressed="true" title="People dossiers in notes/people">People</button>
+                    <button type="button" class="btn btn-sm layer-btn incident" data-layer="incident" aria-pressed="true" title="Incident files">Incidents</button>
+                    <button type="button" class="btn btn-sm layer-btn note" data-layer="note" aria-pressed="false" title="Top-level notes">Notes</button>
+                </div>
+                <button type="button" class="btn btn-sm btn-primary" id="review-start" title="Walk the projects that need a decision (r)">Review<span class="chip-count" data-count="review"></span></button>
+                <a class="btn btn-sm" id="full-toggle" href="/constellation" title="Full screen (f)">Full screen</a>
+                </div>
+            </div>
+            <div class="card-body"><div class="constellation-layout">
+                <div class="constellation-wrap">
+                    <canvas id="constellation" data-bs-theme="dark" aria-label="Project constellation: documented relationships on rings of time since last change"></canvas>
+                    <div class="constellation-zoom" id="constellation-zoom" role="group" aria-label="Constellation zoom">
+                        <button type="button" class="btn btn-sm" data-zoom="in" aria-label="Zoom in">+</button>
+                        <button type="button" class="btn btn-sm" data-zoom="out" aria-label="Zoom out">−</button>
+                        <button type="button" class="btn btn-sm" data-zoom="reset" aria-label="Reset zoom">Reset</button>
+                    </div>
+                    <div class="card constellation-tooltip" id="constellation-tooltip" aria-hidden="true">
+                        <strong id="constellation-tooltip-title"></strong>
+                        <span id="constellation-tooltip-detail"></span>
+                    </div>
+                </div>
+                <aside class="card card-body constellation-detail" id="constellation-detail"></aside>
+            </div>
+            <div class="constellation-legend" aria-label="Constellation legend">
+                <span class="legend-key rings">Rings: time since last change</span>
+                <span class="legend-key important">Amber: on the board now</span>
+                <span class="legend-key drift">Coral: active but untouched 30d+</span>
+                <span class="legend-key active">Cyan: edited this week</span>
+                <span class="legend-key link">Lines: documented Related links</span>
+                <span class="legend-key shape-person">People</span>
+                <span class="legend-key shape-incident">Incidents</span>
+                <span class="legend-key shape-note">Notes</span>
+                <span class="legend-key moon">Zoom in: a project's pages orbit it</span>
+                <span class="legend-key keys">Keys: <kbd class="hint">/</kbd> search · <kbd class="hint">r</kbd> review · <kbd class="hint">f</kbd> full screen · <kbd class="hint">Esc</kbd> clear</span>
+            </div></div>
+        </section>
+
+        <section class="card running-panel mb-4">
+            <div class="card-header"><h2 class="card-title mb-0">Running now</h2></div>
+            <div class="card-body">
+                <ul class="list-group running-list" id="running-list"><li class="empty-hot">Loading…</li></ul>
+                <div class="card card-body trace-panel" id="trace-panel" hidden>
+                    <div class="trace-title">Signal trace</div>
+                    <div class="trace-quip" id="trace-quip"></div>
+                    <div class="trace-meta"><span class="trace-elapsed" id="trace-elapsed"></span></div>
+                </div>
+            </div>
+        </section>
+
+        <div class="stats-grid" id="stats"></div>
+
+        <section class="card hot-panel">
+            <div class="card-header"><h2 class="card-title mb-0">Hot files this week</h2></div>
+            <div class="card-body"><ul class="list-group hot-list" id="hot-files"><li class="empty-hot">Loading…</li></ul></div>
+        </section>
+    </main>
+
+    <script>
+        const statsEl = document.getElementById('stats');
+        const canvas = document.getElementById('constellation');
+        const ctx = canvas.getContext('2d');
+        let pulseData = null;
+        let nodes = [];
+        let edges = [];
+        let selectedName = null;
+        let filterMode = 'all';
+        let filterLabels = new Set();
+        let searchTerms = [];
+        let frame = 0;
+        let hyperdrive = false;
+        let selectedTrace = null;
+        let traceSpark = 0;
+        let traceTimer = null;
+        let hoveredNode = null;
+        const FULL = location.pathname === '/constellation';
+        document.body.classList.toggle('constellation-full', FULL);
+        const briefs = new Map();          // slug -> briefing from /api/constellation/<slug>
+        const briefErrors = new Map();
+        const expanded = new Set();        // slugs whose Current state is unclamped
+        let review = null;                 // { queue: [slug], index, done } while reviewing
+        let reviewBusy = false;
+        let reviewError = '';
+        let pendingFocus = new URLSearchParams(location.search).get('focus');
+        const KIND_LABEL = { project: 'Project', person: 'Person', incident: 'Incident', note: 'Note' };
+        let layers = new Set(['person', 'incident']);
+        try {
+            const saved = JSON.parse(localStorage.getItem('constellation-layers') || 'null');
+            if (Array.isArray(saved)) layers = new Set(saved);
+        } catch (err) { /* storage unavailable: keep defaults */ }
+        const MOON_SCALE = 1.8;            // zoom at which a project's pages appear as moons
+        let moons = [];                    // screen-stable moon positions from the last frame
+        let hoveredMoon = null;
+        // View transform: screen = world * view.scale + (view.x, view.y).
+        const view = { scale: 1, x: 0, y: 0 };
+        let drag = null;
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        const TRACE_LINES = {
+            'workspace-gardener': [
+                'Pruning the vault hedges.',
+                'Cross-linking the graph.',
+                'Turning over the compost heap of stale notes.',
+            ],
+            'workspace-learner': [
+                'Distilling chatter into durable facts.',
+                'Teaching the vault what you already know.',
+            ],
+            'skill-auditor': ['Auditing skills for sharp edges.', 'Checking the instruction manuals.'],
+            'assistant': ['Ranking what genuinely needs you.', 'Sweeping the sensor horizon.'],
+            'roosta-engineer': ['Sanding the rough edges off the board.', 'Reading the usage tea leaves.'],
+        };
+        const QUEUED_LINES = [
+            'Queued behind a writer - the vault is getting a simultaneous edit.',
+            'Holding for the writer lock. Patience, padawan.',
+            'Waiting in the hangar for clearance to touch the vault.',
+        ];
+        const CHAT_LINES = ['The Assistant is thinking out loud.', 'A reply is taking shape.'];
+
+        function esc(s) {
+            return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+        }
+
+        function fmt(n) {
+            return Number(n || 0).toLocaleString('en-GB');
+        }
+
+        function timeAgo(iso) {
+            if (!iso) return '';
+            const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+            if (diff < 3600) return `${Math.max(1, Math.floor(diff / 60))}m ago`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+            return `${Math.floor(diff / 86400)}d ago`;
+        }
+
+        function animateValue(el, target, duration = 700) {
+            const start = Number(el.dataset.value || 0);
+            const delta = target - start;
+            if (!delta) {
+                el.textContent = fmt(target);
+                el.dataset.value = target;
+                return;
+            }
+            const t0 = performance.now();
+            function tick(now) {
+                const p = Math.min(1, (now - t0) / duration);
+                const eased = 1 - Math.pow(1 - p, 3);
+                el.textContent = fmt(Math.round(start + delta * eased));
+                if (p < 1) requestAnimationFrame(tick);
+                else el.dataset.value = target;
+            }
+            requestAnimationFrame(tick);
+        }
+
+        function renderStats(data) {
+            const cards = [
+                ['Projects', data.vault.projects],
+                ['Markdown files', data.vault.markdown_files],
+                ['Words in vault', data.vault.words],
+                ['Skills', data.vault.skills],
+                ['AI runs today', data.activity.today_runs],
+                ['Board cleared', data.board.cleared_today],
+                ['On board now', data.board.board_active],
+                ['Agents running', data.activity.running_now],
+            ];
+            statsEl.innerHTML = cards.map(([label, value]) =>
+                `<article class="card stat"><div class="card-body"><div class="stat-value h1 mb-1" data-value="0">0</div><div class="stat-label">${esc(label)}</div></div></article>`
+            ).join('');
+            statsEl.querySelectorAll('.stat-value').forEach((el, i) => animateValue(el, cards[i][1]));
+        }
+
+        function sourceLabel(source) {
+            if (source === 'scheduled') return 'auto';
+            if (source === 'manual') return 'manual run';
+            return source || '';
+        }
+
+        function hashString(value) {
+            let hash = 0;
+            for (const ch of String(value || '')) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0;
+            return Math.abs(hash);
+        }
+
+        function traceQuip(item) {
+            if (item.status === 'queued') {
+                return QUEUED_LINES[hashString(item.trace_key || item.name) % QUEUED_LINES.length];
+            }
+            if (item.kind === 'chat') {
+                return CHAT_LINES[hashString(item.name) % CHAT_LINES.length];
+            }
+            const lines = TRACE_LINES[item.trace_key || item.name] || [
+                'Agent at work - making autonomous decisions.',
+                'Headless Cursor pass in flight.',
+                'Something clever is happening off-screen.',
+            ];
+            return lines[hashString(item.started || item.name) % lines.length];
+        }
+
+        function formatElapsed(iso, status = 'running') {
+            if (!iso) return itemStatusLabel(status);
+            const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+            const m = Math.floor(secs / 60);
+            const s = secs % 60;
+            if (m >= 60) {
+                const h = Math.floor(m / 60);
+                return `In flight for ${h}h ${m % 60}m`;
+            }
+            return m ? `In flight for ${m}m ${String(s).padStart(2, '0')}s` : `In flight for ${s}s`;
+        }
+
+        function itemStatusLabel(status) {
+            return status === 'queued' ? 'Queued for vault access' : 'Tracing live signal';
+        }
+
+        function traceNodeIndex(item) {
+            const projectRef = item?.project_ref || '';
+            if (!projectRef) return -1;
+            return nodes.findIndex(node => `projects/${node.name}` === projectRef);
+        }
+
+        function updateTracePanel(item) {
+            const panel = document.getElementById('trace-panel');
+            if (!item) {
+                panel.classList.remove('open');
+                panel.hidden = true;
+                document.getElementById('constellation-panel')?.classList.remove('tracing');
+                return;
+            }
+            panel.hidden = false;
+            panel.classList.add('open');
+            document.getElementById('trace-quip').textContent = traceQuip(item);
+            document.getElementById('trace-elapsed').textContent = item.started
+                ? formatElapsed(item.started, item.status)
+                : itemStatusLabel(item.status);
+            document.getElementById('constellation-panel')?.classList.add('tracing');
+        }
+
+        function selectTrace(item, button) {
+            const key = item.trace_key || item.name;
+            if (selectedTrace === key) {
+                selectedTrace = null;
+                traceSpark = 0;
+                updateTracePanel(null);
+                document.querySelectorAll('.running-item.selected').forEach(el => el.classList.remove('selected'));
+                return;
+            }
+            selectedTrace = key;
+            traceSpark = 24;
+            document.querySelectorAll('.running-item.selected').forEach(el => el.classList.remove('selected'));
+            button?.classList.add('selected');
+            updateTracePanel(item);
+            document.getElementById('constellation-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function bindRunningItems(items) {
+            document.querySelectorAll('[data-trace-key]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const key = btn.dataset.traceKey;
+                    const item = items.find(entry => (entry.trace_key || entry.name) === key);
+                    if (!item) return;
+                    if (item.action === 'open' && item.href) {
+                        window.location.href = item.href;
+                        return;
+                    }
+                    selectTrace(item, btn);
+                });
+            });
+            if (selectedTrace) {
+                const item = items.find(entry => (entry.trace_key || entry.name) === selectedTrace);
+                const btn = document.querySelector(`[data-trace-key="${selectedTrace.replace(/"/g, '\\"')}"]`);
+                if (item && btn) {
+                    btn.classList.add('selected');
+                    updateTracePanel(item);
+                } else {
+                    selectedTrace = null;
+                    updateTracePanel(null);
+                }
+            }
+            if (traceTimer) clearInterval(traceTimer);
+            traceTimer = setInterval(() => {
+                if (!selectedTrace) return;
+                const item = (pulseData?.running || []).find(entry => (entry.trace_key || entry.name) === selectedTrace);
+                if (item) updateTracePanel(item);
+            }, 1000);
+        }
+
+        function runningMeta(item) {
+            if (item.kind === 'chat') return esc(item.detail);
+            const parts = [];
+            if (item.kind === 'skill') parts.push(sourceLabel(item.detail));
+            else if (item.detail && item.detail !== item.name) parts.push(esc(item.detail));
+            if (item.status === 'queued') parts.push('queued');
+            else if (item.started) parts.push(`started ${timeAgo(item.started)}`);
+            return parts.join(' · ') || esc(item.status);
+        }
+
+        function renderRunning(items) {
+            const list = document.getElementById('running-list');
+            if (!items.length) {
+                list.innerHTML = '<li class="empty-hot">Nothing running. The command centre is idle.</li>';
+                return;
+            }
+            list.innerHTML = items.map(item => {
+                const badge = esc(item.kind || 'task');
+                const key = esc(item.trace_key || item.name);
+                const body = `<div class="running-body"><div class="running-name">${esc(item.name)}</div><div class="running-meta">${runningMeta(item)}</div></div>`;
+                const inner = `<span class="running-dot ${item.status === 'queued' ? 'queued' : ''}" aria-hidden="true"></span>${body}<span class="badge running-badge ${badge}">${badge}</span>`;
+                if (item.action === 'open' && item.href) {
+                    return `<li><a class="list-group-item list-group-item-action running-item" href="${esc(item.href)}" data-trace-key="${key}">${inner}</a></li>`;
+                }
+                return `<li><button type="button" class="list-group-item list-group-item-action running-item" data-trace-key="${key}">${inner}</button></li>`;
+            }).join('');
+            bindRunningItems(items);
+        }
+
+        function renderHotFiles(files) {
+            const list = document.getElementById('hot-files');
+            if (!files.length) {
+                list.innerHTML = '<li class="empty-hot">Quiet week in the vault.</li>';
+                return;
+            }
+            list.innerHTML = files.map(f => {
+                const from = encodeURIComponent('/pulse');
+                const href = `/document?path=${encodeURIComponent(f.path)}&from=${from}`;
+                return `<li><a class="list-group-item list-group-item-action hot-item" href="${href}" target="_blank" rel="noopener"><div class="hot-title">${esc(f.title || f.path)}</div><span class="hot-meta">${esc(f.path)} · ${timeAgo(f.mtime)}</span></a></li>`;
+            }).join('');
+        }
+
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(rect.width * dpr);
+            canvas.height = Math.floor(rect.height * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        // Radius reads outward as time since anything in the project last changed.
+        const RINGS = [
+            { label: 'today', max: 1 },
+            { label: '7 days', max: 7 },
+            { label: '30 days', max: 30 },
+            { label: 'dormant', max: 180 },
+        ];
+        const INNER_EDGE = 0.16;
+        let ringEdges = [0.3, 0.53, 0.76, 0.99];
+        const STATE_COLOUR = {
+            attention: [242, 184, 91],
+            drifting: [255, 107, 114],
+            fresh: [113, 196, 214],
+            rested: [111, 118, 129],
+            quiet: [139, 148, 158],
+            person: [139, 131, 246],
+            incident: [247, 120, 186],
+            note: [143, 163, 191],
+        };
+
+        function ringIndex(age) {
+            if (age === null || age === undefined) return RINGS.length - 1;
+            const found = RINGS.findIndex(ring => age < ring.max);
+            return found === -1 ? RINGS.length - 1 : found;
+        }
+
+        /* Give each ring room in proportion to how many projects sit in it, so a busy
+           "today" does not collapse into the middle. */
+        function sizeRings(signals) {
+            const counts = RINGS.map(() => 0);
+            signals.forEach(signal => { counts[ringIndex(signal.age_days)] += 1; });
+            const total = signals.length || 1;
+            let running = 0;
+            ringEdges = counts.map((count, i) => {
+                running += count;
+                const byCrowding = running / total;
+                const evenly = (i + 1) / RINGS.length;
+                return INNER_EDGE + (1 - INNER_EDGE) * (0.55 * byCrowding + 0.45 * evenly);
+            });
+        }
+
+        function ringRadius(age) {
+            const i = ringIndex(age);
+            const inner = i ? ringEdges[i - 1] : INNER_EDGE;
+            const floor = i ? RINGS[i - 1].max : 0;
+            const within = Math.min(1, Math.max(0, ((age ?? RINGS[i].max) - floor) / (RINGS[i].max - floor)));
+            return inner + (ringEdges[i] - inner) * (0.25 + 0.7 * within);
+        }
+
+        function isProject(node) {
+            return (node.kind || 'project') === 'project';
+        }
+
+        function nodeState(node) {
+            if (!isProject(node)) return node.kind;
+            if (Number(node.active_board_items || 0) > 0) return 'attention';
+            if (node.stale) return 'drifting';
+            if (Number(node.recent_edits || 0) > 0) return 'fresh';
+            if (node.status === 'completed' || node.status === 'paused') return 'rested';
+            return 'quiet';
+        }
+
+        function notability(node) {
+            return Number(node.active_board_items || 0) * 100
+                + Math.min(Number(node.recent_edits || 0), 20) * 4
+                + (node.related || []).length * 2
+                + Math.max(0, 1 - (node.age_days ?? 180) / 30);
+        }
+
+        /* Search narrows the constellation to matching stars; every term must hit
+           the slug, title or any front-matter value (tags, people, repos, …). */
+        function matchesSearch(node) {
+            if (!isProject(node) && !layers.has(node.kind)) return false;
+            if (!searchTerms.length) return true;
+            const haystack = [node.name, node.title, node.keywords, node.status, node.owner]
+                .map(value => String(value || '')).join(' ').toLowerCase();
+            return searchTerms.every(term => haystack.includes(term));
+        }
+
+        function matchesFilter(node) {
+            if (filterMode === 'attention') return Number(node.active_board_items || 0) > 0;
+            if (filterMode === 'stale') return !!node.stale;
+            if (filterMode === 'due') return !!node.verification_due;
+            return true;
+        }
+
+        /* Order projects so each connected group of `## Related` links occupies one
+           contiguous arc, which keeps relationship lines short and legible. */
+        function clusterOrder(signals) {
+            const byName = new Map(signals.map(signal => [signal.name, signal]));
+            const degree = name => (byName.get(name)?.related || []).filter(r => byName.has(r)).length;
+            const rank = (a, b) => degree(b) - degree(a) || a.localeCompare(b);
+            const unplaced = new Set(byName.keys());
+            const groups = [];
+            for (const seed of [...byName.keys()].sort(rank)) {
+                if (!unplaced.has(seed)) continue;
+                unplaced.delete(seed);
+                const queue = [seed];
+                const group = [];
+                while (queue.length) {
+                    const name = queue.shift();
+                    group.push(name);
+                    for (const peer of (byName.get(name).related || []).filter(p => unplaced.has(p)).sort(rank)) {
+                        unplaced.delete(peer);
+                        queue.push(peer);
+                    }
+                }
+                groups.push(group);
+            }
+            groups.sort((a, b) => b.length - a.length);
+            return groups.flat().map(name => byName.get(name));
+        }
+
+        /* Nudge angles apart so crowded orbits stay readable. Radius carries meaning,
+           so only the angle moves. */
+        function spreadAngles(list, cx, cy, rx, ry) {
+            const px = node => cx + Math.cos(node.angle) * rx * node.rNorm;
+            const py = node => cy + Math.sin(node.angle) * ry * node.rNorm;
+            const minGap = 32;
+            for (let pass = 0; pass < 90; pass++) {
+                let crowded = false;
+                for (let i = 0; i < list.length; i++) {
+                    for (let j = i + 1; j < list.length; j++) {
+                        const a = list[i];
+                        const b = list[j];
+                        const gap = Math.hypot(px(a) - px(b), py(a) - py(b));
+                        if (gap >= minGap) continue;
+                        const shove = ((minGap - gap) / minGap) * 0.035;
+                        const delta = Math.atan2(Math.sin(b.angle - a.angle), Math.cos(b.angle - a.angle));
+                        const dir = delta >= 0 ? 1 : -1;
+                        // An inner orbit covers less ground per radian, so it needs a bigger nudge.
+                        a.angle -= dir * shove / Math.max(a.rNorm, 0.2);
+                        b.angle += dir * shove / Math.max(b.rNorm, 0.2);
+                        crowded = true;
+                    }
+                }
+                if (!crowded) break;
+            }
+        }
+
+        function buildNodes(signals) {
+            const w = canvas.clientWidth;
+            const h = canvas.clientHeight;
+            const cx = w / 2;
+            const cy = h / 2;
+            const rx = Math.max(60, w * 0.46 - 30);
+            const ry = Math.max(50, h * 0.44 - 16);
+            const projects = signals.filter(isProject);
+            const others = signals.filter(signal => !isProject(signal) && layers.has(signal.kind));
+            sizeRings(projects);
+            const list = clusterOrder(projects).map((signal, i) => ({
+                ...signal,
+                kind: 'project',
+                angle: -Math.PI / 2 + (Math.PI * 2 * (i + 0.5)) / Math.max(projects.length, 1),
+                rNorm: ringRadius(signal.age_days),
+                phase: i * 0.7,
+            }));
+            const angleOf = new Map(list.map(node => [node.name, node.angle]));
+            others.forEach((signal, i) => {
+                // Circular mean of linked projects' angles; unlinked stars scatter by name.
+                const linked = (signal.related || []).filter(name => angleOf.has(name));
+                const angle = linked.length
+                    ? Math.atan2(...linked.reduce(([y, x], name) => [y + Math.sin(angleOf.get(name)), x + Math.cos(angleOf.get(name))], [0, 0]))
+                    : (hashString(signal.name) % 3600) / 3600 * Math.PI * 2;
+                list.push({ ...signal, angle: angle + ((hashString(signal.name) % 100) - 50) / 900, rNorm: ringRadius(signal.age_days), phase: i * 1.3 });
+            });
+            spreadAngles(list, cx, cy, rx, ry);
+            /* Only the most notable few carry a resting label; the rest surface on hover,
+               which keeps the busy inner orbits legible. */
+            list.forEach(node => { node.labelRank = Infinity; });
+            list.filter(isProject)
+                .sort((a, b) => notability(b) - notability(a) || a.name.localeCompare(b.name))
+                .forEach((node, i) => { node.labelRank = i; });
+            list.forEach(node => {
+                node.x = cx + Math.cos(node.angle) * rx * node.rNorm;
+                node.y = cy + Math.sin(node.angle) * ry * node.rNorm;
+                node.drawY = node.y;
+            });
+            const position = new Map(list.map((node, i) => [node.name, i]));
+            const seen = new Set();
+            edges = [];
+            list.forEach(node => {
+                (node.related || []).forEach(name => {
+                    const other = position.get(name);
+                    if (other === undefined) return;
+                    const self = position.get(node.name);
+                    const key = self < other ? `${self}:${other}` : `${other}:${self}`;
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    edges.push([list[self], list[other]]);
+                });
+            });
+            return list;
+        }
+
+        function nodeRadius(node) {
+            if (!isProject(node)) return 2.6 + Math.min((node.related || []).length, 6) * 0.35;
+            const attention = Math.min(Number(node.active_board_items || 0), 3);
+            const edits = Math.min(Number(node.recent_edits || 0), 10);
+            const pulse = reduceMotion ? 0.5 : (Math.sin(frame * (0.025 + edits * 0.008) + node.phase) + 1) / 2;
+            return 3 + attention * 2.2 + (edits ? 0.5 + pulse * 1.2 : 0);
+        }
+
+        function focusNames() {
+            const anchor = hoveredNode?.name || selectedName;
+            if (!anchor) return null;
+            const node = nodes.find(entry => entry.name === anchor);
+            if (!node) return null;
+            // Links are stored on one side only for non-project stars, so look both ways.
+            const linkedHere = nodes.filter(other => (other.related || []).includes(node.name)).map(other => other.name);
+            return new Set([node.name, ...(node.related || []), ...linkedHere]);
+        }
+
+        function nodeAlpha(node, focus) {
+            if (focus) return focus.has(node.name) ? 1 : 0.14;
+            if (!matchesFilter(node) && node.name !== selectedName) return 0.12;
+            return 1;
+        }
+
+        function shouldLabel(node, focus) {
+            if (node === hoveredNode || node.name === selectedName) return true;
+            if (focus) return focus.has(node.name);
+            if (!isProject(node)) return false;
+            if (filterMode !== 'all' || searchTerms.length) return filterLabels.has(node.name);
+            return nodeState(node) === 'attention' || node.labelRank < 7;
+        }
+
+        function drawRings(cx, cy, rx, ry) {
+            RINGS.forEach((ring, i) => {
+                ctx.setLineDash([2, 5]);
+                ctx.strokeStyle = 'rgba(120, 128, 140, 0.16)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, rx * ringEdges[i], ry * ringEdges[i], 0, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = 'rgba(120, 128, 140, 0.55)';
+                const k = 1 / view.scale;
+                ctx.font = `${9 * k}px -apple-system, system-ui, sans-serif`;
+                ctx.textAlign = 'left';
+                ctx.fillText(ring.label, cx + 6 * k, cy - ry * ringEdges[i] - 4 * k);
+            });
+        }
+
+        /* Draw the most important labels first and drop any that would overlap one
+           already placed, so a crowded orbit thins out instead of turning to mush.
+           Boxes use the settled position, not the bobbing one, to avoid flicker. */
+        function drawLabels(queue) {
+            // Other labels and the few board-flagged stars are obstacles; ordinary stars
+            // are not, because a halo keeps the name readable over them.
+            const placed = nodes
+                .filter(node => nodeState(node) === 'attention')
+                .map(node => {
+                    const edge = nodeRadius(node) + 4;
+                    return [node.x - edge, node.y - edge, node.x + edge, node.y + edge];
+                });
+            const free = box => !placed.some(other =>
+                box[0] < other[2] && box[2] > other[0] && box[1] < other[3] && box[3] > other[1]);
+            ctx.textAlign = 'center';
+            ctx.lineJoin = 'round';
+            queue.sort((a, b) => a.priority - b.priority);
+            // Text stays screen-sized at any zoom (k converts screen px to world units).
+            const k = 1 / view.scale;
+            queue.forEach(({ node, radius, active, colour }) => {
+                ctx.font = `${active ? '600 ' : ''}${10 * k}px -apple-system, system-ui, sans-serif`;
+                const full = node.title || node.name;
+                const text = full.length > 26 ? `${full.slice(0, 25)}…` : full;
+                const half = ctx.measureText(text).width / 2 + 4 * k;
+                const box = offset => [node.x - half, node.y + offset - 10 * k, node.x + half, node.y + offset + 4 * k];
+                const offset = [radius + 15 * k, -radius - 10 * k].find(candidate => free(box(candidate)));
+                if (offset === undefined && !active) return;
+                const chosen = offset ?? radius + 15 * k;
+                placed.push(box(chosen));
+                // A halo keeps the name readable where it crosses a star or a link.
+                ctx.lineWidth = 3 * k;
+                ctx.strokeStyle = 'rgba(9, 10, 13, 0.85)';
+                ctx.strokeText(text, node.x, node.drawY + chosen);
+                ctx.fillStyle = colour;
+                ctx.fillText(text, node.x, node.drawY + chosen);
+            });
+        }
+
+        function starPath(node, r) {
+            ctx.beginPath();
+            const { x } = node;
+            const y = node.drawY;
+            if (node.kind === 'person') {
+                const d = r * 1.3;
+                ctx.moveTo(x, y - d); ctx.lineTo(x + d, y); ctx.lineTo(x, y + d); ctx.lineTo(x - d, y);
+            } else if (node.kind === 'incident') {
+                const d = r * 1.4;
+                ctx.moveTo(x, y - d); ctx.lineTo(x + d * 0.9, y + d * 0.6); ctx.lineTo(x - d * 0.9, y + d * 0.6);
+            } else if (node.kind === 'note') {
+                ctx.rect(x - r, y - r, r * 2, r * 2);
+                return;
+            } else {
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                return;
+            }
+            ctx.closePath();
+        }
+
+        /* Moons: once zoomed in, each on-screen project shows its own pages orbiting
+           it, newest innermost. Sized in world units so they scale with the star. */
+        function drawMoons(w, h) {
+            moons = [];
+            if (view.scale < MOON_SCALE) return;
+            const k = 1 / view.scale;      // only for text, which stays screen-sized
+            const fade = Math.min(1, (view.scale - MOON_SCALE) / 0.6 + 0.35);
+            nodes.forEach(node => {
+                if (!isProject(node) || !matchesSearch(node) || !(node.pages || []).length) return;
+                const sx = node.x * view.scale + view.x;
+                const sy = node.drawY * view.scale + view.y;
+                if (sx < -60 || sy < -60 || sx > w + 60 || sy > h + 60) return;
+                const focus = node === hoveredNode || node.name === selectedName;
+                const base = nodeRadius(node) + 5;
+                node.pages.forEach((page, i) => {
+                    const ring = Math.floor(i / 12);
+                    const inRing = Math.min(12, node.pages.length - ring * 12);
+                    const angle = (i % 12) / inRing * Math.PI * 2 + ring * 0.26 + node.phase;
+                    const orbit = base + ring * 3.5;
+                    const moon = { page, parent: node, x: node.x + Math.cos(angle) * orbit, y: node.drawY + Math.sin(angle) * orbit, r: 0.9 };
+                    const age = (Date.now() - new Date(page.mtime).getTime()) / 86400000;
+                    const alpha = fade * (focus ? 1 : 0.8) * Math.max(0.6, 1 - age / 60);
+                    const hovered = hoveredMoon && hoveredMoon.page.path === page.path;
+                    ctx.fillStyle = hovered ? '#f0f3f6' : `rgba(201, 209, 217, ${alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(moon.x, moon.y, moon.r * (hovered ? 1.8 : 1), 0, Math.PI * 2);
+                    ctx.fill();
+                    moons.push(moon);
+                });
+            });
+            if (hoveredMoon) {
+                const moon = moons.find(entry => entry.page.path === hoveredMoon.page.path);
+                if (moon) {
+                    ctx.font = `${10 * k}px -apple-system, system-ui, sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.lineWidth = 3 * k;
+                    ctx.strokeStyle = 'rgba(9, 10, 13, 0.85)';
+                    const text = hoveredMoon.page.title.length > 40 ? `${hoveredMoon.page.title.slice(0, 39)}…` : hoveredMoon.page.title;
+                    ctx.strokeText(text, moon.x, moon.y - 6 * k);
+                    ctx.fillStyle = 'rgba(240, 243, 246, 0.95)';
+                    ctx.fillText(text, moon.x, moon.y - 6 * k);
+                }
+            }
+        }
+
+        function moonAt(x, y) {
+            for (let i = moons.length - 1; i >= 0; i--) {
+                if (Math.hypot(x - moons[i].x, y - moons[i].y) <= Math.max(moons[i].r * 1.8, 5 / view.scale)) return moons[i];
+            }
+            return null;
+        }
+
+        function drawConstellation() {
+            if (!pulseData) {
+                requestAnimationFrame(drawConstellation);
+                return;
+            }
+            const w = canvas.clientWidth;
+            const h = canvas.clientHeight;
+            const dpr = window.devicePixelRatio || 1;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.x, dpr * view.y);
+            const cx = w / 2;
+            const cy = h / 2;
+            const rx = Math.max(60, w * 0.46 - 30);
+            const ry = Math.max(50, h * 0.44 - 16);
+            const focus = focusNames();
+            const labelQueue = [];
+            const tracedIndex = selectedTrace
+                ? traceNodeIndex((pulseData.running || []).find(entry => (entry.trace_key || entry.name) === selectedTrace) || {})
+                : -1;
+
+            drawRings(cx, cy, rx, ry);
+
+            edges.forEach(([a, b]) => {
+                if (!matchesSearch(a) || !matchesSearch(b)) return;
+                const lit = focus && (focus.has(a.name) && focus.has(b.name));
+                const dimmed = focus && !lit;
+                ctx.strokeStyle = lit
+                    ? 'rgba(113, 196, 214, 0.55)'
+                    : dimmed
+                        ? 'rgba(110, 118, 129, 0.05)'
+                        : 'rgba(110, 118, 129, 0.16)';
+                ctx.lineWidth = (lit ? 1.4 : 1) / view.scale;
+                ctx.beginPath();
+                ctx.moveTo(a.x, a.drawY);
+                ctx.lineTo(b.x, b.drawY);
+                ctx.stroke();
+            });
+
+            // The centre is "now": everything drifts outward as it goes untouched.
+            const corePulse = 0.5 + (reduceMotion ? 0 : Math.sin(frame * 0.04) * 0.15);
+            ctx.fillStyle = hyperdrive ? '#c884f4' : (selectedTrace ? '#62d7a5' : '#ff6b72');
+            ctx.beginPath();
+            ctx.arc(cx, cy, 5 * (0.7 + corePulse * 0.6), 0, Math.PI * 2);
+            ctx.fill();
+
+            if (tracedIndex >= 0 && traceSpark > 0) {
+                const target = nodes[tracedIndex];
+                for (let i = 0; i < 3; i++) {
+                    const t = ((frame * 0.014 + i * 0.33) % 1);
+                    ctx.strokeStyle = `rgba(139, 131, 246, ${0.5 * (1 - t)})`;
+                    ctx.lineWidth = 1.6;
+                    ctx.beginPath();
+                    ctx.arc(target.x, target.drawY, 6 + t * 26, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                traceSpark = Math.max(0, traceSpark - 0.06);
+            }
+
+            nodes.forEach((node, index) => {
+                if (!matchesSearch(node)) {
+                    node.drawY = node.y;
+                    return;
+                }
+                const state = nodeState(node);
+                const edits = Number(node.recent_edits || 0);
+                const traced = index === tracedIndex;
+                const active = node === hoveredNode || node.name === selectedName || traced;
+                const alpha = active ? 1 : nodeAlpha(node, focus);
+                // Hold still once zoomed far enough for moons, so they can be pointed at.
+                const bob = reduceMotion || !edits || view.scale >= MOON_SCALE
+                    ? 0
+                    : Math.sin(frame * (0.018 + Math.min(edits, 10) * 0.003) + node.phase) * 1.8;
+                node.drawY = node.y + bob;
+                const r = nodeRadius(node) + (active ? 1.6 : 0);
+                const [cr, cg, cb] = hyperdrive ? [200, 132, 244] : STATE_COLOUR[state];
+                const glow = Math.max(0.28, 1 - (node.age_days ?? 180) / 30);
+                if (active || state === 'attention' || state === 'drifting') {
+                    ctx.shadowBlur = active ? 15 : 8;
+                    ctx.shadowColor = `rgba(${cr}, ${cg}, ${cb}, ${alpha})`;
+                }
+                ctx.fillStyle = active
+                    ? '#f0f3f6'
+                    : `rgba(${cr}, ${cg}, ${cb}, ${alpha * (state === 'quiet' || state === 'rested' ? 0.2 + glow * 0.5 : 0.55 + glow * 0.45)})`;
+                starPath(node, r);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                if (state === 'rested') {
+                    ctx.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, ${alpha * 0.55})`;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.drawY, r + 2.5, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                if (state === 'attention' || active) {
+                    const ringPulse = reduceMotion ? 0 : Math.sin(frame * 0.06) * 1.2;
+                    ctx.strokeStyle = active && !traced
+                        ? 'rgba(240, 243, 246, 0.8)'
+                        : traced
+                            ? 'rgba(139, 131, 246, 0.85)'
+                            : `rgba(${cr}, ${cg}, ${cb}, ${alpha * 0.75})`;
+                    ctx.lineWidth = 1.6;
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.drawY, r + 3.8 + ringPulse, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                if (shouldLabel(node, focus)) {
+                    labelQueue.push({
+                        node,
+                        radius: r,
+                        active,
+                        priority: active ? 0 : state === 'attention' ? 1 : 2,
+                        colour: active
+                            ? 'rgba(240, 243, 246, 0.95)'
+                            : `rgba(${cr}, ${cg}, ${cb}, ${Math.min(1, alpha) * 0.85})`,
+                    });
+                }
+            });
+
+            drawMoons(w, h);
+            drawLabels(labelQueue);
+
+            if (hyperdrive) {
+                for (let i = 0; i < 12; i++) {
+                    const a = frame * 0.08 + i * 0.52;
+                    const dist = 20 + (i % 4) * 18;
+                    ctx.fillStyle = `hsla(${260 + i * 12}, 80%, 70%, 0.35)`;
+                    ctx.beginPath();
+                    ctx.arc(cx + Math.cos(a) * dist, cy + Math.sin(a) * dist, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            frame++;
+            requestAnimationFrame(drawConstellation);
+        }
+
+        function nodeAt(x, y) {
+            for (let i = nodes.length - 1; i >= 0; i--) {
+                const node = nodes[i];
+                if (!matchesSearch(node)) continue;
+                const distance = Math.hypot(x - node.x, y - node.drawY);
+                if (distance <= Math.max(10, nodeRadius(node) + 5) / Math.sqrt(view.scale)) return node;
+            }
+            return null;
+        }
+
+        function projectSignals(data) {
+            if (data?.vault?.project_signals?.length) return [...data.vault.project_signals, ...(data.vault.entities || [])];
+            return (data?.vault?.project_names || []).map(name => ({
+                name,
+                title: name.replaceAll('-', ' '),
+                status: 'unknown',
+                owner: '',
+                related: [],
+                recent_edits: 0,
+                active_board_items: 0,
+                last_activity: null,
+                age_days: null,
+                stale: false,
+            }));
+        }
+
+        function nodeSummaryLine(node) {
+            const edits = Number(node.recent_edits || 0);
+            const board = Number(node.active_board_items || 0);
+            const parts = [node.status || 'unknown'];
+            parts.push(node.last_activity ? `changed ${timeAgo(node.last_activity)}` : 'no recorded activity');
+            if (edits) parts.push(`${edits} ${edits === 1 ? 'edit' : 'edits'} this week`);
+            if (board) parts.push(`${board} on the board`);
+            return parts.join(' · ');
+        }
+
+        function showMoonTooltip(moon, x, y) {
+            const tooltip = document.getElementById('constellation-tooltip');
+            document.getElementById('constellation-tooltip-title').textContent = moon.page.title;
+            document.getElementById('constellation-tooltip-detail').textContent =
+                `${moon.parent.title || moon.parent.name} · ${moon.page.path.split('/').slice(2).join('/')} · changed ${timeAgo(moon.page.mtime)} · click to open`;
+            tooltip.style.left = `${Math.max(0, Math.min(x, canvas.clientWidth - 250))}px`;
+            tooltip.style.top = `${Math.max(0, Math.min(y, canvas.clientHeight - 70))}px`;
+            tooltip.classList.add('open');
+            tooltip.setAttribute('aria-hidden', 'false');
+        }
+
+        function showProjectTooltip(node, x, y) {
+            const tooltip = document.getElementById('constellation-tooltip');
+            if (!node) {
+                tooltip.classList.remove('open');
+                tooltip.setAttribute('aria-hidden', 'true');
+                return;
+            }
+            const links = (node.related || []).length;
+            document.getElementById('constellation-tooltip-title').textContent = node.title || node.name;
+            document.getElementById('constellation-tooltip-detail').textContent = isProject(node)
+                ? `${nodeSummaryLine(node)}${links ? ` · ${links} linked ${links === 1 ? 'project' : 'projects'}` : ''}${(node.pages || []).length ? ` · ${node.pages.length} pages` : ''}`
+                : `${KIND_LABEL[node.kind]} · changed ${timeAgo(node.last_activity)} · ${links ? `${links} linked ${links === 1 ? 'project' : 'projects'}` : 'no project links'}`;
+            tooltip.style.left = `${Math.max(0, Math.min(x, canvas.clientWidth - 250))}px`;
+            tooltip.style.top = `${Math.max(0, Math.min(y, canvas.clientHeight - 70))}px`;
+            tooltip.classList.add('open');
+            tooltip.setAttribute('aria-hidden', 'false');
+        }
+
+        function projectChips(names) {
+            return names.map(name => {
+                const node = nodes.find(entry => entry.name === name);
+                const label = node?.title || name.replaceAll('-', ' ');
+                return `<button type="button" class="btn btn-sm link-chip ${node?.stale ? 'stale' : ''}" data-project="${esc(name)}">${esc(label)}</button>`;
+            }).join('');
+        }
+
+        function detailSummary() {
+            const projects = nodes.filter(isProject);
+            const touchedToday = projects.filter(node => ringIndex(node.age_days) === 0).length;
+            const layerCounts = ['person', 'incident', 'note'].filter(kind => layers.has(kind))
+                .map(kind => `${fmt(nodes.filter(node => node.kind === kind).length)} ${KIND_LABEL[kind].toLowerCase()}${kind === 'person' ? 's' : 's'}`.replace('persons', 'people'));
+            const drifting = nodes.filter(node => node.stale)
+                .sort((a, b) => (b.age_days || 0) - (a.age_days || 0));
+            const board = nodes.filter(node => Number(node.active_board_items || 0) > 0).length;
+            const threshold = pulseData?.vault?.stale_after_days || 30;
+            if (searchTerms.length) {
+                const matches = nodes.filter(matchesSearch)
+                    .sort((a, b) => String(a.title || a.name).localeCompare(String(b.title || b.name)));
+                return [
+                    `<div class="detail-title">${fmt(matches.length)} of ${fmt(nodes.length)} stars match</div>`,
+                    matches.length
+                        ? `<div class="chip-list">${projectChips(matches.map(node => node.name))}</div>`
+                        : '<div class="detail-hint">Nothing matches. Search looks at titles and front matter.</div>',
+                ].join('');
+            }
+            const rows = [
+                `<div class="detail-title">${fmt(projects.length)} projects</div>`,
+                `<div class="detail-row">${fmt(touchedToday)} touched today · ${fmt(edges.length)} documented links · ${fmt(board)} on the board${layerCounts.length ? ` · also showing ${layerCounts.join(', ')}` : ''}</div>`,
+            ];
+            if (drifting.length) {
+                rows.push(
+                    `<div class="detail-flag">${fmt(drifting.length)} still marked live but untouched for ${threshold}+ days.</div>`,
+                    `<div class="chip-list">${projectChips(drifting.slice(0, 5).map(node => node.name))}</div>`
+                );
+            }
+            rows.push('<div class="detail-hint">Hover a star to light its documented relationships. Click one for detail. Scroll or use + to zoom (deep enough and each project’s pages appear as moons), drag to pan, double-click to reset.</div>');
+            return rows.join('');
+        }
+
+        /* Review order: what is on the board, then what claims to be live but has
+           drifted (oldest first), then what nobody has checked (freshest first). */
+        function reviewReason(node) {
+            const reasons = [];
+            const board = Number(node.active_board_items || 0);
+            if (board) reasons.push(`${board} on the board`);
+            if (node.stale) reasons.push(`drifting ${Math.round(node.age_days)}d`);
+            if (node.verification_due) reasons.push(node.provenance === 'unverified' ? 'never verified' : 'verification expired');
+            return reasons.join(' · ');
+        }
+
+        function reviewQueue() {
+            const tier = node => Number(node.active_board_items || 0) ? 0 : node.stale ? 1 : node.verification_due ? 2 : 3;
+            return nodes.filter(node => tier(node) < 3).sort((a, b) =>
+                tier(a) - tier(b)
+                || (tier(a) === 1 ? (b.age_days || 0) - (a.age_days || 0) : (a.age_days ?? 999) - (b.age_days ?? 999))
+                || a.name.localeCompare(b.name)
+            ).map(node => node.name);
+        }
+
+        function vaultLinks(markdown, slug) {
+            // README links are relative to the project folder; send them to the in-app viewer.
+            return String(markdown || '')
+                .replace(/\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (_, target, label) => `**${(label || target).trim()}**`)
+                .replace(/\]\((?!https?:|mailto:|#)([^)\s]+\.md)(#[^)]*)?\)/g, (_, rel) => {
+                    const path = new URL(rel, `https://vault/projects/${slug}/`).pathname.slice(1);
+                    return `](/document?path=${encodeURIComponent(path)}&from=${encodeURIComponent(location.pathname)})`;
+                });
+        }
+
+        function md(markdown, slug) {
+            return typeof safeMarkdown === 'function' && typeof marked !== 'undefined'
+                ? safeMarkdown(vaultLinks(markdown, slug))
+                : `<p>${esc(markdown)}</p>`;
+        }
+
+        function docHref(path) {
+            return `/document?path=${encodeURIComponent(path)}&from=${encodeURIComponent(location.pathname)}`;
+        }
+
+        async function loadBrief(name, force = false) {
+            if (!force && (briefs.has(name) || briefErrors.has(name))) return;
+            try {
+                const res = await fetch(`/api/constellation/${encodeURIComponent(name)}`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || res.statusText);
+                briefs.set(name, data);
+                briefErrors.delete(name);
+            } catch (err) {
+                briefErrors.set(name, String(err.message || err));
+            }
+            renderDetail();
+        }
+
+        function provenanceBadge(node, brief) {
+            const prov = brief?.provenance;
+            const state = prov?.state || node.provenance || 'unverified';
+            const label = { human: 'Human-checked', machine: 'Agent-checked', unverified: 'Unverified' }[state];
+            const last = prov?.verified?.[0];
+            const due = prov ? prov.due : node.verification_due;
+            const title = last ? `Last verified ${last.at} by ${last.by}${prov.stale_after ? ` · re-check from ${prov.stale_after}` : ''}` : 'No verified entry in the README frontmatter';
+            return `<span class="badge prov-pill ${due ? 'due' : esc(state)}" title="${esc(title)}">${esc(label)}${due && state !== 'unverified' ? ' · due' : ''}</span>`;
+        }
+
+        function reviewBox(node) {
+            const status = String(node.status || 'unknown').toLowerCase();
+            const inReview = review && !review.done && review.queue[review.index] === node.name;
+            const head = inReview
+                ? `<div class="review-head"><span>Review ${review.index + 1} of ${review.queue.length}</span><span><button type="button" class="btn btn-sm" data-review-nav="prev" aria-label="Previous (k)">‹</button> <button type="button" class="btn btn-sm" data-review-nav="next" aria-label="Skip (j)">Skip ›</button> <button type="button" class="btn btn-sm" data-review-nav="exit">Exit</button></span></div>`
+                : '<div class="review-head"><span>Decide</span></div>';
+            const reason = reviewReason(node);
+            const statuses = ['active', 'paused', 'blocked', 'completed'].map(value =>
+                `<button type="button" class="btn btn-sm ${value === status ? 'current' : ''}" data-review-action="status" data-status="${value}" ${value === status || reviewBusy ? 'disabled' : ''}>${value[0].toUpperCase() + value.slice(1)}</button>`
+            ).join('');
+            return `<div class="review-box ${inReview ? 'reviewing' : ''}">${head}
+                ${reason ? `<div class="review-reason">${esc(reason)}</div>` : ''}
+                <div class="review-buttons"><button type="button" class="btn btn-sm btn-success" data-review-action="confirm" ${reviewBusy ? 'disabled' : ''} title="Records your verification today and moves stale_after (c)">I've read it, it's right</button></div>
+                <div class="review-buttons" role="group" aria-label="Set status">${statuses}</div>
+                ${reviewError ? `<div class="review-error">${esc(reviewError)}</div>` : ''}
+                <div class="detail-hint">Writes only the README frontmatter. Read the current state before confirming.</div>
+            </div>`;
+        }
+
+        function detailForEntity(node) {
+            const linkedHere = nodes.filter(other => (other.related || []).includes(node.name)).map(other => other.name);
+            const related = [...new Set([...(node.related || []), ...linkedHere])];
+            return [
+                `<div class="detail-title">${esc(node.title || node.name)}</div>`,
+                `<div class="detail-meta"><span class="badge kind-pill ${esc(node.kind)}">${esc(KIND_LABEL[node.kind] || node.kind)}</span><span class="detail-owner">${esc(node.name)}</span></div>`,
+                `<div class="detail-row">Changed ${esc(timeAgo(node.last_activity))}</div>`,
+                related.length
+                    ? `<div class="brief-section"><strong>Linked projects</strong><div class="chip-list">${projectChips(related)}</div></div>`
+                    : '<div class="detail-hint">Links to no project, and no project README links here.</div>',
+                `<div class="detail-actions">
+                    <a class="btn btn-primary" href="/assistant?item=${encodeURIComponent('doc:' + node.name)}">Chat about this</a>
+                    <a class="btn" href="${docHref(node.name)}" target="_blank" rel="noopener">Open</a>
+                </div>`,
+            ].join('');
+        }
+
+        function detailForNode(node) {
+            if (!isProject(node)) return detailForEntity(node);
+            const brief = briefs.get(node.name);
+            const edits = Number(node.recent_edits || 0);
+            const status = String(node.status || 'unknown').toLowerCase();
+            const path = `projects/${node.name}/README.md`;
+            const rows = [
+                `<div class="detail-title">${esc(node.title || node.name)}</div>`,
+                `<div class="detail-meta"><span class="badge status-pill ${esc(status)}">${esc(status)}</span>${provenanceBadge(node, brief)}${node.owner ? `<span class="detail-owner">${esc(node.owner)}</span>` : ''}</div>`,
+                `<div class="detail-row">${node.last_activity ? `Changed ${esc(timeAgo(node.last_activity))}` : 'No recorded activity'} · ${fmt(edits)} ${edits === 1 ? 'edit' : 'edits'} this week${brief?.last_updated ? ` · README dated ${esc(brief.last_updated)}` : ''}</div>`,
+            ];
+            if (node.stale) {
+                rows.push(`<div class="detail-flag">Marked ${esc(status)}, untouched for ${Math.round(node.age_days)} days. Restart it or change its status.</div>`);
+            }
+            const items = node.board_items || [];
+            if (items.length) {
+                rows.push(`<div class="brief-section"><strong>On the board</strong><ul class="brief-list">${items.map(item =>
+                    `<li><a href="/assistant?item=${encodeURIComponent(item.id)}">${esc(item.title)}</a></li>`).join('')}</ul></div>`);
+            }
+            rows.push(reviewBox(node));
+            if (!brief) {
+                rows.push(briefErrors.has(node.name)
+                    ? `<div class="detail-hint">Briefing unavailable: ${esc(briefErrors.get(node.name))}</div>`
+                    : '<div class="detail-hint">Loading briefing…</div>');
+            } else {
+                if (brief.overview) rows.push(`<div class="brief-section"><strong>Overview</strong><div class="brief-md">${md(brief.overview, node.name)}</div></div>`);
+                if (brief.current_state) {
+                    const open = expanded.has(node.name);
+                    rows.push(`<div class="brief-section"><strong>Current state</strong><div class="brief-md ${open ? '' : 'brief-clamp'}">${md(brief.current_state, node.name)}</div>
+                        <button type="button" class="btn btn-link brief-toggle" data-brief-toggle="${esc(node.name)}">${open ? 'Show less' : 'Show all'}</button></div>`);
+                } else {
+                    rows.push('<div class="detail-hint">No “Current state” section in the README.</div>');
+                }
+                if (brief.links.length) {
+                    rows.push(`<div class="brief-section"><strong>Linked</strong><ul class="brief-list">${brief.links.map(link =>
+                        `<li><span class="link-kind">${esc(link.kind)}</span><a href="${esc(link.url)}" target="_blank" rel="noopener">${esc(link.label)}</a></li>`).join('')}</ul></div>`);
+                }
+                if (brief.recent_files.length) {
+                    rows.push(`<div class="brief-section"><strong>Recently changed</strong><ul class="brief-list">${brief.recent_files.map(file =>
+                        `<li>${file.path.endsWith('.md') ? `<a href="${docHref(file.path)}" target="_blank" rel="noopener">${esc(file.name)}</a>` : esc(file.name)}<span class="meta">${esc(timeAgo(file.mtime))}</span></li>`).join('')}</ul></div>`);
+                }
+            }
+            const related = node.related || [];
+            rows.push(related.length
+                ? `<div class="brief-section"><strong>Related</strong><div class="chip-list">${projectChips(related)}</div></div>`
+                : '<div class="detail-hint">No documented relationships yet.</div>');
+            rows.push(`<div class="detail-actions">
+                <a class="btn btn-primary" href="/assistant?item=${encodeURIComponent('doc:' + path)}">Chat about this</a>
+                <a class="btn" href="${docHref(path)}" target="_blank" rel="noopener">Open README</a>
+            </div>`);
+            return rows.join('');
+        }
+
+        function reviewDoneSummary() {
+            return `<div class="detail-title">Review done</div>
+                <div class="detail-row">${fmt(review.decided)} decided, ${fmt(review.queue.length - review.decided)} skipped.</div>
+                <div class="review-buttons"><button type="button" class="btn btn-sm" data-review-nav="restart">Start again</button><button type="button" class="btn btn-sm" data-review-nav="exit">Close</button></div>`;
+        }
+
+        function renderDetail() {
+            const panel = document.getElementById('constellation-detail');
+            const node = selectedName ? nodes.find(entry => entry.name === selectedName) : null;
+            if (selectedName && !node) selectedName = null;
+            const markup = review?.done ? reviewDoneSummary() : node ? detailForNode(node) : detailSummary();
+            // A poll that changes nothing must not reset the reader's scroll position.
+            if (markup === panel.dataset.markup) return;
+            // Not `data-project`: the click handler treats that attribute as a chip,
+            // so on the panel it would swallow every click inside the drawer.
+            const sameProject = panel.dataset.shown === (selectedName || '');
+            panel.dataset.markup = markup;
+            panel.dataset.shown = selectedName || '';
+            const scroll = panel.scrollTop;
+            panel.innerHTML = markup;
+            if (sameProject) panel.scrollTop = scroll;
+        }
+
+        // One delegated listener, so re-rendering the drawer never stacks handlers.
+        document.getElementById('constellation-detail').addEventListener('click', event => {
+            const chip = event.target.closest('[data-project]');
+            if (chip) return selectProject(chip.dataset.project);
+            const toggle = event.target.closest('[data-brief-toggle]');
+            if (toggle) {
+                const name = toggle.dataset.briefToggle;
+                expanded.has(name) ? expanded.delete(name) : expanded.add(name);
+                return renderDetail();
+            }
+            const nav = event.target.closest('[data-review-nav]');
+            if (nav) return reviewNav(nav.dataset.reviewNav);
+            const action = event.target.closest('[data-review-action]');
+            if (action) applyReview(action.dataset.reviewAction, action.dataset.status || '');
+        });
+
+        function selectProject(name) {
+            selectedName = nodes.some(node => node.name === name) ? name : null;
+            reviewError = '';
+            if (selectedName && isProject(nodes.find(node => node.name === selectedName))) loadBrief(selectedName);
+            const url = new URL(location.href);
+            selectedName ? url.searchParams.set('focus', selectedName) : url.searchParams.delete('focus');
+            history.replaceState(null, '', url);
+            const full = document.getElementById('full-toggle');
+            full.href = FULL ? `/pulse${selectedName ? `?focus=${encodeURIComponent(selectedName)}` : ''}` : `/constellation${selectedName ? `?focus=${encodeURIComponent(selectedName)}` : ''}`;
+            renderDetail();
+        }
+
+        function startReview() {
+            const queue = reviewQueue();
+            if (!queue.length) return;
+            review = { queue, index: 0, decided: 0, done: false };
+            document.getElementById('constellation-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            selectProject(queue[0]);
+        }
+
+        function reviewNav(direction) {
+            if (direction === 'restart') return startReview();
+            if (!review || direction === 'exit') {
+                review = null;
+                return renderDetail();
+            }
+            const next = review.index + (direction === 'prev' ? -1 : 1);
+            if (next < 0) return;
+            if (next >= review.queue.length) {
+                review.done = true;
+                selectedName = null;
+                return renderDetail();
+            }
+            review.index = next;
+            selectProject(review.queue[next]);
+        }
+
+        async function applyReview(action, status) {
+            if (!selectedName || reviewBusy) return;
+            const name = selectedName;
+            reviewBusy = true;
+            reviewError = '';
+            renderDetail();
+            try {
+                const res = await fetch(`/api/constellation/${encodeURIComponent(name)}/review`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action, status }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || res.statusText);
+                briefs.set(name, data);
+                reviewBusy = false;
+                if (review && !review.done && review.queue[review.index] === name) {
+                    review.decided += 1;
+                    reviewNav('next');
+                }
+                await refresh();
+            } catch (err) {
+                reviewBusy = false;
+                reviewError = `Not saved: ${err.message || err}`;
+                renderDetail();
+            }
+        }
+
+        document.getElementById('review-start').addEventListener('click', startReview);
+
+        function syncLayerButtons() {
+            document.querySelectorAll('[data-layer]').forEach(button => {
+                button.setAttribute('aria-pressed', String(layers.has(button.dataset.layer)));
+            });
+        }
+        syncLayerButtons();
+        document.getElementById('constellation-layers').addEventListener('click', event => {
+            const button = event.target.closest('[data-layer]');
+            if (!button) return;
+            const kind = button.dataset.layer;
+            layers.has(kind) ? layers.delete(kind) : layers.add(kind);
+            try { localStorage.setItem('constellation-layers', JSON.stringify([...layers])); } catch (err) { /* per-viewer only */ }
+            syncLayerButtons();
+            if (selectedName && !nodes.find(node => node.name === selectedName && matchesSearch(node))) selectedName = null;
+            if (pulseData) nodes = buildNodes(projectSignals(pulseData));
+            computeFilterLabels();
+            renderDetail();
+        });
+
+        function computeFilterLabels() {
+            filterLabels = new Set();
+            if (filterMode === 'all' && !searchTerms.length) return;
+            const matches = nodes.filter(node => matchesSearch(node) && matchesFilter(node)).sort(filterMode === 'stale'
+                ? (a, b) => (b.age_days || 0) - (a.age_days || 0)
+                : (a, b) => Number(b.active_board_items || 0) - Number(a.active_board_items || 0));
+            matches.slice(0, 16).forEach(node => filterLabels.add(node.name));
+        }
+
+        function renderFilterCounts() {
+            const counts = {
+                attention: nodes.filter(node => Number(node.active_board_items || 0) > 0).length,
+                stale: nodes.filter(node => node.stale).length,
+                due: nodes.filter(node => node.verification_due).length,
+                review: reviewQueue().length,
+            };
+            document.querySelectorAll('[data-count]').forEach(el => {
+                el.textContent = counts[el.dataset.count] ? ` ${counts[el.dataset.count]}` : '';
+            });
+        }
+
+        document.getElementById('constellation-filters').addEventListener('click', event => {
+            const button = event.target.closest('[data-filter]');
+            if (!button) return;
+            filterMode = button.dataset.filter;
+            document.querySelectorAll('[data-filter]').forEach(el => {
+                el.classList.toggle('active', el === button);
+                el.setAttribute('aria-pressed', String(el === button));
+            });
+            computeFilterLabels();
+        });
+
+        document.getElementById('constellation-search').addEventListener('input', event => {
+            searchTerms = event.target.value.toLowerCase().split(/\s+/).filter(Boolean);
+            if (selectedName && !matchesSearch(nodes.find(node => node.name === selectedName) || {})) {
+                selectedName = null;
+            }
+            computeFilterLabels();
+            renderDetail();
+        });
+
+        function zoomAt(factor, sx, sy) {
+            const scale = Math.min(6, Math.max(1, view.scale * factor));
+            const k = scale / view.scale;
+            view.x = sx - (sx - view.x) * k;
+            view.y = sy - (sy - view.y) * k;
+            view.scale = scale;
+            if (scale === 1) { view.x = 0; view.y = 0; }
+            clampView();
+        }
+
+        // Keep the graph on screen: at scale s the world spans s * size.
+        function clampView() {
+            const w = canvas.clientWidth;
+            const h = canvas.clientHeight;
+            view.x = Math.min(0, Math.max(w - w * view.scale, view.x));
+            view.y = Math.min(0, Math.max(h - h * view.scale, view.y));
+        }
+
+        canvas.addEventListener('wheel', event => {
+            event.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            zoomAt(Math.exp(-event.deltaY * 0.0015), event.clientX - rect.left, event.clientY - rect.top);
+        }, { passive: false });
+
+        document.getElementById('constellation-zoom').addEventListener('click', event => {
+            const action = event.target.closest('[data-zoom]')?.dataset.zoom;
+            if (!action) return;
+            if (action === 'reset') zoomAt(0, 0, 0);
+            else zoomAt(action === 'in' ? 1.4 : 1 / 1.4, canvas.clientWidth / 2, canvas.clientHeight / 2);
+        });
+
+        canvas.addEventListener('dblclick', () => zoomAt(0, 0, 0));
+
+        canvas.addEventListener('mousedown', event => {
+            if (view.scale > 1) drag = { x: event.clientX, y: event.clientY, moved: false };
+        });
+        window.addEventListener('mouseup', () => {
+            if (drag?.moved) setTimeout(() => { drag = null; }, 0);
+            else drag = null;
+            canvas.style.cursor = hoveredNode ? 'pointer' : 'default';
+        });
+
+        canvas.addEventListener('mousemove', event => {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            if (drag && event.buttons) {
+                const dx = event.clientX - drag.x;
+                const dy = event.clientY - drag.y;
+                if (drag.moved || Math.hypot(dx, dy) > 3) {
+                    drag.moved = true;
+                    view.x += dx;
+                    view.y += dy;
+                    clampView();
+                    drag.x = event.clientX;
+                    drag.y = event.clientY;
+                    canvas.style.cursor = 'grabbing';
+                    showProjectTooltip(null, 0, 0);
+                    return;
+                }
+            }
+            const wx = (x - view.x) / view.scale;
+            const wy = (y - view.y) / view.scale;
+            hoveredMoon = view.scale >= MOON_SCALE ? moonAt(wx, wy) : null;
+            hoveredNode = hoveredMoon ? null : nodeAt(wx, wy);
+            canvas.style.cursor = hoveredNode || hoveredMoon ? 'pointer' : view.scale > 1 ? 'grab' : 'default';
+            if (hoveredMoon) showMoonTooltip(hoveredMoon, x, y);
+            else showProjectTooltip(hoveredNode, x, y);
+        });
+        canvas.addEventListener('mouseleave', () => {
+            hoveredNode = null;
+            hoveredMoon = null;
+            canvas.style.cursor = 'default';
+            showProjectTooltip(null, 0, 0);
+        });
+        canvas.addEventListener('click', () => {
+            if (drag?.moved) return;
+            if (hoveredMoon) {
+                window.open(docHref(hoveredMoon.page.path), '_blank', 'noopener');
+                return;
+            }
+            selectProject(hoveredNode ? hoveredNode.name : null);
+        });
+
+        let refreshTimer = null;
+        async function refresh() {
+            try {
+                const res = await fetch('/api/pulse');
+                pulseData = await res.json();
+                renderRunning(pulseData.running || []);
+                renderStats(pulseData);
+                renderHotFiles(pulseData.vault.hot_files || []);
+                resizeCanvas();
+                hoveredNode = null;
+                showProjectTooltip(null, 0, 0);
+                nodes = buildNodes(projectSignals(pulseData));
+                computeFilterLabels();
+                renderFilterCounts();
+                if (pendingFocus) {
+                    selectProject(pendingFocus);
+                    pendingFocus = null;
+                }
+                renderDetail();
+            } catch (err) {
+                console.error('Pulse refresh failed', err);
+            }
+            if (refreshTimer) clearInterval(refreshTimer);
+            refreshTimer = setInterval(refresh, pulseData?.running?.length ? 5000 : 30000);
+        }
+
+        window.addEventListener('keydown', event => {
+            const typing = event.target.closest?.('input, textarea, select, [contenteditable]');
+            const search = document.getElementById('constellation-search');
+            if (event.key === 'Escape') {
+                if (typing === search && search.value) {
+                    search.value = '';
+                    search.dispatchEvent(new Event('input'));
+                } else if (review) reviewNav('exit');
+                else selectProject(null);
+                return;
+            }
+            if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+            if (event.key === '/') { event.preventDefault(); search.focus(); return; }
+            if (event.key === 'f') { document.getElementById('full-toggle').click(); return; }
+            if (event.key === 'r' && !review) { startReview(); return; }
+            if (!review || review.done) return;
+            if (event.key === 'j') reviewNav('next');
+            else if (event.key === 'k') reviewNav('prev');
+            else if (event.key === 'c') applyReview('confirm');
+        });
+
+        // Konami code easter egg -> hyperdrive mode
+        const konami = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+        let konamiPos = 0;
+        window.addEventListener('keydown', (e) => {
+            if (e.key === konami[konamiPos]) {
+                konamiPos++;
+                if (konamiPos === konami.length) {
+                    hyperdrive = !hyperdrive;
+                    document.body.classList.toggle('hyperdrive', hyperdrive);
+                    konamiPos = 0;
+                }
+            } else {
+                konamiPos = e.key === konami[0] ? 1 : 0;
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            clampView();
+            if (!pulseData) return;
+            nodes = buildNodes(projectSignals(pulseData));
+            computeFilterLabels();
+        });
+
+        if (FULL) {
+            document.title = 'Constellation · Roosta';
+            const full = document.getElementById('full-toggle');
+            full.textContent = 'Back to Pulse';
+            full.title = 'Back to Pulse (f)';
+        }
+        refresh();
+        resizeCanvas();
+        drawConstellation();
+    </script>
+</body>
+</html>

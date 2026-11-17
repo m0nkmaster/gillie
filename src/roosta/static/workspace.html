@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workspace · Roosta</title>
+<link rel="icon" href="/static/favicon.png" type="image/png">
+<link rel="stylesheet" href="/static/vendor/tabler/tabler.min.css">
+<link rel="stylesheet" href="/static/shell.css">
+<script src="/static/theme.js"></script>
+<script src="/static/nav-count.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"></script>
+<script src="/static/markdown-copy.js"></script>
+<script src="/static/vault-markdown.js"></script>
+<style>
+.navigator{padding:1.5rem var(--shell-gutter);height:calc(100dvh - var(--shell-header-height));display:flex;flex-direction:column;gap:1rem}
+.navigator .dashboard-page-header{margin:0}
+.navigator .page-title{font-size:1.6rem}
+.navigator-search{display:flex;gap:.75rem;align-items:center}
+.navigator-search .input-icon{flex:1}
+.navigator-grid{display:grid;grid-template-columns:270px minmax(280px,.9fr) minmax(320px,1.4fr);gap:1rem;min-height:240px;flex:1}
+.navigator-grid>.card{min-width:0;min-height:0}
+.navigator-scroll{overflow:auto;min-height:0;flex:1;overscroll-behavior:contain}
+.navigator .card-header{min-height:3.25rem;padding:.75rem 1rem;gap:.75rem}
+.navigator .card-title{font-size:.9rem}
+.knowledge-views{padding:.5rem;display:grid;gap:.15rem;border-bottom:1px solid var(--tblr-border-color)}
+.knowledge-views .nav-link{display:flex;align-items:center;justify-content:space-between;gap:.5rem;width:100%;padding:.5rem .65rem;font-size:.8rem;text-align:left}
+.collection-item{width:100%;text-align:left;padding:.85rem 1rem;font:inherit}
+.collection-title{display:block;font-weight:600;font-size:.85rem;line-height:1.4;overflow-wrap:anywhere}
+.collection-summary{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:.73rem;line-height:1.5;margin-top:.3rem;color:var(--console-secondary)}
+.collection-meta{display:flex;align-items:center;gap:.5rem;margin-top:.5rem;font-size:.68rem;color:var(--console-tertiary)}
+.collection-item.active .collection-summary,.collection-item.active .collection-meta{color:inherit}
+.scope-heading{padding:1rem;border-bottom:1px solid var(--tblr-border-color)}
+.scope-heading h3{font-size:1.05rem;margin:0;line-height:1.4}
+.scope-heading p{font-size:.8rem;line-height:1.5;color:var(--console-secondary);margin:.5rem 0 0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.result-row{display:grid;grid-template-columns:18px minmax(0,1fr);gap:.75rem;padding:1rem}
+.result-row .form-check-input{margin-top:.2rem;cursor:pointer}
+.result-open{border:0;background:none;padding:0;text-align:left;color:inherit;min-width:0;font:inherit}
+.result-title{font-weight:600;line-height:1.4}
+.result-purpose{font-size:.7rem;color:var(--console-tertiary);overflow-wrap:anywhere;margin:.2rem 0 .4rem}
+.result-snippet{color:var(--console-secondary);font-size:.8rem;line-height:1.45;overflow-wrap:anywhere}
+.result-row[aria-current="true"]{background:var(--tblr-primary-lt);box-shadow:inset 2px 0 var(--tblr-primary)}
+.navigator mark{padding:0;background:color-mix(in srgb,var(--signal-amber) 22%,transparent);color:var(--console-text);border-radius:2px}
+.preview-path{font:.7rem ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere;color:var(--console-tertiary)}
+.preview-copy{padding:1.5rem;line-height:1.65;overflow-wrap:anywhere}
+.preview-copy h1{font-size:1.5rem}.preview-copy h2{font-size:1.2rem}.preview-copy h3{font-size:1rem}
+.preview-copy h1,.preview-copy h2,.preview-copy h3{margin:1.25rem 0 .6rem}.preview-copy>:first-child{margin-top:0}
+.preview-copy pre{padding:1rem;background:var(--tblr-bg-surface-secondary);overflow:auto}
+.preview-copy table{display:block;max-width:100%;overflow:auto}.preview-copy td,.preview-copy th{padding:.4rem;border:1px solid var(--tblr-border-color)}
+.navigator-empty{padding:2.5rem 1.25rem;text-align:center;color:var(--console-tertiary)}
+.context-tray .card-body{padding:1rem;display:flex;gap:1rem;align-items:center}
+.context-selection{flex:1;min-width:0}.context-files{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.5rem}
+.context-files>button{max-width:100%;white-space:normal;text-align:left;overflow-wrap:anywhere}
+.context-question{width:min(36vw,520px)}
+#notice:empty{display:none}
+@media(max-width:1150px){.navigator-grid{grid-template-columns:210px minmax(240px,.9fr) minmax(280px,1fr)}.context-tray .card-body{flex-wrap:wrap}.context-question{flex:1;width:auto;min-width:200px}}
+@media(max-width:850px){.navigator{height:auto;min-height:calc(100dvh - var(--shell-header-height))}.navigator-grid{grid-template-columns:1fr 1fr;flex:none}.collections-card{grid-column:1/-1}.collections-card .navigator-scroll{max-height:170px}.results-card,.preview-card{height:65dvh}.context-question{width:100%}}
+@media(max-width:580px){.navigator-grid{grid-template-columns:1fr}.results-card{height:45dvh}.preview-card{height:60dvh}.preview-card:has(.navigator-empty){height:180px}.navigator-search{align-items:stretch}.navigator-search .input-icon-addon{display:none}.context-tray .card-body{display:block}.context-question{margin:.75rem 0;width:100%}.navigator .dashboard-page-header{gap:.5rem}.navigator .page-title{font-size:1.4rem}}
+</style>
+</head>
+<body>
+<header class="workspace-header navbar" aria-label="Workspace"></header>
+<main class="navigator">
+  <div class="page-header dashboard-page-header">
+    <div><div class="page-pretitle">Your knowledge, within reach</div><h1 class="page-title">Workspace</h1></div>
+    <div class="d-flex align-items-center gap-3"><span class="text-secondary small" id="index-status" role="status">Reading workspace…</span><button class="btn btn-sm" id="refresh" type="button">Refresh</button></div>
+  </div>
+  <div class="navigator-search">
+    <div class="input-icon"><input class="form-control form-control-lg" type="search" id="search" aria-label="Search workspace" placeholder='Search titles, paths and contents…' autofocus><span class="input-icon-addon"><kbd>⌘ K</kbd></span></div>
+    <button class="btn" id="clear-search" type="button">Clear</button>
+  </div>
+  <div id="notice" class="alert alert-warning mb-0" role="status"></div>
+  <div class="navigator-grid">
+    <section class="card collections-card" aria-label="Explore your workspace">
+      <div class="card-header"><h2 class="card-title mb-0">Explore</h2></div>
+      <nav class="knowledge-views nav-pills" id="views" aria-label="Knowledge views"></nav>
+      <div class="card-header py-2"><h3 class="card-title small mb-0" id="collection-label">Projects</h3></div>
+      <div class="navigator-scroll list-group list-group-flush" id="collections"></div>
+    </section>
+    <section class="card results-card" aria-label="Search results"><div class="card-header justify-content-between"><h2 class="card-title mb-0" id="result-count" aria-live="polite">Markdown documents</h2><span class="text-secondary small" id="search-time"></span></div><div class="scope-heading"><div class="d-flex align-items-start justify-content-between gap-2"><h3 id="scope-title">All knowledge</h3><span id="scope-status"></span></div><p id="scope-summary">Explore projects, topics and people.</p><button class="btn btn-sm mt-2" id="scope-overview" type="button" hidden>Read overview</button></div><div class="navigator-scroll list-group list-group-flush" id="results"><div class="navigator-empty">Loading documents…</div></div></section>
+    <section class="card preview-card" aria-label="Document preview">
+      <div class="card-header justify-content-between"><h2 class="card-title mb-0">Preview</h2><div class="d-flex gap-2"><button class="btn btn-sm" id="copy-document" type="button" hidden title="Copy the document as Markdown">Copy</button><a class="btn btn-sm" id="open-document" hidden>Open</a><button class="btn btn-sm btn-primary" id="chat-document" type="button" hidden>Chat about this</button></div></div>
+      <div class="navigator-scroll" id="preview"><div class="navigator-empty">Choose a document to read it here.<br><span class="small">Tick files to bring them into a conversation.</span></div></div>
+    </section>
+  </div>
+  <section class="card context-tray" aria-label="Chat context"><div class="card-body">
+    <div class="context-selection"><div class="d-flex gap-3 align-items-center"><strong id="selection-count">Chat about anything</strong><button class="btn btn-sm btn-ghost-secondary" id="clear-selection" type="button" hidden>Clear files</button></div><div class="text-secondary small" id="selection-help">Choose files for direct context, or start with a question.</div><div class="context-files" id="selected-files"></div></div>
+    <textarea class="form-control context-question" id="question" rows="2" aria-label="Question for Assistant" placeholder="What would you like to explore? (optional)"></textarea>
+    <a class="btn btn-primary" id="open-chat" href="/assistant?item=new">Open in Assistant →</a>
+  </div></section>
+</main>
+<script src="/static/workspace.js"></script>
+</body></html>

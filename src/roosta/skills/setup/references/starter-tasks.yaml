@@ -1,0 +1,34 @@
+# The starter schedule. The setup skill copies these entries into .roosta/tasks.yaml.
+tasks:
+  - id: assistant
+    skill: assistant
+    name: Assistant conductor
+    nickname: Roosta
+    connection: default
+    interval: 900  # 15 minutes
+
+  - id: workspace-gardener
+    skill: workspace-gardener
+    nickname: Monty
+    connection: default
+    interval: 14400  # 4 hours
+    weekdays_only: true
+    writer: true  # rewrites workspace docs and commits; serialised against other writers
+    unrestricted: true
+
+  - id: chat-ideas
+    skill: chat-ideas
+    name: Chat ideas
+    nickname: Iris
+    connection: default
+
+    run_at: "07:30"
+    days_of_week: [monday]
+
+  - id: workspace-learner
+    skill: workspace-learner
+    nickname: Hannah
+    connection: default
+    interval: 10800  # 3 hours
+    writer: true
+    unrestricted: true

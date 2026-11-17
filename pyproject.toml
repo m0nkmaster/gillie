@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "roosta"
+dynamic = ["version"]
+description = "Your agentic office: a desktop app for a team of AI workers that learns your work"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pyyaml",
+    "keyring>=25",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[project.scripts]
+roosta = "roosta.cli:main"
+
+[tool.hatch.version]
+path = "src/roosta/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/roosta"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["desktop/node_modules", ".venv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

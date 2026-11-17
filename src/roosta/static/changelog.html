@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Changelog · Roosta</title>
+<link rel="icon" href="/static/favicon.png" type="image/png">
+<link rel="stylesheet" href="/static/vendor/tabler/tabler.min.css">
+<link rel="stylesheet" href="/static/shell.css">
+<script src="/static/theme.js"></script>
+<script src="/static/nav-count.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/static/vault-markdown.js"></script>
+<style>
+  .document-shell{max-width:900px;margin:0 auto;padding:1.75rem var(--shell-gutter) 4rem}
+  article{line-height:1.7}
+  article h1{display:none}
+  article h2{font-size:1.05rem;font-weight:600;color:var(--console-text);margin:1.5rem 0 .4rem;padding-bottom:.3rem;border-bottom:1px solid var(--console-line)}
+  article h2:first-of-type{margin-top:.5rem}
+  article p:first-of-type,article p:nth-of-type(2){color:var(--console-tertiary);font-size:.85rem}
+  article ul{padding-left:1.3rem}
+  article li{margin:.2rem 0}
+  article code{background:var(--console-raised);border:1px solid var(--console-line);padding:.05rem .3rem}
+</style></head>
+<body>
+<header class="workspace-header navbar" aria-label="Workspace"></header>
+<main class="document-shell">
+  <div class="page-header dashboard-page-header"><div><div class="page-pretitle">Assistant</div><h1 class="page-title">Changelog</h1></div></div>
+  <article class="card card-body" id="changelog">Loading…</article>
+</main>
+<script>
+(async () => {
+  const article = document.getElementById('changelog');
+  try {
+    const data = await (await fetch('/api/changelog')).json();
+    article.innerHTML = safeMarkdown(data.content || 'No changelog yet.');
+  } catch (e) { article.textContent = 'Changelog could not be loaded.'; }
+})();
+</script></body></html>

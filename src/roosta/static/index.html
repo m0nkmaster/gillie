@@ -1,0 +1,1253 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workers · Roosta</title>
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <link rel="stylesheet" href="/static/vendor/tabler/tabler.min.css">
+<link rel="stylesheet" href="/static/shell.css">
+<script src="/static/theme.js"></script>
+<script src="/static/model-picker.js"></script>
+<script src="/static/nav-count.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/static/vault-markdown.js"></script>
+    <style>
+        /* Tabler cards with task-specific row geometry. Dense one-line-per-worker list: every
+           worker (a skill on a schedule) has to be readable without scrolling, so detail
+           lives in a drawer rather than in a card. */
+        h1 {
+            color: var(--console-text);
+            font-size: 1.3rem;
+            font-weight:600;
+            letter-spacing: -0.015em;
+        }
+        .runner-page { padding: 1.75rem var(--shell-gutter) 2rem; }
+        .runner-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 1.75rem; align-items: start; }
+        .runner-main { min-width: 0; }
+        .runner-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 0;
+        }
+        .head-left { display: flex; align-items: baseline; gap: .8rem; flex-wrap: wrap; }
+        .run-summary {
+            color: var(--console-tertiary);
+            font-size: .72rem;
+            font-weight: 650;
+            letter-spacing: .02em;
+            white-space: nowrap;
+        }
+        .run-summary b { color: var(--console-secondary); font-weight:600; }
+        .run-summary .count-running { color: var(--signal-blue); }
+        .run-summary .count-error { color: var(--signal-coral); }
+        .run-summary .count-blocked { color: var(--signal-yellow); }
+        .head-controls { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+        .order-control {
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+            color: var(--console-tertiary);
+            font-size: .64rem;
+            font-weight:600;
+            letter-spacing:0;
+            text-transform: none;
+            flex-shrink: 0;
+        }
+        .order-control .form-select { min-width: 95px; font-size: .75rem; }
+        .task-search { width: 170px; font-size: .75rem; }
+
+        /* --- dense task list --- */
+        .task-list { overflow: hidden; }
+        .list-head,
+        .task-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 118px 78px 62px 52px 88px 108px;
+            align-items: center;
+            gap: .6rem;
+            padding: 0 .7rem;
+        }
+        .list-head {
+            height: 36px;
+            color: var(--console-tertiary);
+            font-size: .68rem;
+            font-weight:600;
+            letter-spacing:0;
+            text-transform: none;
+        }
+        .list-head span:nth-child(n+2) { text-align: right; }
+        .list-head span:nth-child(6) { text-align: left; }
+        .list-head span:last-child { text-align: center; }
+        .task-list .task-row {
+            --task-colour: var(--signal-cyan);
+            position: relative;
+            min-height: 44px;
+            border-left: 2px solid var(--task-colour);
+            cursor: pointer;
+        }
+        .task-row:hover { background: var(--tblr-hover-bg); }
+        .task-row.open { background: var(--tblr-hover-bg); }
+        .task-row:focus-visible { outline: 2px solid var(--signal-pink); outline-offset: -2px; }
+        .task-row.status-running { --task-colour: var(--signal-blue); }
+        .task-row.status-success { --task-colour: var(--signal-mint); }
+        .task-row.status-error { --task-colour: var(--signal-coral); }
+        .task-row.status-auth-failed { --task-colour: var(--signal-amber); }
+        .task-row.status-blocked { --task-colour: var(--signal-yellow); }
+        .task-row.status-queued { --task-colour: var(--signal-violet); }
+        .task-row.target { background: var(--console-target); box-shadow: inset 0 0 0 1px var(--signal-amber); }
+        .row-title { display: flex; align-items: baseline; gap: .45rem; min-width: 0; }
+        .task-name {
+            color: var(--console-text);
+            font-size: .875rem;
+            font-weight:600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .task-skill {
+            color: var(--console-tertiary);
+            font-size: .75rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        /* A worker is a skill on a schedule: the row always names the skill it runs. */
+        .task-skill-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .7rem; }
+        .task-skill-name::before { content: "skill "; font-family: Inter, system-ui, sans-serif; font-size: .66rem; opacity: .75; }
+        #skill-preview { width: min(900px, calc(100vw - 2rem)); max-height: 85vh; padding: 0; border: 0; color: var(--console-text); background: var(--console-bg); }
+        #skill-preview::backdrop { background: rgb(0 0 0 / .5); }
+        #skill-preview article { overflow-wrap: anywhere; }
+        #skill-preview pre { white-space: pre-wrap; }
+        .row-cell {
+            color: var(--console-tertiary);
+            font-size: .75rem;
+            text-align: right;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .row-cell.bad { color: var(--signal-coral); }
+        /* Left-aligned so the status dots line up as one vertical rail, rather
+           than stepping in and out with each label's length. */
+        .row-status { display: flex; justify-content: flex-start; }
+        .row-actions { display: flex; justify-content: center; gap: .3rem; }
+        .task-chat { width: 32px; padding-left: 0; padding-right: 0; }
+        .task-chat svg { width: 16px; height: 16px; }
+        .detail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .6rem; }
+        .detail-actions .hint { color: var(--console-tertiary); font-size: .72rem; }
+        /* A status is ink, never a fill: a filled block beside the Run button
+           reads as a second button, and a mint block on every healthy row
+           leaves a genuine failure no room to stand out. Neutral by default so
+           an unrecognised status stays readable. */
+        .task-status {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            min-height: 22px;
+            color: #8d949e;
+            font-size: .62rem;
+            font-weight:600;
+            letter-spacing:0;
+            text-transform: none;
+            white-space: nowrap;
+        }
+        .task-status::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            background: currentColor;
+            flex-shrink: 0;
+        }
+        .task-status-running { color: var(--signal-blue); }
+        .task-status-success { color: var(--signal-mint); }
+        .task-status-error { color: var(--signal-coral); }
+        .task-status-auth-failed { color: var(--signal-amber); }
+        .task-status-blocked { color: var(--signal-yellow); }
+        .task-status-queued { color: var(--signal-violet); }
+        /* Fixed width so Run, Running and Cancel keep the column aligned. */
+        .task-action { width: 66px; }
+
+        /* --- expanded detail drawer --- */
+        .task-detail {
+            padding: .75rem .9rem 1rem;
+            border-bottom: 1px solid var(--tblr-border-color-translucent);
+            border-left: 3px solid var(--console-line);
+            background: var(--console-canvas);
+        }
+        .task-description {
+            color: var(--console-tertiary);
+            font-size: .76rem;
+            line-height: 1.4;
+            margin-bottom: .6rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+        .task-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: .35rem .8rem;
+            color: var(--console-tertiary);
+            font-size: .72rem;
+            margin-bottom: .55rem;
+        }
+        .task-meta strong { color: var(--console-secondary); font-weight: 700; }
+        .task-settings {
+            margin: 0 0 .6rem;
+            padding: .55rem 0;
+            border-top: 1px solid var(--console-line);
+            border-bottom: 1px solid var(--console-line);
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: .55rem .8rem;
+        }
+        .runtime-field { display: grid; gap: .2rem; align-content: start; min-width: 0; }
+        .runtime-field.wide { grid-column: 1 / -1; }
+        .runtime-field .hint { color: var(--console-tertiary); font-weight: 400; }
+        .runtime-field textarea { resize: vertical; font-size: .8125rem; }
+        .runtime-field .form-control { font-size: .8125rem; }
+        .field-row, .field-row > span { display: flex; gap: .4rem; min-width: 0; }
+        .field-row > span[hidden] { display: none; }
+        .field-row > select[name="mode"] { width: 8rem; flex: none; }
+        .field-row > span { flex: 1; }
+        .field-row input[type="number"] { width: 5.5rem; flex: none; }
+        .field-row input[type="time"] { width: 8rem; flex: none; }
+        .day-picks { display: flex; flex-wrap: wrap; gap: .2rem .7rem; margin-top: .25rem; font-size: .72rem; }
+        .day-picks[hidden] { display: none; }
+        .day-pick { display: inline-flex; align-items: center; gap: .25rem; color: var(--console-secondary); text-transform: capitalize; }
+        .day-pick .form-check-input { margin: 0; }
+        .flag-picks { display: grid; gap: .3rem; font-size: .75rem; }
+        .flag-pick { display: flex; align-items: baseline; gap: .4rem; color: var(--console-secondary); }
+        .flag-pick .form-check-input { margin: 0; flex: none; }
+        .flag-pick .hint { color: var(--console-tertiary); }
+        .settings-actions { display: flex; align-items: center; gap: .5rem; margin-top: .6rem; }
+        .runtime-field label {
+            color: var(--console-tertiary);
+            font-size: .62rem;
+            font-weight:600;
+            letter-spacing:0;
+            text-transform: none;
+        }
+        .runtime-field .form-select { font-size: .8125rem; }
+        .runtime-field select:disabled { opacity: .5; }
+        .runtime-status {
+            color: var(--console-tertiary);
+            font-size: .68rem;
+        }
+        .runtime-status.saved { color: var(--signal-mint); }
+        .runtime-status.error { color: var(--signal-coral); }
+        .task-message { font-size: .76rem; line-height: 1.4; margin-bottom: .5rem; }
+        .task-message.error { color: var(--signal-coral); }
+        .task-message.blocked { color: var(--signal-yellow); }
+        .task-output {
+            font-size: .76rem;
+            line-height: 1.45;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .output-section + .output-section { margin-top: .7rem; }
+        .output-label {
+            color: var(--console-tertiary);
+            font-size: .62rem;
+            font-weight:600;
+            letter-spacing:0;
+            text-transform: none;
+            margin-bottom: .25rem;
+        }
+        .output-body { color: var(--console-secondary); white-space: pre-wrap; word-break: break-word; }
+        pre.output-body {
+            background: var(--console-canvas);
+            border: 1px solid var(--console-line);
+            border-radius: 4px;
+            padding: .55rem .65rem;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: .72rem;
+        }
+        .empty-state { color: var(--console-tertiary); text-align: center; padding: 2rem; font-size: .8rem; }
+        .refresh-note { color: var(--console-tertiary); font-size: .75rem; margin-top: .6rem; }
+
+        /* --- activity rail: one window onto every AI spawn --- */
+        .activity {
+            padding: 1.25rem; font-size: .8125rem;
+        }
+        .activity h2, .act-heading {
+            display: flex; align-items: center; gap: .5rem;
+            color: var(--console-secondary);
+            font-size: .8125rem; font-weight:600;
+            letter-spacing:0; text-transform: none;
+        }
+        .act-more {
+            display: block; width: 100%; margin: .5rem 0 0;
+            padding: .4rem; border: none; border-radius: 6px;
+            background: transparent; color: var(--console-secondary);
+            font-size: .75rem; font-weight: 600; cursor: pointer;
+        }
+        .act-more:hover { color: var(--console-fg, inherit); text-decoration: underline; }
+        .act-heading {
+            margin: .9rem 0 .35rem;
+            padding-top: .6rem;
+            border-top: 1px solid var(--console-line);
+            color: var(--console-tertiary);
+        }
+        .live-dot { width: 9px; height: 9px; border-radius: 4px; background: var(--console-line); flex-shrink: 0; }
+        .live-dot.on { background: var(--signal-mint); animation: pulse 1.2s ease-in-out infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+        .act-now { margin-top: .5rem; display: grid; gap: .3rem; }
+        .now-row {
+            display: grid;
+            grid-template-columns: 8px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: .5rem;
+            padding: .35rem .5rem;
+            border-left: 2px solid var(--signal-blue);
+            background: var(--console-tint-faint);
+        }
+        .now-row.queued { border-left-color: var(--signal-violet); background: var(--console-tint-faint); }
+        .now-spinner {
+            width: 8px; height: 8px;
+            background: var(--signal-blue);
+            animation: pulse 1.1s ease-in-out infinite;
+        }
+        .now-row.queued .now-spinner { background: var(--signal-violet); animation: none; }
+        .now-label { color: var(--console-text); font-size: .76rem; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .now-meta { color: var(--console-tertiary); font-size: .66rem; }
+        .now-elapsed { color: var(--signal-blue); font-size: .75rem; font-variant-numeric: tabular-nums; }
+        .now-row.queued .now-elapsed { color: var(--signal-violet); }
+        .now-empty { color: var(--console-tertiary); font-size: .74rem; padding: .2rem 0; }
+        .act-row {
+            display: flex; align-items: baseline; gap: .5rem;
+            padding: .3rem 0; border-bottom: 1px solid var(--console-line);
+            cursor: pointer;
+        }
+        .act-row:hover, .act-row.open { background: var(--console-tint); }
+        .act-detail {
+            display: none;
+            margin: .25rem 0 .5rem;
+            font-size: .74rem;
+            color: var(--console-secondary);
+        }
+        .act-detail.open { display: block; }
+        .act-detail pre {
+            white-space: pre-wrap; word-break: break-word;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: .68rem; margin: .5rem 0 0;
+            max-height: 240px; overflow-y: auto;
+        }
+        .act-session {
+            color: var(--console-tertiary);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: .66rem; word-break: break-all;
+        }
+        /* A tag is a tinted block: saturated fill is reserved for controls. */
+        .act-kind {
+            --tag-colour: #8d949e;
+            --tblr-badge-color: var(--tag-colour);
+            --tblr-badge-font-size: .68rem;
+            min-height: 20px;
+            flex-shrink: 0;
+        }
+        .act-skill { --tag-colour: var(--signal-blue); }
+        .act-chat { --tag-colour: var(--signal-violet); }
+        .act-action { --tag-colour: var(--signal-amber); }
+        .act-send { --tag-colour: var(--signal-coral); }
+        .act-body { flex: 1; min-width: 0; }
+        .act-label { color: var(--console-secondary); word-break: break-word; font-size: .75rem; }
+        .act-meta { color: var(--console-tertiary); font-size: .66rem; }
+        .act-outcome { color: var(--console-secondary); font-size: .75rem; line-height: 1.35; margin-top: .15rem;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .act-detail .act-outcome { display: block; -webkit-line-clamp: unset; margin: 0 0 .45rem; }
+        .act-detail summary { cursor: pointer; color: var(--console-tertiary); font-size: .66rem; margin-top: .35rem; }
+        .act-state { flex-shrink: 0; font-size: .68rem; }
+        .act-state.success { color: var(--signal-mint); }
+        .act-state.error { color: var(--signal-coral); }
+        .act-state.interrupted { color: var(--console-tertiary); }
+        @media (max-width: 1000px) {
+            .runner-layout { grid-template-columns: minmax(0, 1fr); }
+            .list-head, .task-row { grid-template-columns: minmax(0, 1fr) 78px 88px 108px; }
+            .list-head span:nth-child(2), .list-head span:nth-child(4), .list-head span:nth-child(5),
+            .row-cell.schedule, .row-cell.took, .row-cell.runs { display: none; }
+            .settings-grid { grid-template-columns: minmax(0, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <header class="workspace-header navbar" aria-label="Workspace"></header>
+    <div class="runner-page">
+<div class="page-header dashboard-page-header"><div><div class="page-pretitle">Automation</div><h1 class="page-title">Workers</h1><p class="page-subtitle">Each worker is a skill on a schedule: its SKILL.md says what it does, its settings here say when and how it runs.</p></div>
+    <a class="btn btn-primary" href="/assistant?item=hire" title="Describe a job and the Assistant writes the skill and adds it to the schedule">New worker</a></div>
+    <div class="runner-layout">
+    <main class="runner-main">
+        <section class="card runner-panel"><div class="runner-head card-header">
+            <div class="head-left">
+                <h2 class="card-title">Your workers</h2>
+                <div class="run-summary" id="run-summary"></div>
+            </div>
+            <div class="head-controls">
+                <input id="task-search" class="form-control task-search" type="search" placeholder="Filter workers"
+                    aria-label="Filter workers by name, nickname or skill">
+                <label class="order-control">
+                    <span>Show</span>
+                    <select class="form-select" id="task-show" aria-label="Filter workers by status">
+                        <option value="all">All</option>
+                        <option value="attention">Needs attention</option>
+                        <option value="active">Running</option>
+                    </select>
+                </label>
+                <label class="order-control">
+                    <span>Sort</span>
+                    <select class="form-select" id="task-sort" aria-label="Sort workers">
+                        <option value="alphabetical">Name</option>
+                        <option value="skill">Skill</option>
+                        <option value="status">Status</option>
+                        <option value="last-run">Last run</option>
+                        <option value="schedule">Schedule</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+        <div class="list-group list-group-flush task-list" id="tasks">
+            <div class="empty-state">Loading...</div>
+        </div>
+        </section>
+        <div class="refresh-note">Auto-refreshes every 5s &middot; click a row for detail</div>
+    </main>
+
+    <aside class="activity card">
+        <h2><span class="live-dot" id="livedot"></span> AI Activity</h2>
+        <div class="act-now" id="activity-now"></div>
+        <h3 class="act-heading">Finished</h3>
+        <div id="activity-log"></div>
+    </aside>
+    </div>
+    </div>
+
+    <dialog id="skill-preview" aria-labelledby="skill-preview-title">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title m-0" id="skill-preview-title">Skill</h2>
+                <form method="dialog" class="ms-auto"><button class="btn btn-sm btn-ghost-secondary" autofocus>Close</button></form>
+            </div>
+            <div id="skill-preview-body" aria-live="polite"></div>
+        </div>
+    </dialog>
+
+    <script>
+        const requestedTask = new URLSearchParams(location.search).get('task');
+        let requestedTaskFocused = false;
+        let runtimeOptions = { backend: '', harnesses: [] };
+        let latestTasks = [];
+        let renderedSignature = '';
+        const expanded = new Set();
+        const dirtySettings = new Set();
+        const SORT_KEY = 'skill-runner-sort-v1';
+        const SHOW_KEY = 'skill-runner-show-v1';
+        const SORT_MODES = ['alphabetical', 'skill', 'status', 'last-run', 'schedule'];
+        const SHOW_MODES = ['all', 'attention', 'active'];
+        const ATTENTION = new Set(['error', 'auth-failed', 'blocked']);
+        const STATUS_ORDER = {
+            running: 0, queued: 1, error: 2, 'auth-failed': 3, blocked: 4, success: 5, idle: 6,
+        };
+
+        function readPreference(key, fallback) {
+            try {
+                const value = JSON.parse(localStorage.getItem(key));
+                return value == null ? fallback : value;
+            } catch {
+                return fallback;
+            }
+        }
+        function writePreference(key, value) {
+            try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+        }
+        let sortMode = readPreference(SORT_KEY, 'alphabetical');
+        if (!SORT_MODES.includes(sortMode)) sortMode = 'alphabetical';
+        let showMode = readPreference(SHOW_KEY, 'all');
+        if (!SHOW_MODES.includes(showMode)) showMode = 'all';
+        let searchTerm = '';
+
+        function sortTasks(tasks) {
+            const sorted = [...tasks];
+            const byName = (a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id), undefined, {sensitivity: 'base'});
+            sorted.sort((a, b) => {
+                if (sortMode === 'alphabetical') return byName(a, b);
+                if (sortMode === 'skill') {
+                    const cmp = String(a.skill || '').localeCompare(String(b.skill || ''), undefined, {sensitivity: 'base'});
+                    return cmp || byName(a, b);
+                }
+                if (sortMode === 'status') {
+                    const sa = STATUS_ORDER[a.status] ?? 99;
+                    const sb = STATUS_ORDER[b.status] ?? 99;
+                    return sa - sb || byName(a, b);
+                }
+                if (sortMode === 'last-run') {
+                    const ta = a.last_run ? new Date(a.last_run).getTime() : 0;
+                    const tb = b.last_run ? new Date(b.last_run).getTime() : 0;
+                    return tb - ta || byName(a, b);
+                }
+                if (sortMode === 'schedule') {
+                    const ka = a.run_at ? `at:${a.run_at}` : `iv:${a.interval || 0}`;
+                    const kb = b.run_at ? `at:${b.run_at}` : `iv:${b.interval || 0}`;
+                    return ka.localeCompare(kb) || byName(a, b);
+                }
+                return 0;
+            });
+            return sorted;
+        }
+
+        function visibleTasks(tasks) {
+            return tasks.filter(t => {
+                if (showMode === 'attention' && !ATTENTION.has(t.status)) return false;
+                if (showMode === 'active' && t.status !== 'running' && !t.queued) return false;
+                if (searchTerm) {
+                    const haystack = `${t.id} ${t.name || ''} ${t.nickname || ''} ${t.skill} ${t.description || ''}`.toLowerCase();
+                    if (!haystack.includes(searchTerm)) return false;
+                }
+                return true;
+            });
+        }
+
+        function esc(s) {
+            return String(s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+        function asText(v) {
+            if (v == null || v === '') return '';
+            if (typeof v === 'string') return v;
+            // object/array: pretty-print
+            try { return JSON.stringify(v, null, 2); } catch { return String(v); }
+        }
+        function timeAgo(iso) {
+            if (!iso) return 'never';
+            const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+            return `${Math.floor(diff / 86400)}d ago`;
+        }
+        function shortAgo(iso) {
+            if (!iso) return '-';
+            const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+            if (diff < 60) return 'now';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+            return `${Math.floor(diff / 86400)}d`;
+        }
+        function elapsed(iso) {
+            if (!iso) return '';
+            const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+            return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}`;
+        }
+
+        function schedule(t) {
+            if (t.run_at) {
+                const days = t.days_of_week?.length
+                    ? ` (${t.days_of_week.map(day => day.slice(0, 3)).join(', ')})`
+                    : t.weekdays_only ? ' (weekdays)' : ' daily';
+                return `${t.run_at}${days}`;
+            }
+            const s = t.interval;
+            return s < 60 ? `every ${s}s`
+                 : s < 3600 ? `every ${Math.floor(s / 60)}m`
+                 : s % 3600 === 0 ? `every ${s / 3600}h`
+                 : `every ${Math.floor(s / 60)}m`;
+        }
+
+        const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        const UNITS = [['minutes', 60], ['hours', 3600], ['days', 86400]];
+
+        function intervalParts(seconds) {
+            const s = Math.max(60, Number(seconds) || 1800);
+            if (s % 86400 === 0) return {value: s / 86400, unit: 'days'};
+            if (s % 3600 === 0) return {value: s / 3600, unit: 'hours'};
+            return {value: Math.round(s / 60), unit: 'minutes'};
+        }
+
+        function displayName(t) { return t.name || t.id; }
+
+        // The worker's standing 1:1 on the Assistant board, the same thread the Office
+        // dossier opens. The question is prefilled, never sent.
+        function oneToOneHref(id) {
+            return `/assistant?item=${encodeURIComponent('worker:' + id)}&ask=${encodeURIComponent("What's one change to your skill that would make your runs better?")}`;
+        }
+        // Tabler Icons "message-circle" (MIT), inline so a cached sprite can never leave it blank.
+        const CHAT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20l1.3 -3.9c-2.324 -3.437 -1.426 -7.872 2.1 -10.374c3.526 -2.501 8.59 -2.296 11.845 .48c3.255 2.777 3.695 7.266 1.029 10.501c-2.666 3.235 -7.615 4.215 -11.574 2.293l-4.7 1"/></svg>';
+
+        // One form per task: identity, schedule and runtime, saved together.
+        function settingsForm(t) {
+            const id = esc(t.id);
+            const busy = t.status === 'running' || t.queued;
+            const iv = intervalParts(t.interval);
+            const daysMode = t.days_of_week?.length ? 'specific' : t.weekdays_only ? 'weekdays' : 'every';
+            return `
+                <form class="task-settings" data-task-id="${id}" data-connection="${esc(t.connection || '')}" novalidate>
+                    <div class="settings-grid">
+                        <div class="runtime-field">
+                            <label for="name-${id}">Name</label>
+                            <input class="form-control form-control-sm" id="name-${id}" name="task_name"
+                                maxlength="60" value="${esc(t.name || '')}" placeholder="${id}">
+                        </div>
+                        <div class="runtime-field">
+                            <label for="nickname-${id}">Nickname <span class="hint">(The Office)</span></label>
+                            <input class="form-control form-control-sm" id="nickname-${id}" name="nickname"
+                                maxlength="24" value="${esc(t.nickname || '')}" placeholder="${id}">
+                        </div>
+                        <div class="runtime-field wide">
+                            <label for="description-${id}">Description <span class="hint">(blank uses the skill's)</span></label>
+                            <textarea class="form-control form-control-sm" id="description-${id}" name="description"
+                                rows="2" maxlength="500" placeholder="${esc(t.custom_description ? 'Skill description' : (t.description || 'Skill description'))}">${esc(t.custom_description || '')}</textarea>
+                        </div>
+                        <div class="runtime-field">
+                            <label for="mode-${id}">Schedule</label>
+                            <div class="field-row">
+                                <select class="form-select form-select-sm" id="mode-${id}" name="mode">
+                                    <option value="interval" ${t.run_at ? '' : 'selected'}>Every</option>
+                                    <option value="daily" ${t.run_at ? 'selected' : ''}>Daily at</option>
+                                </select>
+                                <span class="when-interval" ${t.run_at ? 'hidden' : ''}>
+                                    <input class="form-control form-control-sm" type="number" min="1" step="1"
+                                        name="interval_value" value="${iv.value}" aria-label="Interval">
+                                    <select class="form-select form-select-sm" name="interval_unit" aria-label="Interval unit">
+                                        ${UNITS.map(([unit]) => `<option value="${unit}" ${unit === iv.unit ? 'selected' : ''}>${unit}</option>`).join('')}
+                                    </select>
+                                </span>
+                                <span class="when-daily" ${t.run_at ? '' : 'hidden'}>
+                                    <input class="form-control form-control-sm" type="time" name="run_at"
+                                        value="${esc(t.run_at || '09:00')}" aria-label="Time of day">
+                                </span>
+                            </div>
+                        </div>
+                        <div class="runtime-field">
+                            <label for="days-${id}">Days</label>
+                            <div class="field-row">
+                                <select class="form-select form-select-sm" id="days-${id}" name="days">
+                                    <option value="every" ${daysMode === 'every' ? 'selected' : ''}>Every day</option>
+                                    <option value="weekdays" ${daysMode === 'weekdays' ? 'selected' : ''}>Weekdays</option>
+                                    <option value="specific" ${daysMode === 'specific' ? 'selected' : ''}>Specific days</option>
+                                </select>
+                            </div>
+                            <div class="day-picks" ${daysMode === 'specific' ? '' : 'hidden'}>
+                                ${DAYS.map(day => `
+                                    <label class="day-pick"><input class="form-check-input" type="checkbox" name="day" value="${day}"
+                                        ${t.days_of_week?.includes(day) ? 'checked' : ''}>${day.slice(0, 3)}</label>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="runtime-field wide">
+                            <label>Blocking</label>
+                            <div class="flag-picks">
+                                <label class="flag-pick"><input class="form-check-input" type="checkbox" name="writer"
+                                    ${t.writer ? 'checked' : ''}><span>Writer <span class="hint">- edits the workspace, so it waits for other writers to finish</span></span></label>
+                                ${(t.requires || []).length ? `<span class="hint">Needs ${esc(t.requires.join(', '))} - waits, shown as blocked, while that sign-in is down (set <code>requires</code> in tasks.yaml)</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="runtime-field wide">
+                            <label for="connection-${id}">AI connection</label>
+                            <select class="form-select" id="connection-${id}" name="connection" ${busy ? 'disabled' : ''}>
+                              <option value="">${t.connection ? 'Use previous setup' : 'Keep existing setup'}</option>
+                              <option value="default" ${t.connection === 'default' ? 'selected' : ''}>Use the connected default</option>
+                              ${(runtimeOptions.connections || []).map(c => `<option value="${esc(c.id)}" ${c.id === t.connection ? 'selected' : ''} ${!c.connected || !c.tested ? 'disabled' : ''}>${esc(c.label)} · ${esc(c.billing)}${!c.connected ? ' (disconnected)' : !c.tested ? ' (test first)' : ''}</option>`).join('')}
+                            </select>
+                            <span class="hint">Changing connection starts a new execution session; previous settings and history are retained. <a href="/settings">Manage connections</a></span>
+                        </div>
+                        <div class="runtime-field wide" data-model-field hidden>
+                            <label for="cmodel-${id}">Model</label>
+                            <select class="form-select" id="cmodel-${id}" name="connection_model" data-current="${esc(workerModel(t))}" ${busy ? 'disabled' : ''}></select>
+                            <span class="hint">The model this worker uses on the connection above. <a href="#" data-refresh-models>Refresh</a> <span class="model-error text-danger"></span></span>
+                        </div>
+                        <div class="runtime-field wide" data-effort-field hidden>
+                            <label for="ceffort-${id}">Effort</label>
+                            <select class="form-select" id="ceffort-${id}" name="connection_effort" ${busy ? 'disabled' : ''}></select>
+                        </div>
+                    </div>
+                    <div class="settings-actions">
+                        <button class="btn btn-sm btn-primary" type="submit">Save</button>
+                        <button class="btn btn-sm btn-ghost-secondary" type="button" data-reset>Reset</button>
+                        <span class="runtime-status" aria-live="polite">${busy && t.harness ? 'AI connection unlocks when the run ends' : ''}</span>
+                        <button class="btn btn-sm btn-ghost-danger ms-auto" type="button" data-fire="${esc(t.id)}" title="Remove this worker from the schedule; its skill is kept">Fire worker</button>
+                    </div>
+                </form>
+            `;
+        }
+
+        function workerModel(t) {
+            const id = t.connection === 'default' ? runtimeOptions.default_connection : t.connection;
+            const connection = (runtimeOptions.connections || []).find(c => c.id === id);
+            return connection ? (connection.provider === 'anthropic' ? t.claude_model : t.model) || '' : '';
+        }
+
+        const modelListings = new WeakMap();
+        async function hydrateModelField(form, refresh = false) {
+            const field = form.querySelector('[data-model-field]');
+            const select = form.elements.connection_model;
+            const effort = form.elements.connection_effort;
+            const connection = form.elements.connection?.value || form.dataset.connection;
+            if (!field || !select || !connection) { if (field) field.hidden = true; if (effort) effort.closest('[data-effort-field]').hidden = true; return; }
+            try {
+                const data = await roostaModelPicker.load(connection, {refresh});
+                if (!data) return;
+                modelListings.set(form, data);
+                roostaModelPicker.fill(data, select.dataset.current || '', select, effort);
+                form.querySelector('.model-error').textContent = data.error || '';
+                field.hidden = false;
+            } catch (error) { field.hidden = true; }
+        }
+
+        function syncScheduleFields(form) {
+            const daily = form.elements.mode.value === 'daily';
+            form.querySelector('.when-interval').hidden = daily;
+            form.querySelector('.when-daily').hidden = !daily;
+            form.querySelector('.day-picks').hidden = form.elements.days.value !== 'specific';
+        }
+
+        function settingsBody(form) {
+            const f = form.elements;
+            const unit = UNITS.find(([name]) => name === f.interval_unit.value)?.[1] || 60;
+            const body = {
+                name: f.task_name.value,
+                nickname: f.nickname.value,
+                description: f.description.value,
+                writer: f.writer.checked,
+                schedule: {
+                    mode: f.mode.value,
+                    interval: Math.round(Number(f.interval_value.value) * unit),
+                    run_at: f.run_at.value,
+                    days: f.days.value,
+                    days_of_week: [...form.querySelectorAll('input[name="day"]:checked')].map(box => box.value),
+                },
+            };
+            if (f.connection && !f.connection.disabled && f.connection.value !== form.dataset.connection) {
+                body.connection = f.connection.value;
+            }
+            const model = f.connection_model;
+            if (model && !model.disabled && !model.closest('[data-model-field]').hidden) {
+                const value = roostaModelPicker.join(model.value, f.connection_effort.closest('[data-effort-field]').hidden ? '' : f.connection_effort.value);
+                if (body.connection || value !== (model.dataset.current || '')) body.connection_model = value;
+            }
+            return body;
+        }
+
+        async function saveSettings(form) {
+            const status = form.querySelector('.runtime-status');
+            const button = form.querySelector('[type="submit"]');
+            button.disabled = true;
+            status.className = 'runtime-status';
+            status.textContent = 'Saving...';
+            try {
+                const res = await fetch(`/api/tasks/${encodeURIComponent(form.dataset.taskId)}/settings`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(settingsBody(form)),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'save failed');
+                latestTasks = latestTasks.map(t => t.id === data.id ? data : t);
+                dirtySettings.delete(form.dataset.taskId);
+                renderTasks(latestTasks, true);
+                const fresh = [...document.querySelectorAll('.task-settings')]
+                    .find(el => el.dataset.taskId === data.id)?.querySelector('.runtime-status');
+                if (fresh) { fresh.className = 'runtime-status saved'; fresh.textContent = 'Saved'; }
+            } catch (error) {
+                status.className = 'runtime-status error';
+                status.textContent = error.message;
+                button.disabled = false;
+            }
+        }
+
+        function summary(tasks) {
+            const counts = tasks.reduce((acc, t) => {
+                if (t.status === 'running') acc.running += 1;
+                else if (t.status === 'error' || t.status === 'auth-failed') acc.error += 1;
+                else if (t.status === 'blocked') acc.blocked += 1;
+                if (t.queued || t.waiting_behind) acc.queued += 1;
+                return acc;
+            }, {running: 0, error: 0, blocked: 0, queued: 0});
+            const parts = [`<b>${tasks.length}</b> ${tasks.length === 1 ? 'worker' : 'workers'}`];
+            if (counts.running) parts.push(`<span class="count-running"><b>${counts.running}</b> running</span>`);
+            if (counts.queued) parts.push(`<span class="count-running"><b>${counts.queued}</b> queued</span>`);
+            if (counts.error) parts.push(`<span class="count-error"><b>${counts.error}</b> error</span>`);
+            if (counts.blocked) parts.push(`<span class="count-blocked"><b>${counts.blocked}</b> blocked</span>`);
+            document.getElementById('run-summary').innerHTML = parts.join(' &middot; ');
+        }
+
+        // One status vocabulary across the task list and the activity feed:
+        // idle, queued, running, success, error, blocked, auth failed, interrupted.
+        const STATUS_LABELS = {'auth-failed': 'auth failed'};
+
+        function rowStatus(t) {
+            // A queued task keeps its last result in `status`; what matters on the
+            // row is that it is waiting to start.
+            if (t.queued && t.status !== 'running') return {key: 'queued', label: 'queued'};
+            if (t.waiting_behind) return {key: 'queued', label: `waiting for ${t.waiting_behind}`};
+            if (t.status === 'error' && t.retry_at) {
+                const at = new Date(t.retry_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+                return {key: 'error', label: `offline · retrying ${at}`};
+            }
+            return {key: t.status, label: STATUS_LABELS[t.status] || t.status};
+        }
+
+        function actionButton(t) {
+            if (t.queued && t.status !== 'running') {
+                return `<button class="btn btn-sm btn-outline-danger task-action" data-cancel="${esc(t.id)}">Cancel</button>`;
+            }
+            if (t.status === 'running') {
+                return '<button class="btn btn-sm btn-primary task-action" disabled>Running</button>';
+            }
+            return `<button class="btn btn-sm btn-primary task-action" data-run="${esc(t.id)}">Run</button>`;
+        }
+
+        function chatButton(t) {
+            const who = t.nickname || displayName(t);
+            return `<a class="btn btn-sm btn-ghost-secondary task-chat" href="${oneToOneHref(t.id)}"
+                title="1:1 chat with ${esc(who)}: talk through its runs and refine its skill"
+                aria-label="1:1 chat with ${esc(who)}">${CHAT_ICON}</a>`;
+        }
+
+        function detailPanel(t) {
+            const output = t.last_output && t.last_output.summary ? `
+                <div class="card card-body task-output">
+                    <div class="output-section">
+                        <div class="output-label">Summary</div>
+                        <p class="output-body">${esc(t.last_output.summary) || '-'}</p>
+                    </div>
+                    ${asText(t.last_output.details) ? `
+                    <div class="output-section">
+                        <div class="output-label">Details</div>
+                        <pre class="output-body">${esc(asText(t.last_output.details))}</pre>
+                    </div>` : ''}
+                </div>
+            ` : '';
+            return `
+                <div class="task-detail" data-task-id="${esc(t.id)}">
+                    <div class="detail-actions">
+                        <a class="btn btn-sm btn-outline-secondary" href="${oneToOneHref(t.id)}">1:1 chat</a>
+                        <a class="btn btn-sm btn-ghost-secondary" href="/office?worker=${encodeURIComponent(t.id)}">See in The Office</a>
+                        <span class="hint">Talk its runs through with the worker; any change you agree goes into its SKILL.md.</span>
+                    </div>
+                    ${t.description ? `
+                        <div class="task-description" title="${esc(t.description)}">
+                            ${esc(t.description)}
+                        </div>
+                    ` : ''}
+                    <div class="task-meta">
+                        <span><strong>Last run:</strong> ${timeAgo(t.last_run)}</span>
+                        <span><strong>Duration:</strong> ${t.last_duration ? t.last_duration + 's' : '-'}</span>
+                        <span><strong>Skill:</strong> <a href="#skill-preview" data-skill="${esc(t.id)}">${esc(t.skill)}</a></span>
+                        <span><strong>Runs:</strong> ${t.run_count}</span>
+                        <span><strong>Schedule:</strong> ${schedule(t)}</span>
+                        ${t.nickname ? `<span><strong>In the Office:</strong> ${esc(t.nickname)}</span>` : ''}
+                    </div>
+                    ${settingsForm(t)}
+                    ${t.last_error ? `<div class="task-message ${t.status === 'blocked' ? 'blocked' : 'error'}">${esc(t.last_error)}</div>` : ''}
+                    ${output}
+                </div>
+            `;
+        }
+
+        function renderTasks(tasks, force = false) {
+            const container = document.getElementById('tasks');
+            if (requestedTask && !requestedTaskFocused && tasks.some(t => t.id === requestedTask)) {
+                expanded.add(requestedTask);
+            }
+            const signature = JSON.stringify([
+                tasks, sortMode, showMode, searchTerm, [...expanded].sort(),
+            ]);
+            if (!force && signature === renderedSignature) return;
+            renderedSignature = signature;
+            summary(tasks);
+            const rows = sortTasks(visibleTasks(tasks));
+            if (!rows.length) {
+                container.innerHTML = `<div class="empty-state">${
+                    tasks.length ? 'No workers match this filter' : 'No workers yet. New worker sets one up.'
+                }</div>`;
+                return;
+            }
+            container.innerHTML = `
+                <div class="card-header list-head">
+                    <span>Worker</span><span>Schedule</span><span>Last run</span>
+                    <span>Took</span><span>Runs</span><span>Status</span><span>Action</span>
+                </div>
+            ` + rows.map(t => {
+                const open = expanded.has(t.id);
+                const status = rowStatus(t);
+                return `
+                <div class="list-group-item task-row status-${esc(status.key)} ${open ? 'open' : ''}"
+                    data-task-id="${esc(t.id)}" tabindex="0" role="button" aria-expanded="${open}">
+                    <span class="row-title">
+                        <span class="task-name">${esc(displayName(t))}</span>
+                        ${t.name && t.id !== t.skill ? `<span class="task-skill">${esc(t.id)}</span>` : ''}
+                        ${t.skill ? `<a class="task-skill task-skill-name" href="#skill-preview" data-skill="${esc(t.id)}" title="View the ${esc(t.skill)} skill">${esc(t.skill)}</a>` : ''}
+                    </span>
+                    <span class="row-cell schedule">${esc(schedule(t))}</span>
+                    <span class="row-cell">${shortAgo(t.last_run)}</span>
+                    <span class="row-cell took">${t.last_duration ? Math.round(t.last_duration) + 's' : '-'}</span>
+                    <span class="row-cell runs">${esc(t.run_count)}</span>
+                    <span class="row-status">
+                        <span class="task-status task-status-${esc(status.key)}" title="${esc(t.status)}">${esc(status.label)}</span>
+                    </span>
+                    <span class="row-actions">${actionButton(t)}${chatButton(t)}</span>
+                </div>
+                ${open ? detailPanel(t) : ''}`;
+            }).join('');
+            container.querySelectorAll('.task-settings').forEach(hydrateModelField);
+            if (requestedTask) {
+                const target = [...container.querySelectorAll('.task-row')]
+                    .find(row => row.dataset.taskId === requestedTask);
+                if (target) {
+                    target.classList.add('target');
+                    if (!requestedTaskFocused) {
+                        requestedTaskFocused = true;
+                        target.scrollIntoView({behavior: 'smooth', block: 'center'});
+                    }
+                }
+            }
+        }
+
+        function toggleTask(id) {
+            if (expanded.has(id)) { expanded.delete(id); dirtySettings.delete(id); }
+            else expanded.add(id);
+            renderTasks(latestTasks, true);
+        }
+
+        async function refresh() {
+            try {
+                const res = await fetch('/api/tasks');
+                latestTasks = await res.json();
+            } catch (e) {
+                console.error('Failed to fetch tasks:', e);
+                return;
+            }
+            // Don't wipe a settings form mid-edit; it re-renders on save or reset.
+            if (!dirtySettings.size && !document.querySelector('.task-settings:focus-within')) renderTasks(latestTasks);
+            renderRunningNow();
+        }
+
+        async function loadRuntimeOptions() {
+            try {
+                const res = await fetch('/api/runtime-options');
+                if (res.ok) runtimeOptions = await res.json();
+            } catch (e) {
+                console.error('Failed to fetch runtime options:', e);
+            }
+        }
+
+        async function runNow(id, btn) {
+            btn.disabled = true;
+            btn.textContent = 'Starting';
+            try {
+                await fetch(`/api/tasks/${encodeURIComponent(id)}/run`, { method: 'POST' });
+            } catch (e) {
+                console.error('Failed to trigger task:', e);
+            }
+            refresh();
+        }
+
+        // First click arms, a second within 4s fires: no browser dialog (they block the page).
+        async function fireWorker(id, btn) {
+            if (!btn.dataset.armed) {
+                btn.dataset.armed = '1';
+                btn.textContent = 'Click again to fire';
+                setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = 'Fire worker'; } }, 4000);
+                return;
+            }
+            btn.disabled = true;
+            const status = btn.closest('.task-settings')?.querySelector('.runtime-status');
+            try {
+                const res = await fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                if (!res.ok) throw new Error((await res.json()).error || 'fire failed');
+                latestTasks = latestTasks.filter(t => t.id !== id);
+                dirtySettings.delete(id);
+                renderTasks(latestTasks, true);
+            } catch (error) {
+                if (status) { status.className = 'runtime-status error'; status.textContent = error.message; }
+                btn.disabled = false; delete btn.dataset.armed; btn.textContent = 'Fire worker';
+            }
+        }
+
+        async function cancelQueued(id, btn) {
+            btn.disabled = true;
+            btn.textContent = 'Cancelling';
+            try {
+                await fetch(`/api/tasks/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+            } catch (e) {
+                console.error('Failed to cancel queued task:', e);
+            }
+            refresh();
+        }
+
+        async function viewSkill(id) {
+            const preview = document.getElementById('skill-preview');
+            const content = document.createElement('article');
+            content.className = 'card-body prose';
+            content.textContent = 'Loading skill…';
+            document.getElementById('skill-preview-body').replaceChildren(content);
+            const task = latestTasks.find(t => t.id === id);
+            document.getElementById('skill-preview-title').textContent = `${task?.skill || 'Skill'} / SKILL.md`;
+            preview.showModal();
+            try {
+                const response = await fetch(`/api/tasks/${encodeURIComponent(id)}/skill`);
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Skill could not be loaded');
+                // Preserve the complete source while keeping YAML readable as code.
+                const markdown = data.content.replace(/^---\r?\n([\s\S]*?)\r?\n---(?=\r?\n|$)/, '```yaml\n$1\n```');
+                content.innerHTML = safeMarkdown(markdown);
+            } catch (error) {
+                content.textContent = error.message || 'Skill could not be loaded';
+            }
+        }
+
+        const taskList = document.getElementById('tasks');
+        taskList.addEventListener('click', (event) => {
+            const skill = event.target.closest('[data-skill]');
+            if (skill) { event.preventDefault(); viewSkill(skill.dataset.skill); return; }
+            const run = event.target.closest('[data-run]');
+            if (run) { event.stopPropagation(); runNow(run.dataset.run, run); return; }
+            const cancel = event.target.closest('[data-cancel]');
+            if (cancel) { event.stopPropagation(); cancelQueued(cancel.dataset.cancel, cancel); return; }
+            const fire = event.target.closest('[data-fire]');
+            if (fire) { event.stopPropagation(); fireWorker(fire.dataset.fire, fire); return; }
+            if (event.target.closest('a[href]')) return;  // the 1:1 link navigates, it doesn't toggle
+            if (event.target.closest('.task-detail')) return;
+            const row = event.target.closest('.task-row');
+            if (row) toggleTask(row.dataset.taskId);
+        });
+        taskList.addEventListener('submit', (event) => {
+            const form = event.target.closest('.task-settings');
+            if (!form) return;
+            event.preventDefault();
+            saveSettings(form);
+        });
+        taskList.addEventListener('input', (event) => {
+            const form = event.target.closest('.task-settings');
+            if (form) dirtySettings.add(form.dataset.taskId);
+        });
+        taskList.addEventListener('change', (event) => {
+            const form = event.target.closest('.task-settings');
+            if (!form) return;
+            dirtySettings.add(form.dataset.taskId);
+            if (event.target.name === 'mode' || event.target.name === 'days') syncScheduleFields(form);
+            if (event.target.name === 'connection') {
+                form.elements.connection_model.dataset.current = '';
+                hydrateModelField(form);
+            }
+            if (event.target.name === 'connection_model' && modelListings.has(form)) {
+                roostaModelPicker.fillEfforts(modelListings.get(form), event.target.value, '', form.elements.connection_effort);
+            }
+        });
+        taskList.addEventListener('click', (event) => {
+            const refreshModels = event.target.closest('[data-refresh-models]');
+            if (refreshModels) {
+                event.preventDefault();
+                const form = refreshModels.closest('.task-settings');
+                const current = roostaModelPicker.join(form.elements.connection_model.value, form.elements.connection_effort.value);
+                form.elements.connection_model.dataset.current = current;
+                hydrateModelField(form, true);
+                return;
+            }
+            const reset = event.target.closest('[data-reset]');
+            if (!reset) return;
+            dirtySettings.delete(reset.closest('.task-settings').dataset.taskId);
+            renderTasks(latestTasks, true);
+        });
+        taskList.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            if (event.target.closest('a, button')) return;  // keys on Run or 1:1 act on that control
+            const row = event.target.closest('.task-row');
+            if (!row) return;
+            event.preventDefault();
+            toggleTask(row.dataset.taskId);
+        });
+
+        const sortSelect = document.getElementById('task-sort');
+        sortSelect.value = sortMode;
+        sortSelect.addEventListener('change', () => {
+            sortMode = sortSelect.value;
+            if (!SORT_MODES.includes(sortMode)) sortMode = 'alphabetical';
+            writePreference(SORT_KEY, sortMode);
+            renderTasks(latestTasks, true);
+        });
+        const showSelect = document.getElementById('task-show');
+        showSelect.value = showMode;
+        showSelect.addEventListener('change', () => {
+            showMode = showSelect.value;
+            if (!SHOW_MODES.includes(showMode)) showMode = 'all';
+            writePreference(SHOW_KEY, showMode);
+            renderTasks(latestTasks, true);
+        });
+        const searchInput = document.getElementById('task-search');
+        searchInput.addEventListener('input', () => {
+            searchTerm = searchInput.value.trim().toLowerCase();
+            renderTasks(latestTasks, true);
+        });
+
+
+        Promise.all([loadRuntimeOptions(), refresh()]).then(() => renderTasks(latestTasks, true));
+        setInterval(refresh, 5000);
+
+        // --- AI activity feed (SSE) ---
+        const acts = new Map();  // id -> entry; updates land on the same row
+        const openActivity = new Set();
+        const transcriptCache = new Map();
+        function sourceLabel(s) {
+            return s === 'scheduled' ? 'auto' : s === 'manual' ? 'you (run now)' : s;
+        }
+        // `kind` (skill|chat|action|send) says what was spawned, never how it went.
+        // ActivityLog is the single place that translates pre-rename history.
+        function formatTranscript(turns) {
+            if (!turns.length) return 'Transcript not available yet.';
+            return turns.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
+        }
+        async function loadTranscript(id) {
+            if (transcriptCache.has(id)) return transcriptCache.get(id);
+            try {
+                const res = await fetch(`/api/activity/${id}/transcript`);
+                if (!res.ok) {
+                    const body = { turns: [], resume_command: '' };
+                    transcriptCache.set(id, body);
+                    return body;
+                }
+                const body = await res.json();
+                transcriptCache.set(id, body);
+                return body;
+            } catch (e) {
+                console.error('Failed to load transcript:', e);
+                return { turns: [], resume_command: '' };
+            }
+        }
+        async function toggleActivity(id) {
+            if (openActivity.has(id)) {
+                openActivity.delete(id);
+            } else {
+                openActivity.add(id);
+                await loadTranscript(id);
+            }
+            renderActivity();
+        }
+
+        // In-flight work comes from two independent sources: the activity log
+        // (which knows the spawn and its start time) and the runner's own task
+        // state. Merging them means a running skill is visible even when its
+        // activity entry predates a runner restart.
+        function runningWork() {
+            const rows = [];
+            const covered = new Set();
+            for (const entry of acts.values()) {
+                if (entry.status !== 'running') continue;
+                rows.push({
+                    key: entry.id,
+                    label: entry.task_id || entry.label,
+                    meta: sourceLabel(entry.source),
+                    started: entry.started,
+                    state: 'running',
+                });
+                if (entry.task_id) covered.add(entry.task_id);
+            }
+            for (const task of latestTasks) {
+                if (covered.has(task.id)) continue;
+                if (task.status === 'running') {
+                    const meta = task.skill === task.id ? 'started before restart' : task.skill;
+                    rows.push({key: `task:${task.id}`, label: task.id, meta, started: '', state: 'running'});
+                } else if (task.queued) {
+                    rows.push({key: `queued:${task.id}`, label: task.id, meta: 'queued to start', started: '', state: 'queued'});
+                }
+            }
+            rows.sort((a, b) => String(b.started || '').localeCompare(String(a.started || '')));
+            return rows;
+        }
+        function renderRunningNow() {
+            const rows = runningWork();
+            document.getElementById('livedot').classList.toggle('on', rows.some(r => r.state === 'running'));
+            document.getElementById('activity-now').innerHTML = rows.length ? rows.map(r => `
+                <div class="now-row ${r.state}">
+                    <span class="now-spinner"></span>
+                    <span>
+                        <span class="now-label">${esc(r.label)}</span>
+                        <span class="now-meta">${esc(r.meta)}</span>
+                    </span>
+                    <span class="now-elapsed">${r.started ? esc(elapsed(r.started)) : esc(r.state)}</span>
+                </div>
+            `).join('') : '<div class="now-empty">Nothing running</div>';
+        }
+        function renderActivity() {
+            renderRunningNow();
+            // Live work lives in the Running now block above, so this list only
+            // ever carries finished runs - success, error or interrupted.
+            const rows = [...acts.values()]
+                .filter(r => r.status !== 'running')
+                .sort((a, b) => (b.started || '').localeCompare(a.started || ''));
+            const cap = activityExpanded ? 50 : 10;
+            const html = rows.slice(0, cap).map(r => {
+                const open = openActivity.has(r.id);
+                const cached = transcriptCache.get(r.id);
+                const sessionLine = r.session_id
+                    ? `<div class="act-session">${esc(r.session_id)}</div>`
+                    : '<div class="act-session">No session id recorded</div>';
+                const resume = cached?.resume_command
+                    ? `<div class="act-session" style="margin-top:0.35rem">${esc(cached.resume_command)}</div>`
+                    : '';
+                const outcome = r.summary || cached?.outcome || '';
+                const transcript = open
+                    ? `<div class="card card-body act-detail open">
+                        ${outcome ? `<div class="act-outcome">${esc(outcome)}</div>` : ''}
+                        ${sessionLine}${resume}
+                        <details><summary>Transcript</summary><pre>${esc(formatTranscript(cached?.turns || []))}</pre></details>
+                    </div>`
+                    : '';
+                return `
+                <div>
+                    <div class="act-row ${open ? 'open' : ''}" onclick="toggleActivity('${r.id}')">
+                        <span class="badge act-kind act-${esc(r.kind)}">${esc(r.kind)}</span>
+                        <div class="act-body">
+                            <div class="act-label">${esc(r.label)}</div>
+                            <div class="act-meta">${esc(sourceLabel(r.source))} &middot; ${timeAgo(r.started)}${r.duration ? ' &middot; ' + r.duration + 's' : ''}${r.backend ? ' &middot; ' + esc(r.backend) : ''}</div>
+                            ${r.summary && !open ? `<div class="act-outcome">${esc(r.summary)}</div>` : ''}
+                        </div>
+                        <span class="act-state ${esc(r.status)}">${esc(r.status)}</span>
+                    </div>
+                    ${transcript}
+                </div>`;
+            }).join('') || '<div class="now-empty">Nothing finished yet</div>';
+            const more = rows.length > 10;
+            const toggle = more
+                ? `<button type="button" class="act-more" onclick="toggleActivityExpanded()">${activityExpanded ? 'Show fewer' : `Show more (${Math.min(rows.length, 50)})`}</button>`
+                : '';
+            document.getElementById('activity-log').innerHTML = html + toggle;
+        }
+        let activityExpanded = false;
+        function toggleActivityExpanded() {
+            activityExpanded = !activityExpanded;
+            renderActivity();
+        }
+        function connectActivity() {
+            const es = new EventSource('/api/activity/stream');
+            es.onmessage = (e) => {
+                const entry = JSON.parse(e.data);
+                acts.set(entry.id, entry);
+                renderActivity();
+            };
+            es.onerror = () => { es.close(); setTimeout(connectActivity, 3000); };
+        }
+        async function loadActivitySnapshot() {
+            try {
+                const res = await fetch('/api/activity?limit=60');
+                if (!res.ok) return;
+                for (const entry of await res.json()) acts.set(entry.id, entry);
+            } catch (e) {
+                console.error('Failed to load activity snapshot:', e);
+            }
+            renderActivity();
+        }
+        loadActivitySnapshot();
+        connectActivity();
+        setInterval(renderRunningNow, 1000);  // live elapsed time on in-flight work
+        setInterval(renderActivity, 30000);   // refresh relative timestamps
+    </script>
+</body>
+</html>
