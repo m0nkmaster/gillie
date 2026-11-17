@@ -1,3 +1,19 @@
+const hour = new Date().getHours();
+document.getElementById("greeting").textContent =
+  hour < 5 ? "Burning the midnight oil" :
+  hour < 12 ? "Good morning" :
+  hour < 18 ? "Good afternoon" :
+  "Good evening";
+const FLAVOURS = [
+  "Warming up your second brain…",
+  "Gathering the threads that need you…",
+  "Tuning the signal, trimming the noise…",
+  "Fetching what moved while you were away…",
+  "Rounding up the overnight runs…",
+  "Pouring the coffee, metaphorically…",
+];
+document.getElementById("flavour").textContent = FLAVOURS[Math.floor(Math.random() * FLAVOURS.length)];
+
 const status = document.getElementById("status");
 const retry = document.getElementById("retry");
 const repair = document.getElementById("repair");

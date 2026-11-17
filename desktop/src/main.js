@@ -155,7 +155,7 @@ function createMainWindow() {
     minHeight: 600,
     show: false,
     title: "Roosta",
-    backgroundColor: "#0f1117",
+    backgroundColor: "#0b0806",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -596,6 +596,8 @@ async function confirmWorkspaceSetup({ workspaceDir, migrate }) {
 }
 
 async function initialise() {
+  // Packaged builds carry icon.icns; `npm start` would otherwise show Electron's dock icon.
+  if (!app.isPackaged && app.dock) app.dock.setIcon(path.join(__dirname, "roosta.png"));
   stateFile = path.join(app.getPath("userData"), "notification-state.json");
   settingsFile = path.join(app.getPath("userData"), "settings.json");
   notificationState = new NotificationState(readJson(stateFile, {}));
