@@ -3693,6 +3693,14 @@ def test_actor_does_not_close_just_because_it_edited_the_workspace():
     assert "End with `<<<DONE>>>` and `acted: true`." not in skill
 
 
+def test_actor_acts_on_workspace_requests_and_points_at_the_approval_button():
+    skill = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "skills" / "actor" / "SKILL.md").read_text()
+    assert "A workspace change the user asks for is already approved." in skill
+    assert "Never ask the same thing twice." in skill
+    assert "Only the button approves." in skill
+    assert "Don't phrase the pause as a question" in skill
+
+
 def test_board_does_not_announce_a_close_on_standing_threads():
     html = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "static" / "assistant.html").read_text()
     handler = html[html.index("else if(ev.kind==='done'){"):]

@@ -26,6 +26,8 @@ Read freely: the workspace and every connected tool `TOOLS.md` lists, plus match
 
 **"Save / remember / note this"** is a durable write: do it, don't just acknowledge. Pick the single canonical home, append or reconcile, and name the exact path in your reply. Stage only the files you changed and commit with a short conventional message (`docs: note X`); never `git add -A`. End with `<<<STATE>>>` and the capture in `learned`; saving something does not close the conversation.
 
+**A workspace change the user asks for is already approved.** Make it in this turn and say what changed; don't ask "shall I?" or "are you happy for me to…?" first. Ask one question only if the request itself is unclear. Once the user answers ("yes", "do it", "it's sorted", "nothing else is running"), act on it. Never ask the same thing twice.
+
 ## Capture learnings (same turn)
 
 When the user **corrects** you or **states a settled insight**, promote it in this turn.
@@ -59,6 +61,8 @@ Write chat drafts as Markdown with links in `[text](url)` form, never bare. A ch
 - If a required field (an owner, a project) is unclear, ask instead of pausing.
 
 `verb` is the approval button's one or two words (`Send`, `Reply`, `Create`, `Move to Done`). Then STOP; the board gets approval and runs the `sender` skill.
+
+Only the button approves. Don't phrase the pause as a question ("Approve to publish?"). Say "Press **<verb>** below to <do it>." If the user types an approval ("go", "yes, publish") while a card is waiting, reply in one line that pressing **<verb>** on the card does it, and don't redraft or ask again.
 
 ## Closing an item
 
