@@ -15,9 +15,13 @@ See [Assistant contracts](assistant.md) and [Office rendering](office.md) for pa
   also returns the version (the top `## x.y.z` heading). `nav-count.js` adds that version, linked
   here, to the top right of every page's header
 
-- **`static/settings.html` / `ai-settings.js` / `theme.js`** - `/settings` leads with the default AI account and names the software it runs through. Existing Claude Code connections explicitly explain that Roosta reuses the login on this computer; a detected but untested login prompts a connection check. Model and reasoning controls live in a disclosure, with a model dropdown grouped by tested account and an Effort dropdown when the selected model supports it. Supported effort levels load from the runtime and persist with the model choice. Choosing a model saves the default account and provider-scoped model together. Account setup lives under the collapsed Change AI or manage accounts disclosure (opened automatically when no tested account exists). Account management and usage sit in per-account disclosures (usage lists at most the 10 most recently active chats per account; `chat_count` carries the total); missing software has an inline install action on the account; AI software also offers installation, Open in Terminal on macOS, and Update to latest under a closed Updates disclosure, preserving other installations. Terminal sessions use the CLI’s own login and settings, as explained beside the controls. Service names use Claude and ChatGPT / OpenAI; account names are optional. Add/edit forms have Cancel, clear credentials on exit and stay open across job polling; expanded account details also survive polling. Provider/billing guidance, official sign-in and the disclosed tool-use test remain part of setup. Settings shows a Continue workspace setup notice above Your AI only while setup is unhandled and a concrete output is missing (name, priorities or starter schedule), naming what is missing; chat history alone never shows it. A Workspace and runner card (`workspace-settings.js`) follows the account setup: active workspace and a Change workspace disclosure (select, create or adopt, with a Git option), the address `roosta start` will use (hidden for the desktop app; a non-loopback host needs an explicit confirmation), background-service status and install, and Sync core skills. Nothing there switches or restarts the running runner; the Assistant’s preceding Connect your AI card links here without starting an AI turn. Only appearance is a per-browser preference in `localStorage`: Light mode (`roosta-theme` = `light`, absent means dark). Every page loads `theme.js` undeferred
-  right after `shell.css`, so `data-bs-theme` is set before first paint; the `storage` event keeps open
-  pages in step. The light palette is one `[data-bs-theme="light"]` block in `shell.css` that redefines
+- **`static/settings.html` / `ai-settings.js` / `theme.js`** - `/settings` leads with the default AI account and names the software it runs through. Existing Claude Code connections explicitly explain that Roosta reuses the login on this computer; a detected but untested login prompts a connection check. Model and reasoning controls live in a disclosure, with a model dropdown grouped by tested account and an Effort dropdown when the selected model supports it. Supported effort levels load from the runtime and persist with the model choice. Choosing a model saves the default account and provider-scoped model together. Account setup lives under the collapsed Change AI or manage accounts disclosure (opened automatically when no tested account exists). Account management and usage sit in per-account disclosures (usage lists at most the 10 most recently active chats per account; `chat_count` carries the total); missing software has an inline install action on the account; AI software also offers installation, Open in Terminal on macOS, and Update to latest under a closed Updates disclosure, preserving other installations. Terminal sessions use the CLI’s own login and settings, as explained beside the controls. Service names use Claude and ChatGPT / OpenAI; account names are optional. Add/edit forms have Cancel, clear credentials on exit and stay open across job polling; expanded account details also survive polling. Provider/billing guidance, official sign-in and the disclosed tool-use test remain part of setup. Settings shows a Continue workspace setup notice above Your AI only while setup is unhandled and a concrete output is missing (name, priorities or starter schedule), naming what is missing; chat history alone never shows it. A Workspace and runner card (`workspace-settings.js`) follows the account setup: active workspace and a Change workspace disclosure (select, create or adopt, with a Git option), the address `roosta start` will use (hidden for the desktop app; a non-loopback host needs an explicit confirmation), background-service status and install, and Sync core skills. Nothing there switches or restarts the running runner; the Assistant’s preceding Connect your AI card links here without starting an AI turn. Appearance is a per-browser preference in `localStorage`. Every page loads `theme.js` undeferred
+  right after `shell.css`, so appearance is set before first paint; the `storage` event keeps open
+  pages in step. Appearance offers Purple (default), Slate, Midnight, Forest, Charcoal and Light,
+  saved under `roosta-theme`. `theme.js` sets `data-roosta-scheme` plus Tabler's `data-bs-theme` mode.
+  Saved `light` remains Light; legacy `dark` selects Slate. `roostaTheme.get()` and the theme event's
+  detail remain `light`/`dark`; `roostaTheme.scheme()` returns the selected scheme. The light palette
+  is one `[data-bs-theme="light"]` block in `shell.css` that redefines
   the `--console-*` and `--signal-*` tokens (signals darken to stay legible on white). Pages use those
   tokens (`--console-rail`, `--console-selected`, `--console-tint`, ...) rather than hardcoded dark hexes,
   or light mode leaves dark patches. The constellation canvas carries its own `data-bs-theme="dark"`
@@ -28,7 +32,13 @@ See [Assistant contracts](assistant.md) and [Office rendering](office.md) for pa
   folder still returns an error. The endpoint remains restricted to local Settings requests.
 
 - **`static/shell.css`** - Shared Tabler theme tokens, local Inter font, top navigation, page headers and focus
-  styles; keep page-to-page shell geometry and palette here so switching views feels continuous
+  styles; the default dark scheme uses deep purple surfaces, lilac highlights and warm amber accents beside the orange logo.
+  Keep page-to-page shell geometry and palette here so switching views feels continuous
+
+- **Responsive layout.** Settings fills the available window width. On narrow screens the Assistant's
+  stacked inbox and conversation scroll within the main panel, with a minimum conversation height
+  so short windows keep the chat and composer reachable. `test_layout.py` renders the real page CSS
+  in Chrome without live APIs or polling to guard width and bottom-of-page access.
 
 - **`static/vendor/tabler/`** - Pinned Tabler 1.7.3 core CSS and MIT licence; no build step or plugin JS
 
@@ -36,7 +46,7 @@ See [Assistant contracts](assistant.md) and [Office rendering](office.md) for pa
   `assets/roosta-pixel.png` by `desktop/scripts/create-icons.js`.
 
 - **Visual identity is a professional Tabler workspace.** Use the locally vendored Tabler core CSS,
-  Inter and the shared slate theme in `shell.css`. A minimal horizontal bar carries navigation
+  Inter and the shared theme in `shell.css`. A minimal horizontal bar carries navigation
   at the top; each page has a clear header. Assistant separates the inbox, conversation and optional
   document pane without an enclosing card or nested navigation frame. Keep full-width content with a fixed speaker
   column. Action types keep stable, restrained colours in tags and selection rules; statuses remain

@@ -4,18 +4,19 @@
 
 **Your agentic office.**
 
-A desktop app where your own team of AI workers gets to know your work and gets on with it.
+Hi, I'm Roosta - I help you run a team of AI workers that get to know your work and then get on with it all on their computer.
 
-Give your workers jobs. They research, organise, build and keep your projects moving, drawing on shared knowledge of your priorities, projects and preferences. They learn from your feedback, improve their skills and bring you the decisions that need your attention.
+Give your workers jobs. They research, organise, build and keep your projects moving, drawing on shared knowledge of your priorities, projects and preferences stored in simple, readable, markdown files. Your team learn from your feedback, improve their skills and bring you the decisions that need your attention.
 
-Watch them work in your pixel-art office, talk to them directly, and shape the team around what you need. You set the direction. Your agents get to work.
+Watch them work in your pixel-art office, talk to them directly, and shape the team around what you need. You set the direction, hire and fire. Your agents get to work.
 
 - **A team that knows your work.** Workers share a workspace of project knowledge, priorities and preferences, so each job can build on what came before.
 - **Work that keeps moving.** Give recurring jobs to workers that run on a schedule, from researching a topic to keeping project notes current.
 - **An office that gets better.** Workers maintain shared knowledge, learn from your conversations, refine skills and improve your setup.
+- **Stay connected.** Roosta manages your AI connections and the tools your workers use, helping you connect the services you work with and keep sign-ins working.
 - **You stay in charge.** Review findings, guide workers and approve messages or other external actions before they happen.
 
-Named for a resourceful, unconventional problem-solver, Roosta is about taking initiative and finding a way through the chaos.
+Named after a resourceful, unconventional problem-solver, Roosta is about taking initiative and finding a way through the chaos. 
 
 ![Roosta's pixel-art Office, with AI workers at desks, in meeting rooms and around shared spaces](assets/office.png)
 
@@ -23,28 +24,24 @@ Named for a resourceful, unconventional problem-solver, Roosta is about taking i
 
 ### Download the macOS app
 
-Download the DMG for your Mac from [GitHub Releases](https://github.com/m0nkmaster/roosta/releases):
+Download the dmg for your Mac from [GitHub Releases](https://github.com/m0nkmaster/roosta/releases):
 **arm64** for Apple Silicon, **x64** for Intel. Drag Roosta into Applications, eject the disk
-image, then open it. Python and the backend are included; no Python, Node or uv setup is needed.
+image, then open it.
 
-These releases are **self-signed and not notarised**. If macOS blocks the first launch, use
+Roosta releases are **self-signed and not notarised**. If macOS blocks the first launch, use
 **System Settings → Privacy & Security → Open Anyway** for Roosta and confirm.
 The first launch creates `~/workspace` (or uses your previously configured workspace).
-An existing folder with unrelated files is not automatically adopted. Settings downloads verified standalone AI runtimes without Node or terminal commands. Accounts are yours; local Ollama still requires Ollama and a downloaded tool-capable model.
-
-To update, quit Roosta and replace the app using the newer DMG. Your workspace stays in place.
-There is no automatic updater. See [desktop build and release instructions](desktop/README.md)
-for local builds, or the [release guide](docs/development/releases.md) for one-command publishing.
+An existing folder with unrelated files is not automatically adopted. 
 
 ### Set up your office
 
-1. **Connect your AI.** On a fresh workspace, the board offers **Connect your AI**, or **Check your Claude Code connection** if Claude Code is already installed. Open AI settings to check that login or connect another account and install its software. The first account that passes the check becomes the default.
+1. **Connect your AI.** On a fresh workspace, the board offers **Connect your AI**, or **Check your Claude Code connection** if Claude Code is already installed. Open 'AI settings' to check that login or connect another account and install its software. The first account that passes the check becomes the default.
 2. **Tell Roosta about your work.** Choose **Continue workspace setup**, then open **Set up your workspace** on the board. Roosta helps you describe your priorities, projects and tools, sets up a starter schedule and creates your first board card.
 3. **Build your team.** Open Workers and choose **New worker** to describe a job. Each worker runs a named skill on a schedule; chat with it to refine the job, and see it in the Office.
 
-Your AI accounts are yours. API usage is billed separately from ChatGPT/Claude subscriptions. OpenAI and Anthropic also offer account sign-in, including enterprise accounts subject to organisation policy: OpenAI uses Pi’s Sign in with ChatGPT flow; Anthropic uses Claude Code sign-in.
+Bring your own AI accounts. Use an OpenAI or Anthropic subscription, or pay separately for API usage. OpenAI models run through the [Pi](https://pi.dev/) agent harness.
 
-### Run with Python
+### Altenatively, run in the browser with Python
 
 You can also run Roosta in a browser on macOS or Linux. Python installs need Python 3.11+ and git; no separately installed agent CLI is required.
 
@@ -71,7 +68,7 @@ The Assistant board brings together what needs you now. Workers handle recurring
 
 ### Skills give your workers their jobs
 
-A skill is a set of instructions for a job. Roosta includes skills for keeping knowledge current, learning from feedback, improving the office and handling work that needs your approval. Add your own as your team grows.
+A skill is the backbone of Roosta's workers, there are a set of instructions for a job. Roosta has built-in skills for keeping knowledge current, learning from feedback, improving the office and handling work that needs your approval. Add your own as your team grows.
 
 | Skill | Job |
 |-------|-----|

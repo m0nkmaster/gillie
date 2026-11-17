@@ -11,33 +11,33 @@
     --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --shell-header-height: 52px;
     --shell-gutter: 1.75rem;
-    --console-canvas: #101720;
-    --console-panel: #192330;
-    --console-raised: #243143;
-    --console-line: #303e50;
-    --console-text: #e9eef5;
-    --console-secondary: #bdc8d6;
-    --console-tertiary: #96a6b9;
+    --console-canvas: #17121f;
+    --console-panel: #21192d;
+    --console-raised: #302440;
+    --console-line: #443552;
+    --console-text: #f2edf7;
+    --console-secondary: #cbbfd8;
+    --console-tertiary: #aa9db9;
     --signal-coral: #ff8c93;
-    --signal-amber: #efc078;
+    --signal-amber: #ffbc78;
     --signal-mint: #79d4b0;
-    --signal-violet: #b4a5ff;
+    --signal-violet: #c5a3ff;
     --signal-blue: #8cbaff;
     --signal-pink: #eba3cc;
     --signal-cyan: #8ecdd8;
     --signal-yellow: #dacf84;
     /* Surfaces pages share instead of hardcoding a dark hex. */
-    --console-header: #141e2a;
+    --console-header: #1c1527;
     --console-header-line: #ffffff0b;
-    --console-rail: #141f2c;
-    --console-selected: #243247;
-    --console-selected-line: #354760;
+    --console-rail: #1d1628;
+    --console-selected: #37284c;
+    --console-selected-line: #634981;
     --console-tint: #ffffff08;
     --console-tint-faint: #ffffff04;
-    --console-bubble: #222f40;
-    --console-callout: #202c3d;
-    --console-code: #d5caff;
-    --console-target: #241f14;
+    --console-bubble: #30233f;
+    --console-callout: #2b203b;
+    --console-code: #dfc8ff;
+    --console-target: #332631;
     --tblr-font-sans-serif: var(--font-ui);
     --tblr-body-font-family: var(--font-ui);
     --tblr-body-bg: var(--console-canvas);
@@ -46,14 +46,15 @@
     --tblr-heading-color: var(--console-text);
     --tblr-bg-surface: var(--console-panel);
     --tblr-bg-surface-secondary: var(--console-canvas);
-    --tblr-bg-surface-tertiary: #1d2938;
+    --tblr-bg-surface-tertiary: var(--console-raised);
     --tblr-border-color: var(--console-line);
     --tblr-border-color-translucent: #ffffff10;
-    --tblr-primary: #7961d3;
+    --tblr-primary: #8756c7;
     --tblr-primary-fg: #ffffff;
-    --tblr-primary-rgb: 121, 97, 211;
-    --tblr-link-color: #c0b4ff;
-    --tblr-link-hover-color: #dad3ff;
+    --tblr-primary-rgb: 135, 86, 199;
+    --tblr-primary-darken: color-mix(in srgb, var(--tblr-primary) 85%, #000);
+    --tblr-link-color: #d0adff;
+    --tblr-link-hover-color: #e8d5ff;
     --tblr-danger: #ca5967;
     --tblr-danger-fg: #ffffff;
     --tblr-border-radius: 6px;
@@ -61,6 +62,82 @@
     --tblr-btn-input-font-size: .875rem;
     --tblr-btn-input-bg: var(--console-canvas);
     --tblr-btn-input-fg: var(--console-text);
+}
+
+/* The previous dark palette remains available in Settings. */
+[data-roosta-scheme="slate"] {
+    --console-canvas: #101720;
+    --console-panel: #192330;
+    --console-raised: #243143;
+    --console-line: #303e50;
+    --console-text: #e9eef5;
+    --console-secondary: #bdc8d6;
+    --console-tertiary: #96a6b9;
+    --signal-amber: #efc078;
+    --signal-violet: #b4a5ff;
+    --console-header: #141e2a;
+    --console-rail: #141f2c;
+    --console-selected: #243247;
+    --console-selected-line: #354760;
+    --console-bubble: #222f40;
+    --console-callout: #202c3d;
+    --console-code: #d5caff;
+    --console-target: #241f14;
+    --tblr-primary: #7961d3;
+    --tblr-primary-rgb: 121, 97, 211;
+    --tblr-link-color: #c0b4ff;
+    --tblr-link-hover-color: #dad3ff;
+}
+
+[data-roosta-scheme="midnight"] {
+    --console-canvas: #101827;
+    --console-panel: #18243b;
+    --console-raised: #223451;
+    --console-line: #344b6d;
+    --console-text: #edf3ff;
+    --console-secondary: #c1cee4;
+    --console-tertiary: #a0b0cd;
+    --console-header: #121e32;
+    --console-rail: #142038;
+    --console-selected: #243e64;
+    --console-selected-line: #496b9d;
+    --console-bubble: #20324e;
+    --console-callout: #1c2d47;
+    --console-target: #2b2d38;
+}
+
+[data-roosta-scheme="forest"] {
+    --console-canvas: #111b18;
+    --console-panel: #192b24;
+    --console-raised: #233b30;
+    --console-line: #355343;
+    --console-text: #eef6ee;
+    --console-secondary: #c2d6c7;
+    --console-tertiary: #a0bba8;
+    --console-header: #14211c;
+    --console-rail: #14251e;
+    --console-selected: #2b4437;
+    --console-selected-line: #50765f;
+    --console-bubble: #233c30;
+    --console-callout: #1f332a;
+    --console-target: #302f25;
+}
+
+[data-roosta-scheme="charcoal"] {
+    --console-canvas: #151515;
+    --console-panel: #202020;
+    --console-raised: #2c2c2c;
+    --console-line: #424242;
+    --console-text: #f2f2f2;
+    --console-secondary: #cacaca;
+    --console-tertiary: #aaaaaa;
+    --console-header: #1a1a1a;
+    --console-rail: #1b1b1b;
+    --console-selected: #33313b;
+    --console-selected-line: #5e566d;
+    --console-bubble: #2c2a30;
+    --console-callout: #29262f;
+    --console-target: #302b24;
 }
 
 /* Light mode (Settings): theme.js sets data-bs-theme="light" on <html> before first paint.
@@ -73,7 +150,7 @@
     --console-line: #dce2ea;
     --console-text: #18212d;
     --console-secondary: #3d4a5c;
-    --console-tertiary: #627287;
+    --console-tertiary: #59697e;
     --signal-coral: #c2414d;
     --signal-amber: #9a6410;
     --signal-mint: #16805b;
@@ -181,8 +258,8 @@ body {
     padding: 0 .35rem;
     pointer-events: none;
     border-radius: 999px;
-    background: var(--signal-violet);
-    color: #fff;
+    background: var(--tblr-primary);
+    color: var(--tblr-primary-fg);
     font-size: .68rem;
     font-weight: 600;
     line-height: 1.15rem;

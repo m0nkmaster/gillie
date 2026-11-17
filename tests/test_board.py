@@ -3617,14 +3617,73 @@ def test_chat_ideas_endpoint_reads_the_workspace_file(tmp_path, monkeypatch):
     assert response.json()["ideas"] == [{"text": "Build a page", "label": "", "kind": "build"}]
 
 
-def test_settings_page_offers_light_mode():
+def test_settings_page_offers_colour_schemes():
     from fastapi.testclient import TestClient
     response = TestClient(appmod.app).get("/settings")
     assert response.status_code == 200
     assert "no-store" in response.headers["cache-control"]
-    assert 'id="light-mode"' in response.text
+    assert 'id="color-scheme"' in response.text
+    for scheme in ('purple', 'slate', 'midnight', 'forest', 'charcoal', 'light'):
+        assert f'<option value="{scheme}">' in response.text
     theme = (STATIC / "theme.js").read_text()
     assert "'roosta-theme'" in theme and "data-bs-theme" in theme
+
+
+def test_colour_schemes_restore_sync_and_keep_legacy_modes():
+    if not shutil.which('node'):
+        pytest.skip('Node is required for UI checks')
+    source = (STATIC / 'theme.js').read_text()
+    subprocess.run(['node', '-e', 'const source = ' + json.dumps(source) + ';\n' + """
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+function load(value, blocked = false) {
+  const state = {value, attrs:{}, events:[], listeners:{}};
+  const context = {
+    localStorage:{
+      getItem() { if (blocked) throw Error('disabled'); return state.value; },
+      setItem(key, value) { if (blocked) throw Error('disabled'); state.value = value; },
+    },
+    document:{documentElement:{setAttribute(key, value) { state.attrs[key] = value; }}},
+    CustomEvent:class { constructor(type, options) { this.detail = options.detail; } },
+    window:{
+      addEventListener(type, callback) { state.listeners[type] = callback; },
+      dispatchEvent(event) { state.events.push(event.detail); },
+    },
+  };
+  vm.runInNewContext(source, context);
+  return {...state, state, theme:context.window.roostaTheme};
+}
+for (const [saved, scheme, mode] of [
+  [null,'purple','dark'], ['purple','purple','dark'], ['slate','slate','dark'],
+  ['midnight','midnight','dark'], ['forest','forest','dark'], ['charcoal','charcoal','dark'],
+  ['dark','slate','dark'], ['light','light','light'], ['unknown','purple','dark'],
+]) {
+  const app = load(saved);
+  assert.equal(app.theme.scheme(), scheme);
+  assert.equal(app.theme.get(), mode);
+  assert.equal(app.attrs['data-roosta-scheme'], scheme);
+  assert.equal(app.attrs['data-bs-theme'], mode);
+  assert.equal(app.events.at(-1), mode);
+}
+const app = load(null);
+app.theme.set('slate');
+assert.equal(app.state.value, 'slate');
+assert.equal(load(app.state.value).theme.scheme(), 'slate');
+app.state.value = 'light';
+app.listeners.storage({key:'other-preference'});
+assert.equal(app.attrs['data-bs-theme'], 'dark');
+app.listeners.storage({key:'roosta-theme'});
+assert.equal(app.attrs['data-roosta-scheme'], 'light');
+assert.equal(app.events.at(-1), 'light');
+app.theme.set('unknown');
+assert.equal(app.state.value, 'light');
+app.theme.set('dark');
+assert.equal(app.attrs['data-roosta-scheme'], 'slate');
+const blocked = load(null, true);
+blocked.theme.set('light');
+assert.equal(blocked.attrs['data-bs-theme'], 'light');
+assert.equal(blocked.theme.scheme(), 'light');
+"""], check=True)
 
 
 def test_actor_does_not_close_just_because_it_edited_the_workspace():

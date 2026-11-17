@@ -8,7 +8,7 @@
 <script src="/static/theme.js"></script>
 <script src="/static/nav-count.js" defer></script>
 <style>
-  .settings-shell{max-width:900px;margin:0 auto;padding:1.75rem var(--shell-gutter) 4rem}
+  .settings-shell{padding:1.75rem var(--shell-gutter) 4rem}
   .ai-account-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}
   .ai-account-heading h3{margin:0;font-size:1rem}
   .ai-account-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin-top:1rem}
@@ -19,8 +19,7 @@
   .setting{display:flex;align-items:center;justify-content:space-between;gap:1.5rem}
   .setting-copy strong{display:block;font-size:.9rem;font-weight:550}
   .setting-copy span{display:block;margin-top:.2rem;font-size:.8rem;color:var(--console-tertiary)}
-  .setting .form-switch{margin:0;padding-left:2.5rem;min-height:0}
-  .setting .form-check-input{width:2.25rem;height:1.25rem;margin-left:-2.5rem;cursor:pointer}
+  #color-scheme{width:12rem;max-width:100%;flex-shrink:0}
   #workspace-card .setting-copy{min-width:0}
   #workspace-card .setting-copy code{overflow-wrap:anywhere}
   #workspace-card .setting-copy small{font-weight:400}
@@ -33,6 +32,7 @@
   .ws-folder{display:flex;align-items:center;gap:.6rem;text-align:left}
   .ws-folder-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   @media(max-width:540px){#workspace-card .setting{flex-direction:column;align-items:flex-start;gap:.75rem}}
+  @media(max-width:540px){.setting[for="color-scheme"]{flex-direction:column;align-items:stretch;gap:.75rem}#color-scheme{width:100%}}
 </style></head>
 <body>
 <header class="workspace-header navbar" aria-label="Workspace"></header>
@@ -111,19 +111,26 @@
   <section class="card">
     <div class="card-header"><h2 class="card-title">Appearance</h2></div>
     <div class="card-body">
-      <label class="setting" for="light-mode">
-        <span class="setting-copy"><strong>Light mode</strong><span>A light background for daytime use. The Office scene and the constellation stay as they are.</span></span>
-        <span class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="light-mode"></span>
+      <label class="setting" for="color-scheme">
+        <span class="setting-copy"><strong id="color-scheme-label">Colour scheme</strong><span id="color-scheme-help">Saved for this browser. The Office scene and the constellation keep their own colours.</span></span>
+        <select class="form-select" id="color-scheme" aria-labelledby="color-scheme-label" aria-describedby="color-scheme-help">
+          <option value="purple">Purple · dark</option>
+          <option value="slate">Slate · dark</option>
+          <option value="midnight">Midnight · dark</option>
+          <option value="forest">Forest · dark</option>
+          <option value="charcoal">Charcoal · dark</option>
+          <option value="light">Light</option>
+        </select>
       </label>
     </div>
   </section>
 </main>
 <script>
 (() => {
-  const toggle = document.getElementById('light-mode');
-  const sync = () => { toggle.checked = window.roostaTheme.get() === 'light'; };
+  const schemes = document.getElementById('color-scheme');
+  const sync = () => { schemes.value = window.roostaTheme.scheme(); };
   sync();
-  toggle.addEventListener('change', () => window.roostaTheme.set(toggle.checked ? 'light' : 'dark'));
+  schemes.addEventListener('change', () => window.roostaTheme.set(schemes.value));
   window.addEventListener('roosta-theme', sync);
 })();
 </script>
