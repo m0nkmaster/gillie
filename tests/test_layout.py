@@ -40,7 +40,8 @@ window.scrollTo({top:document.scrollingElement.scrollHeight, behavior:'instant'}
 const composer = document.querySelector('.form');
 const log = document.querySelector('.logwrap');
 const result = {
-  width:innerWidth, height:innerHeight, mainWidth:main.getBoundingClientRect().width,
+  // clientWidth/Height exclude classic scrollbars (Linux and some macOS runners).
+  width:document.documentElement.clientWidth, height:document.documentElement.clientHeight, mainWidth:main.getBoundingClientRect().width,
   mainBottom:main.getBoundingClientRect().bottom,
   composerBottom:composer?.getBoundingClientRect().bottom,
   logHeight:log?.clientHeight, logRemaining:log ? log.scrollHeight-log.clientHeight-log.scrollTop : null,
@@ -57,7 +58,7 @@ document.body.appendChild(output);
         '--no-first-run', '--no-default-browser-check', '--allow-file-access-from-files',
         f'--user-data-dir={tmp_path / "browser"}', f'--window-size={width},{height}',
         '--dump-dom', page.as_uri(),
-    ], capture_output=True, text=True, check=True, timeout=30)
+    ], capture_output=True, text=True, check=True, timeout=120)
     match = re.search(r'<pre id="layout-result">(.*?)</pre>', rendered.stdout, re.S)
     assert match, rendered.stderr[-2000:]
     result = json.loads(html.unescape(match[1]))

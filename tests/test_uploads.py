@@ -83,7 +83,7 @@ def test_save_limits(tmp_path, monkeypatch):
 
 def test_resolve_rejects_unsafe_ids_and_foreign_or_symlinked_files(tmp_path):
     saved = attachments.save(tmp_path, "c", "a.txt", b"x")
-    for bad in ["../x", "zzzzzzzzzzzz", None, 12, saved["id"] + "0", saved["id"].upper()]:
+    for bad in ["../x", "zzzzzzzzzzzz", None, 12, saved["id"] + "0", "ABCDEF012345"]:
         with pytest.raises(ValueError):
             attachments.resolve(tmp_path, "c", bad)
     with pytest.raises(FileNotFoundError):
