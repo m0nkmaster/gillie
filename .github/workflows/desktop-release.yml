@@ -20,11 +20,11 @@ jobs:
             arch: x64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -59,7 +59,7 @@ jobs:
         env:
           ROOSTA_BUILD_ARCH: ${{ matrix.arch }}
         run: python desktop/scripts/smoke-backend.py "desktop/dist/Roosta-darwin-$ROOSTA_BUILD_ARCH/Roosta.app/Contents/Resources/roosta-backend/roosta-backend"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: Roosta-${{ matrix.arch }}
           path: |
@@ -75,11 +75,11 @@ jobs:
   python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - name: Build and test Python distributions
@@ -95,7 +95,7 @@ jobs:
           cd /tmp
           /tmp/roosta-wheel/bin/roosta --version
           /tmp/roosta-wheel/bin/roosta init --skip-checks --no-git /tmp/roosta-wheel-workspace
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: Python
           path: dist/*
@@ -111,8 +111,8 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           name: Python
           path: dist
@@ -129,8 +129,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           merge-multiple: true
           path: release-assets
