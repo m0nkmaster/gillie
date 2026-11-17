@@ -125,12 +125,22 @@ function missingRoosta() {
   return error;
 }
 
+function migrationSources(workspaceDir) {
+  return fs.readdirSync(workspaceDir, { withFileTypes: true })
+    .filter((entry) => entry.name.startsWith(".") && entry.name !== ".roosta" && entry.isDirectory())
+    .map((entry) => path.join(workspaceDir, entry.name))
+    .filter((directory) => ["tasks.yaml", "connectors.yaml", "skills.lock.json"].every((name) =>
+      fs.lstatSync(path.join(directory, name), { throwIfNoEntry: false })?.isFile()));
+}
+
 class RunnerSupervisor extends EventEmitter {
-  constructor({ workspaceDir, logFile, baseUrl = "http://127.0.0.1:7667", roosta = findRoosta(), bundled = false }) {
+  constructor({ workspaceDir, logFile, baseUrl = "http://127.0.0.1:7667", roosta = findRoosta(), bundled = false,
+    confirmWorkspace = async () => false }) {
     super();
     this.workspaceDir = workspaceDir;
     this.roosta = roosta;
     this.bundled = bundled;
+    this.confirmWorkspace = confirmWorkspace;
     this.baseUrl = baseUrl;
     this.log = new LogStore(logFile);
     this.child = null;
@@ -181,8 +191,38 @@ class RunnerSupervisor extends EventEmitter {
   }
 
   async prepareWorkspace() {
-    if (this.bundled && !fs.existsSync(path.join(this.workspaceDir, ".roosta"))) {
-      await this._run(this.roosta, ["init", "--skip-checks", "--no-git", this.workspaceDir], () => {});
+    if (this.bundled) {
+      const destination = path.join(this.workspaceDir, ".roosta");
+      if (fs.lstatSync(destination, { throwIfNoEntry: false })) {
+        if (fs.statSync(destination, { throwIfNoEntry: false })?.isDirectory()) return;
+        throw new Error("The .roosta setup path must be a directory. Move the conflicting file and choose Retry.");
+      }
+      const occupied = fs.existsSync(this.workspaceDir) && fs.readdirSync(this.workspaceDir).length > 0;
+      const args = ["init", "--skip-checks", "--no-git"];
+      if (occupied) {
+        const sources = migrationSources(this.workspaceDir);
+        if (sources.length > 1) throw new Error("Multiple compatible workspace setups were found. Keep one setup in this folder and retry.");
+        const source = sources[0];
+        if (!await this.confirmWorkspace({ workspaceDir: this.workspaceDir, migrate: Boolean(source) })) {
+          throw new Error("Workspace setup cancelled. Choose Retry to set up this folder when you are ready.");
+        }
+        if (fs.lstatSync(destination, { throwIfNoEntry: false })
+            || (source && !migrationSources(this.workspaceDir).includes(source))) {
+          throw new Error("The workspace changed during setup. Choose Retry to check it again.");
+        }
+        if (source) {
+          fs.renameSync(source, destination);
+          try {
+            // Keep existing skills and documents pointing at the migrated configuration.
+            fs.symlinkSync(".roosta", source, "dir");
+          } catch (error) {
+            fs.renameSync(destination, source);
+            throw error;
+          }
+        }
+        args.push("--adopt");
+      }
+      await this._run(this.roosta, [...args, this.workspaceDir], () => {});
     }
   }
 

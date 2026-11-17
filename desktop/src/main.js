@@ -578,6 +578,23 @@ function registerIpc() {
   });
 }
 
+async function confirmWorkspaceSetup({ workspaceDir, migrate }) {
+  mainWindow.show();
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    title: "Set up Roosta",
+    message: migrate ? "Migrate this workspace to Roosta?" : "Adopt this folder as your Roosta workspace?",
+    detail: migrate
+      ? `A compatible workspace setup was found in ${workspaceDir}. Roosta will carry over its workers, connections and history, keeping existing documents and skills.`
+      : `${workspaceDir} already contains files. Roosta can add its setup here, keeping your existing documents and skills.`,
+    buttons: [migrate ? "Migrate workspace" : "Adopt folder", "Cancel"],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  });
+  return response === 0;
+}
+
 async function initialise() {
   stateFile = path.join(app.getPath("userData"), "notification-state.json");
   settingsFile = path.join(app.getPath("userData"), "settings.json");
@@ -588,6 +605,7 @@ async function initialise() {
     : settings.notificationSetupComplete ? "ready" : "not tested";
   supervisor = new RunnerSupervisor({
     workspaceDir: WORKSPACE_ROOT,
+    confirmWorkspace: confirmWorkspaceSetup,
     ...(app.isPackaged ? {
       roosta: path.join(process.resourcesPath, "roosta-backend", "roosta-backend"),
       bundled: true,

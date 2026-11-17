@@ -31,7 +31,8 @@ image, then open it.
 Roosta releases are **self-signed and not notarised**. If macOS blocks the first launch, use
 **System Settings → Privacy & Security → Open Anyway** for Roosta and confirm.
 The first launch creates `~/workspace` (or uses your previously configured workspace).
-An existing folder with unrelated files is not automatically adopted. 
+If the folder already contains files, Roosta asks before changing it: migrate a compatible
+workspace setup, or adopt a folder of documents. Cancelling leaves the folder untouched.
 
 ### Set up your office
 

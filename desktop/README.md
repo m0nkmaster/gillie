@@ -36,6 +36,12 @@ npm start
 `npm start` uses `ROOSTA_WORKSPACE` if set, else the workspace `roosta init` last recorded in
 `~/.config/roosta/config.json`, else `~/workspace`.
 
+On packaged first launch, a non-empty folder without `.roosta` prompts for confirmation.
+A compatible hidden setup folder offers **Migrate workspace**, carrying over workers, connections
+and history; an ordinary folder offers **Adopt folder**, adding Roosta while keeping existing
+documents and skills. Cancel makes no changes. Missing or empty folders initialise automatically.
+Existing Roosta workspaces open directly. The CLI setup remains explicit during development.
+
 ## Build and install
 
 With Node 22.12+ and a project Python environment installed, on a Mac of the target

@@ -36,3 +36,31 @@ test("packaged app uses a stable notification signing identity", () => {
   assert.ok(packaging.includes("appBundleId: APP_BUNDLE_ID"));
   assert.ok(packaging.includes('"--identifier",\n    APP_BUNDLE_ID,'));
 });
+
+test("workspace setup asks for migration or adoption and treats Cancel as refusal", async () => {
+  const vm = require("node:vm");
+  const main = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
+  const promptSource = main.slice(main.indexOf("async function confirmWorkspaceSetup("), main.indexOf("async function initialise("));
+  assert.ok(main.includes("confirmWorkspace: confirmWorkspaceSetup"));
+  let response = 0;
+  const dialogs = [];
+  let visible = false;
+  const window = { show: () => { visible = true; } };
+  const confirm = vm.runInNewContext(`${promptSource}; confirmWorkspaceSetup`, {
+    mainWindow: window,
+    dialog: { showMessageBox: async (parent, options) => {
+      assert.equal(parent, window);
+      assert.equal(visible, true, "show the startup window before its modal dialog");
+      dialogs.push(options);
+      return { response };
+    } },
+  });
+  assert.equal(await confirm({ workspaceDir: "/workspace", migrate: true }), true);
+  assert.equal(dialogs[0].message, "Migrate this workspace to Roosta?");
+  assert.equal(dialogs[0].buttons[0], "Migrate workspace");
+  response = 1;
+  assert.equal(await confirm({ workspaceDir: "/workspace", migrate: false }), false);
+  assert.equal(dialogs[1].message, "Adopt this folder as your Roosta workspace?");
+  assert.equal(dialogs[1].buttons[0], "Adopt folder");
+  assert.equal(dialogs[1].buttons[dialogs[1].cancelId], "Cancel");
+});

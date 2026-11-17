@@ -70,7 +70,17 @@ architecture. Data and dynamic imports must include the static UI, skeleton (inc
 core skills, policy templates and uvicorn. The backend lives outside ASAR in
 `Contents/Resources/roosta-backend/`; packaged launches and Repair never select or upgrade a
 separate `uv tool` installation. First launch runs `init --skip-checks --no-git` only when `.roosta`
-is absent, preserving the CLI's refusal to adopt an unrelated folder. Git is optional for boot;
+is absent. A non-empty folder requires a native confirmation via `confirmWorkspaceSetup`, shared
+by launch, Retry, Restart and Repair. Detection is structural: one immediate hidden directory with
+regular `tasks.yaml`, `connectors.yaml` and `skills.lock.json` files offers migration, without any
+product-name checks or wording. Symlinked sources/markers are excluded; multiple candidates stop
+without changes. After confirmation, recheck the source and destination, rename the source to
+`.roosta`, and leave a relative compatibility symlink so existing skills and documents still work.
+If creating that link fails, restore the original directory. Then run `init --adopt` to finish
+setup and remember the workspace. With no compatible setup, offer adoption before `init --adopt`;
+cancellation makes no changes and Retry asks again. Empty/missing folders initialise automatically;
+existing `.roosta` workspaces need no prompt. A conflicting `.roosta` file is reported rather than
+overwritten. Development keeps the CLI's explicit adoption requirement. Git is optional for boot;
 AI runtimes are installed and repaired from Settings; standalone downloads need no system Node or Python. The frozen executable also dispatches `--claude-guard`
 so Claude's external-write hook does not depend on system Python.
 
