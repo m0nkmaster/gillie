@@ -49,10 +49,9 @@ function updateUrl(){
   history.replaceState(null,'',url);
 }
 const views={
-  all:{title:'All knowledge',summary:'Explore projects, topics and people, or search across your workspace.'},
+  all:{title:'All knowledge',summary:'Explore projects and topics, or search across your workspace.'},
   projects:{title:'Projects',summary:'The work in progress and its supporting plans, notes and decisions.'},
   topics:{title:'Topics',summary:'Shared subjects, connected across projects and documents through their tags.'},
-  people:{title:'People',summary:'Dossiers, review material and work explicitly associated with each person.'},
   work:{title:'Decisions & plans',summary:'Find agreements, proposals and the plans for what comes next.'}
 };
 function currentCollection(){return state.collections.find(collection=>collection.id===state.collection);}
@@ -77,7 +76,7 @@ function renderCollections(){
     <span class="collection-title">${escapeHtml(collection.title)}</span>
     ${collection.summary?`<span class="collection-summary">${escapeHtml(collection.summary)}</span>`:''}
     <span class="collection-meta">${statusBadge(collection.status)}<span>${collection.paths.length} document${collection.paths.length===1?'':'s'}</span></span></button>`).join('')
-    :'<div class="navigator-empty small">No collections yet.<br>Collections use document titles, tags and explicit links to people.</div>';
+    :'<div class="navigator-empty small">No collections yet.<br>Collections use project folders and document tags.</div>';
   const collection=currentCollection(),scope=collection||views[state.view];
   $('scope-title').textContent=scope.title;
   $('scope-summary').textContent=scope.summary||'Explore the documents collected here.';

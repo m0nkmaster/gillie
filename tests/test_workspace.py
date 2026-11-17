@@ -176,19 +176,9 @@ Keep existing clients supported.
     assert 'projects/service-a/plan.md' in collections['work:plans']['paths']
     plan = next(file for file in result['files'] if file['path'].endswith('/plan.md'))
     assert plan['title'] == 'Atlas — Plan' and plan['kind'] == 'Plan'
-    assert plan['project'] == 'Atlas' and plan['people'] == ['Alex Example']
+    assert plan['project'] == 'Atlas' and 'people' not in plan
+    assert not any(c['group'] == 'people' for c in result['collections'])
 
-
-def test_people_collections_come_from_dossiers_and_explicit_attribution(tmp_path):
-    put(tmp_path, 'notes/people/niko-example.md', '---\ntitle: Niko Example\nrole: Engineer\n---\n# Niko Example\n\nOwns the SDK work.')
-    put(tmp_path, 'notes/niko-example-1-1.md', '# 1:1\n\nNotes.')
-    put(tmp_path, 'projects/atlas/README.md', '---\ntitle: Atlas\npeople: [Niko Example]\n---\n# Atlas\n\nThe rollout.')
-    put(tmp_path, 'notes/mentions.md', '# Notes\n\nNiko Example was mentioned here.')
-    result = wmod.build_catalogue(tmp_path)
-    people = {collection['id']: collection for collection in result['collections'] if collection['group'] == 'people'}
-    person = people['person:niko-example']
-    assert person['title'] == 'Niko Example'
-    assert set(person['paths']) == {'notes/people/niko-example.md', 'notes/niko-example-1-1.md', 'projects/atlas/README.md'}
 
 def test_metadata_errors_do_not_break_navigation(tmp_path):
     put(tmp_path, 'notes/bad.md', '---\ntags: [unterminated\n---\n# Readable despite invalid metadata\n\nThe body is still available.')

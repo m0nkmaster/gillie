@@ -282,80 +282,7 @@ def review_project(root: Path, slug: str, action: str, status: str = "",
     return project_brief(root, slug, now)
 
 
-# Layers beyond projects. Logs are hubs that would link everything, and
-# calibration, promo, feedback and personal-growth pages stay off a shared map.
-ENTITY_EXCLUDE = re.compile(r"(log|calibration|promo|feedback|personal|growth|review)", re.IGNORECASE)
-PROJECT_PATH = re.compile(r"projects/([a-z0-9]+(?:-[a-z0-9]+)*)/")
 PAGES_PER_PROJECT = 40
-
-
-def entity_kind(rel: Path) -> str | None:
-    """`person`, `incident` or `note` for a vault page that gets its own star."""
-    parts = rel.parts
-    if rel.name == "README.md" or ENTITY_EXCLUDE.search(rel.stem):
-        return None
-    if len(parts) == 3 and parts[:2] == ("notes", "people"):
-        return "person"
-    if len(parts) == 2 and parts[0] == "incidents":
-        return "incident"
-    if len(parts) == 2 and parts[0] == "notes":
-        return "note"
-    return None
-
-
-def frontmatter_list(content: str, field: str) -> list[str]:
-    """Values of a frontmatter list written inline (`[a, b]`) or as a block."""
-    split = _frontmatter_lines(content)
-    if not split:
-        return []
-    lines, end = split
-    for i in range(1, end):
-        key, sep, value = lines[i].partition(":")
-        if not sep or lines[i][:1].isspace() or key.strip() != field:
-            continue
-        if value.strip():
-            return [v.strip().strip("\"'") for v in value.strip().strip("[]").split(",") if v.strip()]
-        values = []
-        for line in lines[i + 1:end]:
-            if not line.strip().startswith("- "):
-                break
-            values.append(line.strip()[2:].strip().strip("\"'"))
-        return values
-    return []
-
-
-def name_slug(name: str) -> str:
-    """`Chris Moore` -> `chris-moore`, matching person dossier filenames."""
-    return re.sub(r"[^a-z0-9]+", "-", re.sub(r"\([^)]*\)", "", name.lower())).strip("-")
-
-
-def link_entities(pages: dict[str, dict], readmes: dict[str, str], known: set[str]) -> list[dict]:
-    """Attach project links to people, incidents and notes.
-
-    A link counts from either side: the page names the project (wikilink or a
-    `projects/<slug>/` path), the project README wikilinks the page, or - for a
-    person - the README lists them under `people` or `owner`.
-    """
-    by_stem = {Path(path).stem: path for path in pages}
-    by_person = {Path(path).stem: path for path, page in pages.items() if page["kind"] == "person"}
-    for page in pages.values():
-        text = page.pop("text")
-        found = {raw.strip().split("/")[-1] for raw in WIKILINK.findall(text)} & known
-        found |= set(PROJECT_PATH.findall(text)) & known
-        found |= set(README_LINK.findall(text)) & known
-        page["related"] = found
-    for slug, readme in readmes.items():
-        for raw in WIKILINK.findall(readme):
-            target = by_stem.get(raw.strip().split("/")[-1].removesuffix(".md"))
-            if target:
-                pages[target]["related"].add(slug)
-        for person in frontmatter_list(readme, "people") + [frontmatter_field(readme, "owner")]:
-            target = by_person.get(name_slug(person)) if person else None
-            if target:
-                pages[target]["related"].add(slug)
-    for page in pages.values():
-        page["related"] = sorted(page["related"])
-    return sorted(pages.values(), key=lambda page: (page["kind"], page["name"]))
 
 
 def link_projects(signals: dict[str, dict], readmes: dict[str, str]) -> None:
@@ -401,7 +328,6 @@ def scan_vault(root: Path) -> dict:
         for name in project_names
     }
     project_readmes: dict[str, str] = {}
-    entity_pages: dict[str, dict] = {}
 
     md_files = 0
     words = 0
@@ -441,17 +367,6 @@ def scan_vault(root: Path) -> dict:
                             "title": markdown_title(text, path.stem),
                             "mtime": mtime.isoformat(),
                         })
-            kind = entity_kind(rel)
-            if kind:
-                entity_pages[rel.as_posix()] = {
-                    "name": rel.as_posix(),
-                    "kind": kind,
-                    "title": markdown_title(text, path.stem),
-                    "keywords": frontmatter_text(text),
-                    "last_activity": mtime.isoformat(),
-                    "age_days": round(max(0.0, (now - mtime).total_seconds() / 86400), 2),
-                    "text": text,
-                }
             if mtime >= week_ago:
                 recent_edits.append({
                     "path": rel.as_posix(),
@@ -462,7 +377,6 @@ def scan_vault(root: Path) -> dict:
             continue
 
     link_projects(project_signals, project_readmes)
-    entities = link_entities(entity_pages, project_readmes, set(project_signals))
     for signal in project_signals.values():
         signal["pages"] = sorted(signal["pages"], key=lambda page: page["mtime"], reverse=True)[:PAGES_PER_PROJECT]
     for signal in project_signals.values():
@@ -489,7 +403,6 @@ def scan_vault(root: Path) -> dict:
         "projects": len(project_names),
         "project_names": project_names[:48],
         "project_signals": list(project_signals.values()),
-        "entities": entities,
         "stale_projects": sum(1 for s in project_signals.values() if s["stale"]),
         "stale_after_days": STALE_AFTER_DAYS,
         "markdown_files": md_files,

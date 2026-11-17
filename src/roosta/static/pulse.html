@@ -97,17 +97,7 @@
         .legend-key.drift::before { background: var(--signal-coral); }
         .legend-key.link::before { background: var(--tblr-secondary-color); }
         .legend-key.keys::before { display: none; }
-        .legend-key.shape-person::before { background: var(--signal-violet); border-radius: 0; transform: rotate(45deg) scale(.85); }
-        .legend-key.shape-incident::before { background: #f778ba; border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-        .legend-key.shape-note::before { background: #8fa3bf; border-radius: 1px; }
         .legend-key.moon::before { width: 4px; height: 4px; background: #c9d1d9; }
-        .layer-btn[aria-pressed="true"].person { color: var(--signal-violet); }
-        .layer-btn[aria-pressed="true"].incident { color: #f778ba; }
-        .layer-btn[aria-pressed="true"].note { color: #8fa3bf; }
-        .layer-btn[aria-pressed="false"] { opacity: .55; }
-        .kind-pill { --pill: #8fa3bf; --tblr-badge-color: var(--pill); }
-        .kind-pill.person { --pill: var(--signal-violet); }
-        .kind-pill.incident { --pill: #f778ba; }
         .running-list, .hot-list { list-style: none; padding: 0; margin: 0; gap: .5rem; }
         .hot-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
         .hot-item { height: 100%; overflow-wrap: anywhere; font-size: .8125rem; }
@@ -170,17 +160,12 @@
                 <h2 class="card-title">Project constellation</h2>
                 <div class="panel-tools">
                 <input type="search" class="form-control constellation-search" id="constellation-search"
-                    placeholder="Search title, tags, people…" aria-label="Search projects by title or front matter">
+                    placeholder="Search title, tags, owner…" aria-label="Search projects by title or front matter">
                 <div class="btn-group" id="constellation-filters" role="group" aria-label="Constellation focus">
                     <button type="button" class="btn btn-sm active" data-filter="all" aria-pressed="true">All</button>
                     <button type="button" class="btn btn-sm" data-filter="attention" aria-pressed="false">Needs me<span class="chip-count" data-count="attention"></span></button>
                     <button type="button" class="btn btn-sm" data-filter="stale" aria-pressed="false">Drifting<span class="chip-count" data-count="stale"></span></button>
                     <button type="button" class="btn btn-sm" data-filter="due" aria-pressed="false" title="Not verified, or past stale_after">Unverified<span class="chip-count" data-count="due"></span></button>
-                </div>
-                <div class="btn-group" id="constellation-layers" role="group" aria-label="Layers">
-                    <button type="button" class="btn btn-sm layer-btn person" data-layer="person" aria-pressed="true" title="People dossiers in notes/people">People</button>
-                    <button type="button" class="btn btn-sm layer-btn incident" data-layer="incident" aria-pressed="true" title="Incident files">Incidents</button>
-                    <button type="button" class="btn btn-sm layer-btn note" data-layer="note" aria-pressed="false" title="Top-level notes">Notes</button>
                 </div>
                 <button type="button" class="btn btn-sm btn-primary" id="review-start" title="Walk the projects that need a decision (r)">Review<span class="chip-count" data-count="review"></span></button>
                 <a class="btn btn-sm" id="full-toggle" href="/constellation" title="Full screen (f)">Full screen</a>
@@ -207,9 +192,6 @@
                 <span class="legend-key drift">Coral: active but untouched 30d+</span>
                 <span class="legend-key active">Cyan: edited this week</span>
                 <span class="legend-key link">Lines: documented Related links</span>
-                <span class="legend-key shape-person">People</span>
-                <span class="legend-key shape-incident">Incidents</span>
-                <span class="legend-key shape-note">Notes</span>
                 <span class="legend-key moon">Zoom in: a project's pages orbit it</span>
                 <span class="legend-key keys">Keys: <kbd class="hint">/</kbd> search · <kbd class="hint">r</kbd> review · <kbd class="hint">f</kbd> full screen · <kbd class="hint">Esc</kbd> clear</span>
             </div></div>
@@ -261,12 +243,6 @@
         let reviewBusy = false;
         let reviewError = '';
         let pendingFocus = new URLSearchParams(location.search).get('focus');
-        const KIND_LABEL = { project: 'Project', person: 'Person', incident: 'Incident', note: 'Note' };
-        let layers = new Set(['person', 'incident']);
-        try {
-            const saved = JSON.parse(localStorage.getItem('constellation-layers') || 'null');
-            if (Array.isArray(saved)) layers = new Set(saved);
-        } catch (err) { /* storage unavailable: keep defaults */ }
         const MOON_SCALE = 1.8;            // zoom at which a project's pages appear as moons
         let moons = [];                    // screen-stable moon positions from the last frame
         let hoveredMoon = null;
@@ -528,9 +504,6 @@
             fresh: [113, 196, 214],
             rested: [111, 118, 129],
             quiet: [139, 148, 158],
-            person: [139, 131, 246],
-            incident: [247, 120, 186],
-            note: [143, 163, 191],
         };
 
         function ringIndex(age) {
@@ -562,12 +535,7 @@
             return inner + (ringEdges[i] - inner) * (0.25 + 0.7 * within);
         }
 
-        function isProject(node) {
-            return (node.kind || 'project') === 'project';
-        }
-
         function nodeState(node) {
-            if (!isProject(node)) return node.kind;
             if (Number(node.active_board_items || 0) > 0) return 'attention';
             if (node.stale) return 'drifting';
             if (Number(node.recent_edits || 0) > 0) return 'fresh';
@@ -583,9 +551,8 @@
         }
 
         /* Search narrows the constellation to matching stars; every term must hit
-           the slug, title or any front-matter value (tags, people, repos, …). */
+           the slug, title or any front-matter value (tags, owner, repos, …). */
         function matchesSearch(node) {
-            if (!isProject(node) && !layers.has(node.kind)) return false;
             if (!searchTerms.length) return true;
             const haystack = [node.name, node.title, node.keywords, node.status, node.owner]
                 .map(value => String(value || '')).join(' ').toLowerCase();
@@ -660,30 +627,19 @@
             const cy = h / 2;
             const rx = Math.max(60, w * 0.46 - 30);
             const ry = Math.max(50, h * 0.44 - 16);
-            const projects = signals.filter(isProject);
-            const others = signals.filter(signal => !isProject(signal) && layers.has(signal.kind));
-            sizeRings(projects);
-            const list = clusterOrder(projects).map((signal, i) => ({
+            sizeRings(signals);
+            const list = clusterOrder(signals).map((signal, i) => ({
                 ...signal,
                 kind: 'project',
-                angle: -Math.PI / 2 + (Math.PI * 2 * (i + 0.5)) / Math.max(projects.length, 1),
+                angle: -Math.PI / 2 + (Math.PI * 2 * (i + 0.5)) / Math.max(signals.length, 1),
                 rNorm: ringRadius(signal.age_days),
                 phase: i * 0.7,
             }));
-            const angleOf = new Map(list.map(node => [node.name, node.angle]));
-            others.forEach((signal, i) => {
-                // Circular mean of linked projects' angles; unlinked stars scatter by name.
-                const linked = (signal.related || []).filter(name => angleOf.has(name));
-                const angle = linked.length
-                    ? Math.atan2(...linked.reduce(([y, x], name) => [y + Math.sin(angleOf.get(name)), x + Math.cos(angleOf.get(name))], [0, 0]))
-                    : (hashString(signal.name) % 3600) / 3600 * Math.PI * 2;
-                list.push({ ...signal, angle: angle + ((hashString(signal.name) % 100) - 50) / 900, rNorm: ringRadius(signal.age_days), phase: i * 1.3 });
-            });
             spreadAngles(list, cx, cy, rx, ry);
             /* Only the most notable few carry a resting label; the rest surface on hover,
                which keeps the busy inner orbits legible. */
             list.forEach(node => { node.labelRank = Infinity; });
-            list.filter(isProject)
+            [...list]
                 .sort((a, b) => notability(b) - notability(a) || a.name.localeCompare(b.name))
                 .forEach((node, i) => { node.labelRank = i; });
             list.forEach(node => {
@@ -709,7 +665,6 @@
         }
 
         function nodeRadius(node) {
-            if (!isProject(node)) return 2.6 + Math.min((node.related || []).length, 6) * 0.35;
             const attention = Math.min(Number(node.active_board_items || 0), 3);
             const edits = Math.min(Number(node.recent_edits || 0), 10);
             const pulse = reduceMotion ? 0.5 : (Math.sin(frame * (0.025 + edits * 0.008) + node.phase) + 1) / 2;
@@ -735,7 +690,6 @@
         function shouldLabel(node, focus) {
             if (node === hoveredNode || node.name === selectedName) return true;
             if (focus) return focus.has(node.name);
-            if (!isProject(node)) return false;
             if (filterMode !== 'all' || searchTerms.length) return filterLabels.has(node.name);
             return nodeState(node) === 'attention' || node.labelRank < 7;
         }
@@ -795,26 +749,6 @@
             });
         }
 
-        function starPath(node, r) {
-            ctx.beginPath();
-            const { x } = node;
-            const y = node.drawY;
-            if (node.kind === 'person') {
-                const d = r * 1.3;
-                ctx.moveTo(x, y - d); ctx.lineTo(x + d, y); ctx.lineTo(x, y + d); ctx.lineTo(x - d, y);
-            } else if (node.kind === 'incident') {
-                const d = r * 1.4;
-                ctx.moveTo(x, y - d); ctx.lineTo(x + d * 0.9, y + d * 0.6); ctx.lineTo(x - d * 0.9, y + d * 0.6);
-            } else if (node.kind === 'note') {
-                ctx.rect(x - r, y - r, r * 2, r * 2);
-                return;
-            } else {
-                ctx.arc(x, y, r, 0, Math.PI * 2);
-                return;
-            }
-            ctx.closePath();
-        }
-
         /* Moons: once zoomed in, each on-screen project shows its own pages orbiting
            it, newest innermost. Sized in world units so they scale with the star. */
         function drawMoons(w, h) {
@@ -823,7 +757,7 @@
             const k = 1 / view.scale;      // only for text, which stays screen-sized
             const fade = Math.min(1, (view.scale - MOON_SCALE) / 0.6 + 0.35);
             nodes.forEach(node => {
-                if (!isProject(node) || !matchesSearch(node) || !(node.pages || []).length) return;
+                if (!matchesSearch(node) || !(node.pages || []).length) return;
                 const sx = node.x * view.scale + view.x;
                 const sy = node.drawY * view.scale + view.y;
                 if (sx < -60 || sy < -60 || sx > w + 60 || sy > h + 60) return;
@@ -951,7 +885,8 @@
                 ctx.fillStyle = active
                     ? '#f0f3f6'
                     : `rgba(${cr}, ${cg}, ${cb}, ${alpha * (state === 'quiet' || state === 'rested' ? 0.2 + glow * 0.5 : 0.55 + glow * 0.45)})`;
-                starPath(node, r);
+                ctx.beginPath();
+                ctx.arc(node.x, node.drawY, r, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.shadowBlur = 0;
                 if (state === 'rested') {
@@ -1015,7 +950,7 @@
         }
 
         function projectSignals(data) {
-            if (data?.vault?.project_signals?.length) return [...data.vault.project_signals, ...(data.vault.entities || [])];
+            if (data?.vault?.project_signals?.length) return data.vault.project_signals;
             return (data?.vault?.project_names || []).map(name => ({
                 name,
                 title: name.replaceAll('-', ' '),
@@ -1060,9 +995,8 @@
             }
             const links = (node.related || []).length;
             document.getElementById('constellation-tooltip-title').textContent = node.title || node.name;
-            document.getElementById('constellation-tooltip-detail').textContent = isProject(node)
-                ? `${nodeSummaryLine(node)}${links ? ` · ${links} linked ${links === 1 ? 'project' : 'projects'}` : ''}${(node.pages || []).length ? ` · ${node.pages.length} pages` : ''}`
-                : `${KIND_LABEL[node.kind]} · changed ${timeAgo(node.last_activity)} · ${links ? `${links} linked ${links === 1 ? 'project' : 'projects'}` : 'no project links'}`;
+            document.getElementById('constellation-tooltip-detail').textContent =
+                `${nodeSummaryLine(node)}${links ? ` · ${links} linked ${links === 1 ? 'project' : 'projects'}` : ''}${(node.pages || []).length ? ` · ${node.pages.length} pages` : ''}`;
             tooltip.style.left = `${Math.max(0, Math.min(x, canvas.clientWidth - 250))}px`;
             tooltip.style.top = `${Math.max(0, Math.min(y, canvas.clientHeight - 70))}px`;
             tooltip.classList.add('open');
@@ -1078,10 +1012,8 @@
         }
 
         function detailSummary() {
-            const projects = nodes.filter(isProject);
+            const projects = nodes;
             const touchedToday = projects.filter(node => ringIndex(node.age_days) === 0).length;
-            const layerCounts = ['person', 'incident', 'note'].filter(kind => layers.has(kind))
-                .map(kind => `${fmt(nodes.filter(node => node.kind === kind).length)} ${KIND_LABEL[kind].toLowerCase()}${kind === 'person' ? 's' : 's'}`.replace('persons', 'people'));
             const drifting = nodes.filter(node => node.stale)
                 .sort((a, b) => (b.age_days || 0) - (a.age_days || 0));
             const board = nodes.filter(node => Number(node.active_board_items || 0) > 0).length;
@@ -1098,7 +1030,7 @@
             }
             const rows = [
                 `<div class="detail-title">${fmt(projects.length)} projects</div>`,
-                `<div class="detail-row">${fmt(touchedToday)} touched today · ${fmt(edges.length)} documented links · ${fmt(board)} on the board${layerCounts.length ? ` · also showing ${layerCounts.join(', ')}` : ''}</div>`,
+                `<div class="detail-row">${fmt(touchedToday)} touched today · ${fmt(edges.length)} documented links · ${fmt(board)} on the board</div>`,
             ];
             if (drifting.length) {
                 rows.push(
@@ -1193,25 +1125,7 @@
             </div>`;
         }
 
-        function detailForEntity(node) {
-            const linkedHere = nodes.filter(other => (other.related || []).includes(node.name)).map(other => other.name);
-            const related = [...new Set([...(node.related || []), ...linkedHere])];
-            return [
-                `<div class="detail-title">${esc(node.title || node.name)}</div>`,
-                `<div class="detail-meta"><span class="badge kind-pill ${esc(node.kind)}">${esc(KIND_LABEL[node.kind] || node.kind)}</span><span class="detail-owner">${esc(node.name)}</span></div>`,
-                `<div class="detail-row">Changed ${esc(timeAgo(node.last_activity))}</div>`,
-                related.length
-                    ? `<div class="brief-section"><strong>Linked projects</strong><div class="chip-list">${projectChips(related)}</div></div>`
-                    : '<div class="detail-hint">Links to no project, and no project README links here.</div>',
-                `<div class="detail-actions">
-                    <a class="btn btn-primary" href="/assistant?item=${encodeURIComponent('doc:' + node.name)}">Chat about this</a>
-                    <a class="btn" href="${docHref(node.name)}" target="_blank" rel="noopener">Open</a>
-                </div>`,
-            ].join('');
-        }
-
         function detailForNode(node) {
-            if (!isProject(node)) return detailForEntity(node);
             const brief = briefs.get(node.name);
             const edits = Number(node.recent_edits || 0);
             const status = String(node.status || 'unknown').toLowerCase();
@@ -1305,7 +1219,7 @@
         function selectProject(name) {
             selectedName = nodes.some(node => node.name === name) ? name : null;
             reviewError = '';
-            if (selectedName && isProject(nodes.find(node => node.name === selectedName))) loadBrief(selectedName);
+            if (selectedName) loadBrief(selectedName);
             const url = new URL(location.href);
             selectedName ? url.searchParams.set('focus', selectedName) : url.searchParams.delete('focus');
             history.replaceState(null, '', url);
@@ -1368,25 +1282,6 @@
         }
 
         document.getElementById('review-start').addEventListener('click', startReview);
-
-        function syncLayerButtons() {
-            document.querySelectorAll('[data-layer]').forEach(button => {
-                button.setAttribute('aria-pressed', String(layers.has(button.dataset.layer)));
-            });
-        }
-        syncLayerButtons();
-        document.getElementById('constellation-layers').addEventListener('click', event => {
-            const button = event.target.closest('[data-layer]');
-            if (!button) return;
-            const kind = button.dataset.layer;
-            layers.has(kind) ? layers.delete(kind) : layers.add(kind);
-            try { localStorage.setItem('constellation-layers', JSON.stringify([...layers])); } catch (err) { /* per-viewer only */ }
-            syncLayerButtons();
-            if (selectedName && !nodes.find(node => node.name === selectedName && matchesSearch(node))) selectedName = null;
-            if (pulseData) nodes = buildNodes(projectSignals(pulseData));
-            computeFilterLabels();
-            renderDetail();
-        });
 
         function computeFilterLabels() {
             filterLabels = new Set();

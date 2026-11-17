@@ -77,12 +77,8 @@ def document_kind(path: str, title: str, front: dict) -> str:
         return "Plan"
     if path.startswith("projects/") and name == "readme":
         return "Project overview"
-    if path.startswith("notes/people/"):
-        return "Person notes"
     if path.startswith("drafts/"):
         return "Draft"
-    if path.startswith("incidents/"):
-        return "Incident"
     if path.startswith("analysis/"):
         return "Research"
     return "Reference" if name in {"readme", "agents", "tools", "context"} else "Notes"
@@ -100,7 +96,6 @@ def knowledge_collections(files: list[dict]) -> list[dict]:
         parent = projects.get("/".join(file["path"].split("/")[:2]))
         file["project"] = parent["title"] if parent else ""
         file["topics"] = sorted(set(file["tags"] + (parent["tags"] if parent else [])))
-        file["people"] = sorted(set(file["people"] + (parent["people"] if parent else [])))
         if parent and file is not parent and file["title"].lower() in {"plan", "decisions", "notes", "overview"}:
             file["title"] = parent["title"] + " — " + file["title"]
     for folder, overview in projects.items():
@@ -119,34 +114,6 @@ def knowledge_collections(files: list[dict]) -> list[dict]:
         collections.append({"id": "topic:" + tag, "group": "topics", "title": title,
                             "summary": "Across " + ", ".join(names[:3]) + (" and more." if len(names) > 3 else "."),
                             "paths": paths})
-
-    people = {}
-    for file in files:
-        path = Path(file["path"])
-        if path.parent.as_posix() != "notes/people":
-            continue
-        people[path.stem] = {"title": file["title"], "summary": file["role"] or file["summary"],
-                             "slugs": [path.stem], "names": [file["title"]], "overview": file["path"]}
-    name_counts = {}
-    slug_counts = {}
-    for person in people.values():
-        for name in {name.casefold() for name in person["names"]}:
-            name_counts[name] = name_counts.get(name, 0) + 1
-        for candidate in person["slugs"]:
-            slug_counts[candidate] = slug_counts.get(candidate, 0) + 1
-    for slug, person in people.items():
-        names = {name.casefold() for name in person["names"] if name_counts[name.casefold()] == 1}
-        paths = []
-        for file in files:
-            stem = Path(file["path"]).stem
-            named = any(slug_counts[candidate] == 1 and
-                        (stem == candidate or ("-" in candidate and stem.startswith(candidate + "-")))
-                        for candidate in person["slugs"])
-            if file["path"] == person["overview"] or named or names.intersection(name.casefold() for name in file["people"]):
-                paths.append(file["path"])
-        if paths:
-            collections.append({"id": "person:" + slug, "group": "people", "title": person["title"],
-                                "summary": person["summary"], "overview": person["overview"], "paths": paths})
 
     for key, title, kind, heading, summary in [
         ("decisions", "Decisions", "Decision record", r"(?:Key\s+)?Decisions?", "Decision records and documents with a decisions section."),
@@ -214,8 +181,7 @@ def build_catalogue(root: Path) -> dict:
                           "text": content, "size": size, "modified": modified,
                           "summary": document_summary(content, front),
                           "kind": document_kind(canonical.as_posix(), title, front),
-                          "tags": text_values(front.get("tags")), "people": text_values(front.get("people")),
-                          "role": plain_text(front.get("role", "")),
+                          "tags": text_values(front.get("tags")),
                           "status": front.get("status") if isinstance(front.get("status"), str) else ""})
     return {"files": files, "collections": knowledge_collections(files), "skipped": skipped,
             "indexed_at": datetime.now(timezone.utc).isoformat()}

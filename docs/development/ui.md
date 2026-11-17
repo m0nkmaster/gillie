@@ -94,7 +94,7 @@ See [Assistant contracts](assistant.md) and [Office rendering](office.md) for pa
   from Assistant items
 
 - **`static/workspace.html` / `workspace.js`** - Fluid Tabler document navigator; in-memory literal
-  search over `/api/workspace`, project/topic/people/decision collections, highlighted previews and
+  search over `/api/workspace`, project/topic/decision collections, highlighted previews and
   up to eight selected files; collection names, descriptions and membership come from vault metadata
 
 - **`static/vault-markdown.js`** - Shared sanitised Markdown renderer for document and Workspace previews
@@ -131,14 +131,7 @@ See [Assistant contracts](assistant.md) and [Office rendering](office.md) for pa
   Keep these proxies transparent rather than introducing an opaque AI-generated
   importance score.
 
-- **Constellation layers and moons stay on explicit links.** Besides projects, `scan_vault`
-  returns `entities`: person dossiers (`notes/people/*.md`), incidents (`incidents/*.md`) and
-  top-level notes, as diamonds, triangles and squares (People and Incidents on by default, Notes
-  off, remembered per browser). `entity_kind` keeps logs, index READMEs and calibration, promo,
-  feedback, review and personal-growth pages off the map. A page links to a project when it
-  wikilinks it or names a `projects/<slug>/` path, when the README wikilinks the page, or, for a
-  person, when the README lists them under `people`/`owner`. Entities sit at the circular mean
-  angle of the projects they link to, on the same recency rings. Zooming past `MOON_SCALE` shows each
+- **The constellation shows projects only, and moons stay on explicit links.** Zooming past `MOON_SCALE` shows each
   on-screen project's own pages (`pages`, newest 40) as clickable moons. Label text, ring labels
   and link widths divide by `view.scale`, so zooming enlarges the space, not the type.
 

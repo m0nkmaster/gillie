@@ -12,8 +12,6 @@ from roosta.pulse import (
     board_stats,
     build_pulse,
     command_mood,
-    entity_kind,
-    frontmatter_list,
     frontmatter_field,
     frontmatter_text,
     markdown_title,
@@ -424,47 +422,13 @@ def test_vault_links_route_relative_markdown_to_document_viewer():
     assert "(https://a.b/c.md)" in out
 
 
-@pytest.mark.parametrize("path, kind", [
-    ("notes/people/chris-moore.md", "person"),
-    ("notes/people/elena-sokol-calibration-2026.md", None),
-    ("incidents/2026-08-03-lag.md", "incident"),
-    ("incidents/README.md", None),
-    ("notes/2026-07-23-626-flip-gate.md", "note"),
-    ("notes/learning-log.md", None),
-    ("notes/jamie-clarke-p3-promo-feedback-2026.md", None),
-    ("notes/people/sub/x.md", None),
-    ("projects/agentx/README.md", None),
-    ("hr/reviews/x.md", None),
-])
-def test_entity_kind(path, kind):
-    assert entity_kind(Path(path)) == kind
-
-
-def test_frontmatter_list_inline_and_block():
-    assert frontmatter_list("---\npeople: [Sam Example, \"Sam Tran\"]\n---\n", "people") == ["Sam Example", "Sam Tran"]
-    assert frontmatter_list("---\npeople:\n  - Dana Ross\n  - Lin Wei\nowner: Sam\n---\n", "people") == ["Dana Ross", "Lin Wei"]
-    assert frontmatter_list("# none", "people") == []
-
-
-def test_scan_vault_entities_link_from_either_side_and_project_pages(tmp_path):
-    _readme(tmp_path, "agentx", "---\ntitle: AgentX\npeople: [Chris (Kit) Moore]\n---\n\nSee [[2026-08-01-outage]].\n")
-    _readme(tmp_path, "okrs", "---\ntitle: OKRs\n---\n")
+def test_scan_vault_lists_project_pages_only(tmp_path):
+    _readme(tmp_path, "agentx", "---\ntitle: AgentX\n---\n")
     (tmp_path / "projects" / "agentx" / "notes.md").write_text("# AgentX notes\n")
-    people = tmp_path / "notes" / "people"
-    people.mkdir(parents=True)
-    (people / "chris-moore.md").write_text("# Phil\n")
-    (people / "morgan-reed.md").write_text("# Robin\n\nWorks on [[okrs]] and projects/agentx/notes.md\n")
-    (tmp_path / "incidents").mkdir()
-    (tmp_path / "incidents" / "2026-08-01-outage.md").write_text("# Outage\n")
-    (tmp_path / "notes" / "garden-log.md").write_text("[[agentx]]\n")
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "standalone.md").write_text("[[agentx]]\n")
     vault = scan_vault(tmp_path)
-    entities = {e["name"]: e for e in vault["entities"]}
-    assert set(entities) == {"notes/people/chris-moore.md", "notes/people/morgan-reed.md", "incidents/2026-08-01-outage.md"}
-    assert entities["notes/people/chris-moore.md"]["related"] == ["agentx"]   # README `people:`
-    assert entities["notes/people/morgan-reed.md"]["related"] == ["agentx", "okrs"]  # page links out
-    assert entities["incidents/2026-08-01-outage.md"]["related"] == ["agentx"]   # README wikilink in
-    assert entities["incidents/2026-08-01-outage.md"]["kind"] == "incident"
-    assert "text" not in entities["notes/people/morgan-reed.md"]
+    assert "entities" not in vault
     signals = {s["name"]: s for s in vault["project_signals"]}
     assert [page["path"] for page in signals["agentx"]["pages"]] == ["projects/agentx/notes.md"]
     assert signals["agentx"]["pages"][0]["title"] == "AgentX notes"
