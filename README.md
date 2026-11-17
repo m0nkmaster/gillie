@@ -4,7 +4,7 @@
 
 **Your agentic office.**
 
-Hi, I'm Roosta - I help you run a team of AI workers that get to know your work and then get on with it all on their computer.
+Hi, I'm Roosta - I help you run a team of AI workers that get to know your work and then get on with it - all on your computer.
 
 Give your workers jobs. They research, organise, build and keep your projects moving, drawing on shared knowledge of your priorities, projects and preferences stored in simple, readable, markdown files. Your team learn from your feedback, improve their skills and bring you the decisions that need your attention.
 
