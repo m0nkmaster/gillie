@@ -95,7 +95,9 @@ See [Assistant contracts](assistant.md) and [Office rendering](office.md) for pa
 
 - **`static/workspace.html` / `workspace.js`** - Fluid Tabler document navigator; in-memory literal
   search over `/api/workspace`, project/topic/decision collections, highlighted previews and
-  up to eight selected files; collection names, descriptions and membership come from vault metadata
+  up to eight selected files; collection names, descriptions and membership come from vault metadata.
+  Open folder posts to local-only `/api/workspace/reveal`, which opens the active workspace (never a
+  request-supplied path) in the OS file browser
 
 - **`static/vault-markdown.js`** - Shared sanitised Markdown renderer for document and Workspace previews
 

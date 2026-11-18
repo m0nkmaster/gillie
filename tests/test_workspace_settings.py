@@ -320,3 +320,22 @@ def test_folder_browser_is_local_only(env):
         assert remote.get('/api/settings/folders').status_code == 403
     with TestClient(app.app, base_url='http://localhost', client=('127.0.0.1', 1234)) as local:
         assert local.get('/api/settings/folders', headers={'Origin': 'https://attacker.invalid'}).status_code == 403
+
+
+def test_open_folder_reveals_only_the_active_workspace_and_only_locally(env, monkeypatch):
+    opened = []
+    monkeypatch.setattr(app.sys, 'platform', 'darwin')
+    monkeypatch.setattr(app, 'launch_detached', opened.append)
+    with TestClient(app.app, base_url='http://localhost', client=('127.0.0.1', 1234)) as local:
+        response = local.post('/api/workspace/reveal', json={'path': '/etc'})
+        assert response.status_code == 200 and response.json() == {'opened': str(env.workspace)}
+        assert opened == [['open', str(env.workspace)]]
+        assert local.post('/api/workspace/reveal', headers={'Origin': 'https://attacker.invalid'}).status_code == 403
+        monkeypatch.setattr(app.sys, 'platform', 'linux')
+        monkeypatch.setattr(app.shutil, 'which', lambda name: None)
+        assert local.post('/api/workspace/reveal').status_code == 400
+    with TestClient(app.app, base_url='http://localhost', client=('192.0.2.10', 1234)) as remote:
+        assert remote.post('/api/workspace/reveal').status_code == 403
+    assert len(opened) == 1
+    html = (STATIC / 'workspace.html').read_text()
+    assert 'id="reveal-workspace"' in html and '/api/workspace/reveal' in (STATIC / 'workspace.js').read_text()

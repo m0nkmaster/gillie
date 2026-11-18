@@ -7,6 +7,7 @@ Record each release newest first. Bump minor for features and visible behaviour,
 - The Assistant chat no longer asks permission again and again for workspace changes you asked for, and it points at the approval button instead of asking "Approve?" as a question. Typing "go" while a card waits gets a one-line pointer to the button, not a fresh draft.
 - Workspace and Pulse now show only what a standard workspace holds: the People collection, the `people` front-matter attribution, and the constellation's People, Incidents and Notes layers are gone.
 - The learner's chat helper dates each Assistant chat by its own latest message, so a scheduled pass reads only chats that really changed instead of every chat each time the history file is saved.
+- The Workspace page has an **Open folder** button that opens your workspace in Finder (Explorer on Windows, your file manager on Linux). It works only on the computer running Roosta.
 
 ## 0.1.2 - 2026-11-17
 

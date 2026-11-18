@@ -4725,6 +4725,33 @@ async def api_workspace():
                         headers={"Cache-Control": "no-store"})
 
 
+def file_browser_command(folder: Path) -> list[str] | None:
+    if sys.platform == "darwin":
+        return ["open", str(folder)]
+    if sys.platform == "win32":
+        return ["explorer", str(folder)]
+    return ["xdg-open", str(folder)] if shutil.which("xdg-open") else None
+
+
+def launch_detached(command: list[str]) -> None:
+    subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+@app.post("/api/workspace/reveal", dependencies=[Depends(local_ai_settings)])
+async def api_workspace_reveal():
+    """Open the active workspace in this computer's file browser."""
+    command = file_browser_command(paths.WORKSPACE)
+    if not command:
+        return JSONResponse({"error": "No file browser is available on this computer."}, 400)
+    # SECURITY-REVIEW: fixed binary and the runner's own workspace path; no request input.
+    try:
+        launch_detached(command)
+    except OSError:
+        return JSONResponse({"error": "Roosta could not open the workspace folder."}, 500)
+    return {"opened": str(paths.WORKSPACE)}
+
+
 @app.get("/assistant")
 async def assistant_page():
     return FileResponse(page_file("assistant"))

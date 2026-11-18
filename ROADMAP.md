@@ -10,7 +10,6 @@
 - **Pulse constellation** — Let the map fill the available space and open project details in a drawer when you select a star.
 - **Project file navigation** — Step through neighbouring files from the preview, even when you arrived through search.
 - **Skills on the Workers page** — See skills that don't have a schedule.
-- **Open workspace** - A link on the Workspace page to open the workspace in the OS's file browser.
 - **Windows app** - A windows version of the Roosta app.
 
 ## Under consideration

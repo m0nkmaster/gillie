@@ -177,6 +177,13 @@ async function loadWorkspace(){
 $('search').addEventListener('input',renderResults);
 $('clear-search').onclick=()=>{$('search').value='';renderResults();$('search').focus();};
 $('refresh').onclick=loadWorkspace;
+$('reveal-workspace').onclick=async()=>{
+  notice('');
+  try{
+    const response=await fetch('/api/workspace/reveal',{method:'POST'});
+    if(!response.ok) notice((await response.json().catch(()=>({}))).error||(response.status===403?'Open folder works only on the computer running Roosta.':'Could not open the workspace folder.'));
+  }catch(error){notice('Could not reach Roosta to open the workspace folder.');}
+};
 $('views').onclick=event=>{
   const button=event.target.closest('[data-view]');if(!button) return;
   state.view=button.dataset.view;state.collection='';renderCollections();renderResults();
