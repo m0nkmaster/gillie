@@ -140,3 +140,29 @@ def test_activity_rows_from_tests_stay_out_of_the_live_feed(isolated_activity_lo
     assert "isolation-check" in isolated_activity_log.read_text()
     after = live.stat().st_size if live.exists() else 0
     assert after == before or "isolation-check" not in live.read_text()[before:]
+
+
+def test_learner_lists_assistant_chats_by_their_own_latest_message(tmp_path):
+    import subprocess
+
+    helper = Path(appmod.__file__).parent / "skills" / "workspace-learner" / "sessions.py"
+    history = tmp_path / "chat-history.json"
+    history.write_text(json.dumps({
+        "chat:old": [
+            {"role": "user", "text": "old question", "at": "2026-11-15T00:00:00+00:00"},
+            {"role": "assistant", "text": "old answer", "at": "2026-11-15T00:01:00+00:00"},
+        ],
+        "chat:new": [
+            {"role": "user", "text": "new question", "at": "2026-11-17T23:02:00+00:00"},
+            {"role": "assistant", "text": "new answer", "at": "2026-11-17T23:04:00Z"},
+        ],
+    }), encoding="utf-8")
+    since = 1794956337000  # 2026-11-17 22:58:57 UTC; the file mtime is now, after both chats
+    out = subprocess.run(
+        [sys.executable, str(helper), "list", str(since), "--source", "assistant", "--json"],
+        env={"ASSISTANT_HISTORY": str(history), "PATH": "/usr/bin:/bin"},
+        capture_output=True, text=True, check=True,
+    ).stdout
+    rows = json.loads(out)
+    assert [row["id"] for row in rows] == ["chat:new"]
+    assert rows[0]["timestamp_utc"] == "2026-11-17 23:04"

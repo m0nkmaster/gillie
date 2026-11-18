@@ -368,8 +368,18 @@ def assistant_list(since):
         )
         if any(phrase in first_user for phrase in BG_PHRASES):
             continue
+        # One file holds every chat, so its mtime moves them all; use each chat's own
+        # latest message time and fall back to the file's only when none is stamped.
+        stamps = [
+            iso_ms(message.get("at")) if isinstance(message.get("at"), str) else None
+            for message in messages
+            if isinstance(message, dict)
+        ]
+        ts = max((s for s in stamps if s is not None), default=mtime_ms)
+        if ts <= since:
+            continue
         title = clean(first_user, 60) or sid
-        out.append(("assistant", sid, mtime_ms, title))
+        out.append(("assistant", sid, ts, title))
     return out
 
 
