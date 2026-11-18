@@ -47,7 +47,7 @@ structure, floor, rugs       Structure/Walls (Painted Walls), Windows (Ornamenta
 seasonal/                    Objects/Furniture/Christmas Tree; Objects/Wall Items (Christmas Wall Decor, Pride Flags);
                              Objects/Small Items (Presents, Flowers, Skeletons A, Dungeon Elements, Food/Eggs, Food/Vegetables C)
 
-Recoloured into the Roosta logo palette for the Roosta worker (a modification of the files above, same licences):
+Recoloured into the Roosta logo palette, with goggles added to the hood, for the Roosta worker (a modification of the files above, same licences):
 hair/hood/Roosta             Characters/Head Accessories/Helm 04 - Chainmail Hood (Iron) - Eliza Wyatt, OGA-BY 3.0
 body/Roosta, head/Roosta     body/Tan, head/Tan
 shirt/Roosta, legs/Roosta, feet/Roosta  shirt/Cyan, legs, feet

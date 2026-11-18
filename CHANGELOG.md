@@ -6,6 +6,8 @@ Record each release newest first. Bump minor for features and visible behaviour,
 
 - **Back to Pulse** on the full-screen constellation now returns to the Pulse page straight away, instead of doing nothing until you had selected a project.
 
+- The Roosta worker now wears the mascot’s orange hood and purple goggles in the Office and crew portraits.
+
 ## 0.3.0 - 2026-11-18
 
 - Grant a named worker standing approval to comment on open ready issues and add the in review label in one GitHub repository.
