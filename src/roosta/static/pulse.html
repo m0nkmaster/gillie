@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="/static/shell.css">
 <script src="/static/theme.js"></script>
 <script src="/static/nav-count.js" defer></script>
+<script src="/static/column-resize.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="/static/vault-markdown.js"></script>
     <style>
@@ -55,7 +56,8 @@
         .constellation-tooltip strong { font-size: .8rem; }
         .constellation-tooltip span { font-size: .7rem; color: var(--tblr-secondary-color); }
         .constellation-detail { max-height: 600px; overflow-y: auto; display: flex; flex-direction: column; gap: .6rem; }
-        .constellation-layout { grid-template-columns: minmax(0, 1fr) 340px; }
+        .constellation-layout { grid-template-columns: minmax(0, 1fr) var(--detail-width, 340px); }
+        .constellation-wrap > .column-divider { right: -.425rem; }
         /* Full-screen constellation: same page, everything else hidden. */
         body.constellation-full .pulse-main { padding-top: 1rem; padding-bottom: 1rem; }
         body.constellation-full .dashboard-page-header,
@@ -64,7 +66,7 @@
         body.constellation-full .hot-panel { display: none; }
         body.constellation-full .constellation-panel { margin-bottom: 0 !important; }
         body.constellation-full #constellation { height: calc(100vh - 13.5rem); min-height: 520px; }
-        body.constellation-full .constellation-layout { grid-template-columns: minmax(0, 1fr) 420px; }
+        body.constellation-full .constellation-layout { grid-template-columns: minmax(0, 1fr) var(--detail-width, 420px); }
         body.constellation-full .constellation-detail { max-height: calc(100vh - 13.5rem); min-height: 520px; }
         .brief-section { font-size: .8125rem; }
         .brief-section > strong { display: block; color: var(--tblr-secondary-color); font-size: .75rem; font-weight: 500; margin-bottom: .2rem; }
@@ -143,6 +145,7 @@
         @media (max-width: 900px) {
             .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .constellation-layout { grid-template-columns: 1fr; }
+            .constellation-wrap > .column-divider { display: none; }
             .constellation-detail { max-height: none; }
             body.constellation-full .constellation-layout { grid-template-columns: 1fr; }
             body.constellation-full .constellation-detail { max-height: none; min-height: 0; }
@@ -183,6 +186,7 @@
                         <strong id="constellation-tooltip-title"></strong>
                         <span id="constellation-tooltip-detail"></span>
                     </div>
+                    <div id="detail-divider"></div>
                 </div>
                 <aside class="card card-body constellation-detail" id="constellation-detail"></aside>
             </div>
@@ -1471,12 +1475,21 @@
             }
         });
 
-        window.addEventListener('resize', () => {
+        function onCanvasResize() {
             resizeCanvas();
             clampView();
             if (!pulseData) return;
             nodes = buildNodes(projectSignals(pulseData));
             computeFilterLabels();
+        }
+        window.addEventListener('resize', onCanvasResize);
+        // The drawer's width is the reader's choice, separately for Pulse and full screen.
+        const detailDivider = document.getElementById('detail-divider');
+        detailDivider.addEventListener('roosta-columns-change', onCanvasResize);
+        roostaColumns.attach(detailDivider, {
+            id: FULL ? 'constellation.detail' : 'pulse.detail', label: 'Resize project details',
+            target: document.getElementById('constellation-detail'), container: document.querySelector('.constellation-layout'),
+            variable: '--detail-width', grow: 'left', min: 240, max: width => width - 420,
         });
 
         if (FULL) {

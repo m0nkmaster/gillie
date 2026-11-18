@@ -10,6 +10,7 @@
 <script src="/static/theme.js"></script>
 <script src="/static/model-picker.js"></script>
 <script src="/static/nav-count.js" defer></script>
+<script src="/static/column-resize.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="/static/vault-markdown.js"></script>
     <style>
@@ -23,7 +24,8 @@
             letter-spacing: -0.015em;
         }
         .runner-page { padding: 1.75rem var(--shell-gutter) 2rem; }
-        .runner-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 1.75rem; align-items: start; }
+        .runner-layout { display: grid; grid-template-columns: minmax(0, 1fr) var(--activity-width, 280px); gap: 1.75rem; align-items: start; }
+        .activity > .column-divider { left: -.875rem; }
         .runner-main { min-width: 0; }
         .runner-head {
             display: flex;
@@ -370,6 +372,7 @@
         .act-state.interrupted { color: var(--console-tertiary); }
         @media (max-width: 1000px) {
             .runner-layout { grid-template-columns: minmax(0, 1fr); }
+            .activity > .column-divider { display: none; }
             .list-head, .task-row { grid-template-columns: minmax(0, 1fr) 78px 88px 108px; }
             .list-head span:nth-child(2), .list-head span:nth-child(4), .list-head span:nth-child(5),
             .row-cell.schedule, .row-cell.took, .row-cell.runs { display: none; }
@@ -419,7 +422,8 @@
         <div class="refresh-note">Auto-refreshes every 5s &middot; click a row for detail</div>
     </main>
 
-    <aside class="activity card">
+    <aside class="activity card" id="activity">
+        <div id="activity-divider"></div>
         <h2><span class="live-dot" id="livedot"></span> AI Activity</h2>
         <div class="act-now" id="activity-now"></div>
         <h3 class="act-heading">Finished</h3>
@@ -1248,6 +1252,12 @@
         connectActivity();
         setInterval(renderRunningNow, 1000);  // live elapsed time on in-flight work
         setInterval(renderActivity, 30000);   // refresh relative timestamps
+        // The AI Activity rail's width is the reader's choice; the worker list keeps at least 560px.
+        roostaColumns.attach(document.getElementById('activity-divider'), {
+            id: 'workers.activity', label: 'Resize AI Activity', target: document.getElementById('activity'),
+            container: document.querySelector('.runner-layout'), variable: '--activity-width', grow: 'left',
+            min: 220, max: width => width - 560 - 28,
+        });
     </script>
 </body>
 </html>

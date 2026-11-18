@@ -35,6 +35,20 @@ See [Assistant contracts](assistant.md) and [Office rendering](office.md) for pa
   styles; the default dark scheme uses deep purple surfaces, lilac highlights and warm amber accents beside the orange logo.
   Keep page-to-page shell geometry and palette here so switching views feels continuous
 
+- **`static/column-resize.js`** - Resizable page columns. A page places an empty divider element on a
+  column edge (styled by `.column-divider` in `shell.css`) and calls `roostaColumns.attach(divider, {id,
+  label, target, container, variable, min, max, grow})`. The divider becomes a focusable vertical
+  `separator` with `aria-value*`; dragging, the arrow keys (Shift for four times the step), Home/End and
+  Enter or a double-click (restore the default) set one CSS width variable on the container, which the
+  page's grid or flex rule reads with its default as the fallback. Widths persist per `page.column` id in
+  `localStorage` under `roosta-columns` (the desktop origin is fixed, so they survive restarts), are
+  re-fitted to `max` on window resize without being forgotten, and follow other windows via `storage`.
+  The divider emits `roosta-columns-change` so canvases can redraw. Columns: Assistant inbox and
+  document pane, Workspace Explore and results, Workers AI Activity, Pulse and full-screen constellation
+  project details. Keep a minimum for the remaining flexible column in each `max`, keep each page's
+  wiring in one script block (`test_columns.py` runs it against real CSS), and hide dividers in media
+  queries where the layout stacks.
+
 - **Responsive layout.** Settings fills the available window width. On narrow screens the Assistant's
   stacked inbox and conversation scroll within the main panel, with a minimum conversation height
   so short windows keep the chat and composer reachable. `test_layout.py` renders the real page CSS

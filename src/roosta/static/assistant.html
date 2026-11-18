@@ -11,6 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"></script>
 <script src="/static/markdown-copy.js"></script>
+<script src="/static/column-resize.js"></script>
 <style>
   :root{
     --canvas:var(--console-canvas);--canvas-text:var(--console-text);
@@ -25,7 +26,7 @@
   .dot-down,.err-line{color:var(--danger)}
   .health-warn{color:var(--warning)}
   .main{flex:1;display:flex;flex-direction:row;min-height:0;overflow:hidden;border-top:1px solid var(--tblr-border-color-translucent)}
-  .attention-queue{width:304px;flex:none;display:flex;flex-direction:column;min-height:0;
+  .attention-queue{width:var(--inbox-width,304px);flex:none;display:flex;flex-direction:column;min-height:0;
     background:var(--console-rail);border-right:1px solid var(--tblr-border-color-translucent)}
   .queue-header{padding:1.4rem 1.15rem 1rem;border-bottom:1px solid var(--tblr-border-color-translucent)}
   .rail-tabs{display:flex;gap:.25rem;margin:0 0 .9rem;padding:.2rem;background:var(--console-tint);border-radius:7px}
@@ -188,7 +189,9 @@
   .approval-raw summary{font-size:.75rem;color:var(--tertiary);cursor:pointer;margin-top:.6rem}
   .approval-raw pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--secondary);font-size:.75rem}
   .approval-buttons{display:flex;gap:.6rem;margin-top:.8rem}.approval-result{margin-top:.6rem}
-  .docpane{flex:1;min-width:0;border-left:1px solid var(--line);overflow-y:auto;padding:0 1.25rem 2rem;font-size:.875rem;line-height:1.65;background:var(--canvas)}
+  .main>.column-divider{position:relative;flex:none}
+  .column-divider:has(+ .docpane[hidden]){display:none}
+  .docpane{flex:0 0 var(--docpane-width,calc((100% - var(--inbox-width,304px)) / 2));min-width:0;border-left:1px solid var(--line);overflow-y:auto;padding:0 1.25rem 2rem;font-size:.875rem;line-height:1.65;background:var(--canvas)}
   .docpane[hidden]{display:none}
   .docpane-head{position:sticky;top:0;z-index:1;display:flex;gap:.5rem;align-items:center;padding:1rem 0;background:var(--canvas);border-bottom:1px solid var(--line);margin-bottom:1rem}
   .docpane-head .path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.65rem;color:var(--tertiary)}
@@ -197,9 +200,10 @@
   .docpane p{margin:.7rem 0}.docpane ul,.docpane ol{padding-left:1.2rem}
   .docpane pre{overflow:auto;background:var(--panel);padding:.75rem}.docpane table{display:block;overflow:auto}
   .docpane th,.docpane td{border:1px solid var(--line);padding:.4rem;font-size:.75rem}
-  @media (max-width:1100px){.docpane{display:none}}
+  @media (max-width:1100px){.docpane,#docpane-divider{display:none}}
+  @media (min-width:1101px){.pane{min-width:360px}.docpane{flex-shrink:1}} /* a wide inbox squeezes the document, never the chat */
   @media (max-width:900px){
-    .attention-queue{width:260px}.queue-header{padding:1rem}
+    .attention-queue{width:var(--inbox-width,260px)}.queue-header{padding:1rem}
     .conversation-header{padding:1rem}.log{padding:.5rem 1rem}
     .msg{grid-template-columns:48px minmax(0,1fr);gap:.65rem}
     .form{margin:0 1rem 1rem}.bubble .brief-title{font-size:1.35rem}
@@ -208,7 +212,7 @@
   @media (max-width:650px){
     .assistant-page{padding:calc(var(--shell-header-height) + 1rem) .75rem 0}.dashboard-page-header{margin-bottom:1rem}
     .dashboard-page-header .page-title{font-size:1.4rem}
-    .main{flex-direction:column;overflow-y:auto}.attention-queue{width:100%;height:36%;min-height:190px;border-right:0;border-bottom:1px solid var(--line)}
+    .main{flex-direction:column;overflow-y:auto}.main>.column-divider{display:none}.attention-queue{width:100%;height:36%;min-height:190px;border-right:0;border-bottom:1px solid var(--line)}
     .pane{min-height:20rem}
     .queue-header{padding:.75rem}.queue-header p,.queue-header h2{display:none}.queue-header .form-control{padding:.4rem .6rem}
     .conversation-header{min-height:62px}.conversation-header .page-pretitle{display:none}
@@ -224,7 +228,7 @@
   <div class="board-status text-secondary" id="status" role="status"></div>
 </div>
 <div class="main">
-  <aside class="attention-queue" aria-label="Attention inbox">
+  <aside class="attention-queue" aria-label="Attention inbox" id="attention-queue">
     <div class="queue-header">
       <div class="rail-tabs" role="tablist" aria-label="Rail">
         <button type="button" role="tab" id="tab-inbox" data-tab="inbox" aria-selected="true">Inbox<b id="inbox-count"></b></button>
@@ -235,7 +239,9 @@
     </div>
     <div class="rail" id="rail"></div>
   </aside>
+  <div id="inbox-divider"></div>
   <div class="pane" id="pane"><div class="empty"><svg class="icon" aria-hidden="true"><use href="/static/ui-icons.svg#assistant"/></svg><h2>Your workspace is ready</h2><p>Select an inbox item or start a chat.</p></div></div>
+  <div id="docpane-divider"></div>
   <aside class="docpane" id="docpane" hidden aria-label="Linked document"></aside>
 </div>
 <script>
@@ -1476,4 +1482,15 @@ trackUsage('assistant_opened',{});
 load();
 setInterval(load,5000);
 setInterval(()=>{ if(activeChats.size) load(); },2000);
+</script>
+<script>
+// Inbox and document widths are the reader's choice; the conversation keeps at least 360px.
+(()=>{
+  const main=document.querySelector('.main'),inbox=document.querySelector('.attention-queue'),docpane=document.getElementById('docpane');
+  const conversation=360;
+  roostaColumns.attach(document.getElementById('inbox-divider'),{id:'assistant.inbox',label:'Resize inbox',target:inbox,container:main,
+    variable:'--inbox-width',min:220,max:width=>Math.min(640,width-conversation-(docpane.hidden?0:docpane.getBoundingClientRect().width))});
+  roostaColumns.attach(document.getElementById('docpane-divider'),{id:'assistant.document',label:'Resize document',target:docpane,container:main,
+    variable:'--docpane-width',grow:'left',min:280,max:width=>width-conversation-inbox.getBoundingClientRect().width});
+})();
 </script></body></html>

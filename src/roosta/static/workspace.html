@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="/static/shell.css">
 <script src="/static/theme.js"></script>
 <script src="/static/nav-count.js" defer></script>
+<script src="/static/column-resize.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"></script>
@@ -19,7 +20,8 @@
 .navigator .page-title{font-size:1.6rem}
 .navigator-search{display:flex;gap:.75rem;align-items:center}
 .navigator-search .input-icon{flex:1}
-.navigator-grid{display:grid;grid-template-columns:270px minmax(280px,.9fr) minmax(320px,1.4fr);gap:1rem;min-height:240px;flex:1}
+.navigator-grid{display:grid;grid-template-columns:var(--collections-width,270px) var(--results-width,minmax(280px,.9fr)) minmax(320px,1.4fr);gap:1rem;min-height:240px;flex:1}
+.navigator-grid>.card>.column-divider{right:-.5rem}
 .navigator-grid>.card{min-width:0;min-height:0}
 .navigator-scroll{overflow:auto;min-height:0;flex:1;overscroll-behavior:contain}
 .navigator .card-header{min-height:3.25rem;padding:.75rem 1rem;gap:.75rem}
@@ -54,8 +56,8 @@
 .context-files>button{max-width:100%;white-space:normal;text-align:left;overflow-wrap:anywhere}
 .context-question{width:min(36vw,520px)}
 #notice:empty{display:none}
-@media(max-width:1150px){.navigator-grid{grid-template-columns:210px minmax(240px,.9fr) minmax(280px,1fr)}.context-tray .card-body{flex-wrap:wrap}.context-question{flex:1;width:auto;min-width:200px}}
-@media(max-width:850px){.navigator{height:auto;min-height:calc(100dvh - var(--shell-header-height))}.navigator-grid{grid-template-columns:1fr 1fr;flex:none}.collections-card{grid-column:1/-1}.collections-card .navigator-scroll{max-height:170px}.results-card,.preview-card{height:65dvh}.context-question{width:100%}}
+@media(max-width:1150px){.navigator-grid{grid-template-columns:var(--collections-width,210px) var(--results-width,minmax(240px,.9fr)) minmax(280px,1fr)}.context-tray .card-body{flex-wrap:wrap}.context-question{flex:1;width:auto;min-width:200px}}
+@media(max-width:850px){.navigator-grid .column-divider{display:none}.navigator{height:auto;min-height:calc(100dvh - var(--shell-header-height))}.navigator-grid{grid-template-columns:1fr 1fr;flex:none}.collections-card{grid-column:1/-1}.collections-card .navigator-scroll{max-height:170px}.results-card,.preview-card{height:65dvh}.context-question{width:100%}}
 @media(max-width:580px){.navigator-grid{grid-template-columns:1fr}.results-card{height:45dvh}.preview-card{height:60dvh}.preview-card:has(.navigator-empty){height:180px}.navigator-search{align-items:stretch}.navigator-search .input-icon-addon{display:none}.context-tray .card-body{display:block}.context-question{margin:.75rem 0;width:100%}.navigator .dashboard-page-header{gap:.5rem}.navigator .page-title{font-size:1.4rem}}
 </style>
 </head>
@@ -72,13 +74,14 @@
   </div>
   <div id="notice" class="alert alert-warning mb-0" role="status"></div>
   <div class="navigator-grid">
-    <section class="card collections-card" aria-label="Explore your workspace">
+    <section class="card collections-card" id="collections-card" aria-label="Explore your workspace">
       <div class="card-header"><h2 class="card-title mb-0">Explore</h2></div>
       <nav class="knowledge-views nav-pills" id="views" aria-label="Knowledge views"></nav>
       <div class="card-header py-2"><h3 class="card-title small mb-0" id="collection-label">Projects</h3></div>
       <div class="navigator-scroll list-group list-group-flush" id="collections"></div>
+      <div id="collections-divider"></div>
     </section>
-    <section class="card results-card" aria-label="Search results"><div class="card-header justify-content-between"><h2 class="card-title mb-0" id="result-count" aria-live="polite">Markdown documents</h2><span class="text-secondary small" id="search-time"></span></div><div class="scope-heading"><div class="d-flex align-items-start justify-content-between gap-2"><h3 id="scope-title">All knowledge</h3><span id="scope-status"></span></div><p id="scope-summary">Explore projects and topics.</p><button class="btn btn-sm mt-2" id="scope-overview" type="button" hidden>Read overview</button></div><div class="navigator-scroll list-group list-group-flush" id="results"><div class="navigator-empty">Loading documents…</div></div></section>
+    <section class="card results-card" id="results-card" aria-label="Search results"><div class="card-header justify-content-between"><h2 class="card-title mb-0" id="result-count" aria-live="polite">Markdown documents</h2><span class="text-secondary small" id="search-time"></span></div><div class="scope-heading"><div class="d-flex align-items-start justify-content-between gap-2"><h3 id="scope-title">All knowledge</h3><span id="scope-status"></span></div><p id="scope-summary">Explore projects and topics.</p><button class="btn btn-sm mt-2" id="scope-overview" type="button" hidden>Read overview</button></div><div class="navigator-scroll list-group list-group-flush" id="results"><div class="navigator-empty">Loading documents…</div></div><div id="results-divider"></div></section>
     <section class="card preview-card" aria-label="Document preview">
       <div class="card-header justify-content-between"><h2 class="card-title mb-0">Preview</h2><div class="d-flex gap-2"><button class="btn btn-sm" id="copy-document" type="button" hidden title="Copy the document as Markdown">Copy</button><a class="btn btn-sm" id="open-document" hidden>Open</a><button class="btn btn-sm btn-primary" id="chat-document" type="button" hidden>Chat about this</button></div></div>
       <div class="navigator-scroll" id="preview"><div class="navigator-empty">Choose a document to read it here.<br><span class="small">Tick files to bring them into a conversation.</span></div></div>
@@ -91,4 +94,16 @@
   </div></section>
 </main>
 <script src="/static/workspace.js"></script>
+<script>
+// Explore and results widths are the reader's choice; the preview keeps at least 320px.
+(()=>{
+  const grid=document.querySelector('.navigator-grid'),collections=document.getElementById('collections-card'),results=document.getElementById('results-card');
+  const preview=320+32; // preview minimum plus the two 1rem gaps
+  const width=el=>el.getBoundingClientRect().width;
+  roostaColumns.attach(document.getElementById('collections-divider'),{id:'workspace.explore',label:'Resize Explore',target:collections,container:grid,
+    variable:'--collections-width',min:180,max:w=>w-width(results)-preview});
+  roostaColumns.attach(document.getElementById('results-divider'),{id:'workspace.results',label:'Resize results',target:results,container:grid,
+    variable:'--results-width',min:220,max:w=>w-width(collections)-preview});
+})();
+</script>
 </body></html>

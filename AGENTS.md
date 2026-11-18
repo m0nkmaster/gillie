@@ -65,7 +65,7 @@ Paths below are relative to `src/roosta/` unless stated otherwise.
 | `workspace.py` | Read-only document catalogue and bounded, validated attachments |
 | `attachments.py` | Chat upload storage, limits and validation |
 | `pulse.py`, `usage.py` | Vault telemetry and privacy-preserving interaction signals |
-| `static/` | Pages; shared `nav-count.js`, `shell.css`, `theme.js`, Markdown helpers |
+| `static/` | Pages; shared `nav-count.js`, `shell.css`, `theme.js`, `column-resize.js`, Markdown helpers |
 | `desktop/` (repo root) | Native macOS shell and runner supervision |
 
 Workspace configuration lives in `.roosta/tasks.yaml` and `.roosta/connectors.yaml`.
