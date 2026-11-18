@@ -11,6 +11,7 @@
 - **Project file navigation** — Step through neighbouring files from the preview, even when you arrived through search.
 - **Skills on the Workers page** — See skills that don't have a schedule.
 - **Windows app** - A windows version of the Roosta app.
+- **Third party chat** - Integrate with third party chat platforms like Telegram, Discord, etc.
 
 ## Under consideration
 
