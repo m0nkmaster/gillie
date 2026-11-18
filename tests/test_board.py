@@ -2,6 +2,9 @@ import asyncio, json, os, re, shutil, subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import pytest
+from roosta import workspace
+from roosta import chat_items
+from roosta import board
 from roosta import task_config
 from roosta import cursor_agent as camod
 from roosta.activity_log import ActivityLog
@@ -521,7 +524,6 @@ def test_terminal_event_remind_accepts_bounded_future_due():
 
 
 def test_reminder_and_notify_bodies_keep_urls_whole_and_cut_prose_on_words():
-    from roosta import app as appmod
     sheet = "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit#gid=0"
     body = ("Robin shared the capacity plan " * 18) + sheet + " and the other link https://example.com/b"
     assert 0 < body.index(sheet) < cmod.BODY_LIMIT < body.index(sheet) + len(sheet)
@@ -532,7 +534,7 @@ def test_reminder_and_notify_bodies_keep_urls_whole_and_cut_prose_on_words():
     assert cmod.clip_body("short " + sheet) == "short " + sheet
     remind = cmod.terminal_event({"control": "remind", "title": "t", "body": body})
     assert remind["payload"]["body"] == clipped
-    assert appmod.reminder_to_item({"id": "remind-1", "title": "t", "body": body})["why"] == clipped
+    assert board.reminder_to_item({"id": "remind-1", "title": "t", "body": body})["why"] == clipped
 
 
 def test_terminal_event_remind_requires_title():
@@ -625,7 +627,7 @@ def test_split_due_reminders_partitions_now_and_future():
         {"id": "", "title": "No id", "due": None},
         {"id": "remind-notitle", "title": "", "due": None},
     ]
-    due, later = appmod.split_due_reminders(reminders, now)
+    due, later = board.split_due_reminders(reminders, now)
     assert {i["id"] for i in due} == {"remind-now", "remind-past", "remind-broken"}
     assert all(i["new"] is True for i in due)
     assert [i["id"] for i in later] == ["remind-future"]
@@ -1335,7 +1337,7 @@ def test_normalise_board_doc_full():
          "action_type": "teams_message", "action_owner": "user",
          "action_label": "  Draft   response  ", "new": True}],
         "done_today": [{"text": "Booked it", "at": "2026-06-30T10:00:00Z"}]}
-    doc = appmod.normalise_board_doc(raw)
+    doc = board.normalise_board_doc(raw)
     assert doc["items"][0]["id"] == "ds-session"
     assert "thread_id" not in doc["items"][0]
     assert doc["items"][0]["project_ref"] == "projects/final-mile-results-data"
@@ -1347,9 +1349,9 @@ def test_normalise_board_doc_full():
 
 
 def test_normalise_board_doc_defaults_and_garbage():
-    doc = appmod.normalise_board_doc("nonsense")
+    doc = board.normalise_board_doc("nonsense")
     assert doc["items"] == [] and doc["done_today"] == []
-    doc2 = appmod.normalise_board_doc({"items": ["bad", {"id": "x"}]})
+    doc2 = board.normalise_board_doc({"items": ["bad", {"id": "x"}]})
     assert len(doc2["items"]) == 1
     assert doc2["items"][0]["title"] == "" and doc2["items"][0]["new"] is False
     assert "thread_id" not in doc2["items"][0]
@@ -1368,14 +1370,14 @@ def test_normalise_board_doc_defaults_and_garbage():
     ("I'll review the current status.", "review"),
 ])
 def test_normalise_board_doc_infers_action_type_for_existing_items(opening_move, expected):
-    doc = appmod.normalise_board_doc({
+    doc = board.normalise_board_doc({
         "items": [{"id": "old-cache-item", "opening_move": opening_move}]
     })
     assert doc["items"][0]["action_type"] == expected
 
 
 def test_normalise_board_doc_rejects_unknown_action_type():
-    doc = appmod.normalise_board_doc({
+    doc = board.normalise_board_doc({
         "items": [{"id": "x", "action_type": "javascript", "opening_move": "Do the thing"}]
     })
     assert doc["items"][0]["action_type"] == "task"
@@ -1390,11 +1392,11 @@ def test_normalise_board_doc_rejects_unknown_action_type():
     ("https://example.com/project", None),
 ])
 def test_normalise_project_ref_allows_only_canonical_project_directory(raw, expected):
-    assert appmod._normalise_project_ref(raw) == expected
+    assert board._normalise_project_ref(raw) == expected
 
 
 def test_normalise_board_doc_falls_back_to_specific_action_label():
-    doc = appmod.normalise_board_doc({
+    doc = board.normalise_board_doc({
         "items": [{"id": "x", "action_type": "standup",
                    "action_owner": "unknown", "action_label": ""}]
     })
@@ -1404,7 +1406,7 @@ def test_normalise_board_doc_falls_back_to_specific_action_label():
 
 
 def test_normalise_links_keeps_only_http_and_caps():
-    links = appmod._normalise_links([
+    links = board._normalise_links([
         {"label": "Open thread", "url": "https://teams.microsoft.com/x"},
         {"label": "Bad", "url": "javascript:alert(1)"},   # unsafe scheme -> dropped
         {"label": "", "url": "http://plain.example/y"},    # blank label -> "Open"
@@ -1424,7 +1426,7 @@ def test_normalise_links_repairs_group_chat_permalink():
         "?tenantId=56b731a8-a2ac-4c32-bf6b-616810e913c6"
         "&parentMessageId=1789738665402&createdTime=1789738665402"
     )
-    assert appmod._normalise_links([{"label": "Open thread", "url": broken}]) == [{
+    assert board._normalise_links([{"label": "Open thread", "url": broken}]) == [{
         "label": "Open thread",
         "url": (
             "https://teams.microsoft.com/l/message/"
@@ -1441,18 +1443,18 @@ def test_normalise_links_leaves_channel_permalink_unchanged():
         "19%3Aabc%40thread.tacv2/1789738665402"
         "?tenantId=tenant&groupId=group&parentMessageId=1789738665402"
     )
-    assert appmod._normalise_links([{"label": "Open thread", "url": channel}])[0]["url"] == channel
+    assert board._normalise_links([{"label": "Open thread", "url": channel}])[0]["url"] == channel
 
 
 def test_normalise_board_doc_carries_links():
-    doc = appmod.normalise_board_doc({"items": [
+    doc = board.normalise_board_doc({"items": [
         {"id": "i", "links": [{"label": "PROJ-1", "url": "https://jira/PROJ-1"},
                               {"label": "x", "url": "ftp://nope"}]}]})
     assert doc["items"][0]["links"] == [{"label": "PROJ-1", "url": "https://jira/PROJ-1"}]
 
 
 def test_normalise_documents_allows_only_relative_vault_markdown():
-    documents = appmod._normalise_documents([
+    documents = board._normalise_documents([
         {"label": "Open draft", "path": "drafts/2026-07-28-team-rolling-comms.md"},
         {"label": "Escape", "path": "../outside.md"},
         {"label": "Absolute", "path": "/tmp/outside.md"},
@@ -1472,11 +1474,11 @@ def test_resolve_vault_markdown_rejects_escape_and_reads_existing_doc(tmp_path):
     document = drafts / "weekly.md"
     document.write_text("# Weekly\n")
 
-    assert appmod.resolve_vault_markdown("drafts/weekly.md", tmp_path) == document
+    assert workspace.resolve_vault_markdown("drafts/weekly.md", tmp_path) == document
     with pytest.raises(ValueError):
-        appmod.resolve_vault_markdown("../outside.md", tmp_path)
+        workspace.resolve_vault_markdown("../outside.md", tmp_path)
     with pytest.raises(FileNotFoundError):
-        appmod.resolve_vault_markdown("drafts/missing.md", tmp_path)
+        workspace.resolve_vault_markdown("drafts/missing.md", tmp_path)
 
 
 def test_resolve_vault_text_opens_roosta_config_but_not_state_or_dotfiles(tmp_path):
@@ -1490,13 +1492,13 @@ def test_resolve_vault_text_opens_roosta_config_but_not_state_or_dotfiles(tmp_pa
     (tmp_path / ".git").mkdir()
     (tmp_path / ".git" / "config.yaml").write_text("x")
 
-    assert appmod.resolve_vault_text(".roosta/connectors.yaml", tmp_path) == (config / "connectors.yaml").resolve()
-    assert appmod.resolve_vault_text(".roosta/operating-model.md", tmp_path).name == "operating-model.md"
+    assert workspace.resolve_vault_text(".roosta/connectors.yaml", tmp_path) == (config / "connectors.yaml").resolve()
+    assert workspace.resolve_vault_text(".roosta/operating-model.md", tmp_path).name == "operating-model.md"
     for bad in (".roosta/state/cache/secret.json", ".roosta/STATE/cache/secret.json",
                 ".roosta/tasks.json", ".env.json", ".git/config.yaml",
                 ".roosta/../.env.json", ".roosta/.hidden.yaml"):
         with pytest.raises(ValueError):
-            appmod.resolve_vault_text(bad, tmp_path)
+            workspace.resolve_vault_text(bad, tmp_path)
 
 
 def test_vault_document_endpoint_returns_markdown(monkeypatch, tmp_path):
@@ -1561,7 +1563,7 @@ def test_vault_document_endpoint_splits_front_matter_into_properties(monkeypatch
 
 
 def test_board_feed_attaches_draft_document_to_matching_conductor_item():
-    conductor = appmod.normalise_board_doc({"items": [{
+    conductor = board.normalise_board_doc({"items": [{
         "id": "rolling-comms-2026-07-28",
         "title": "Review Platform rolling comms",
     }]})["items"]
@@ -1573,7 +1575,7 @@ def test_board_feed_attaches_draft_document_to_matching_conductor_item():
         }},
     }]
 
-    merged = appmod.merge_board_feed_items(conductor, states)
+    merged = board.merge_board_feed_items(conductor, states)
 
     assert merged[0]["documents"] == [{
         "label": "Open draft",
@@ -1595,13 +1597,13 @@ def test_board_feed_accepts_cards_from_any_skill():
         {"id": "never-run", "last_output": {}},
     ]
 
-    merged = appmod.merge_board_feed_items([], states)
+    merged = board.merge_board_feed_items([], states)
 
     assert [item["id"] for item in merged] == ["self-chat-123", "celebrate-proj-1"]
 
 
 def test_board_feed_newer_skill_refines_existing_card():
-    conductor = appmod.normalise_board_doc({"items": [{
+    conductor = board.normalise_board_doc({"items": [{
         "id": "teams-root1", "title": "Reply to Robin", "why": "Robin asked",
         "situation": "Old picture", "new": False,
         "links": [{"label": "Open thread", "url": "https://teams.example/root1"}],
@@ -1620,7 +1622,7 @@ def test_board_feed_newer_skill_refines_existing_card():
          ]}}},
     ]
 
-    merged = appmod.merge_board_feed_items(conductor, states)
+    merged = board.merge_board_feed_items(conductor, states)
 
     assert len(merged) == 1
     card = merged[0]
@@ -1636,11 +1638,11 @@ def test_board_feed_drops_untitled_update_for_unknown_card():
         {"id": "gone-card", "situation": "More context"},
     ]}}}]
 
-    assert appmod.merge_board_feed_items([], states) == []
+    assert board.merge_board_feed_items([], states) == []
 
 
 def test_board_feed_folds_merged_duplicate_into_kept_card():
-    conductor = appmod.normalise_board_doc({"items": [
+    conductor = board.normalise_board_doc({"items": [
         {"id": "teams-root1", "title": "Reply to Robin on 626 cutover"},
     ]})["items"]
     states = [{"id": "workspace-learner", "last_run": "2026-11-03T11:00:00",
@@ -1651,7 +1653,7 @@ def test_board_feed_folds_merged_duplicate_into_kept_card():
                }]}}}]
     merged = {"learner-626-cutover": {"into": "teams-root1"}}
 
-    cards = appmod.merge_board_feed_items(conductor, states, merged)
+    cards = board.merge_board_feed_items(conductor, states, merged)
 
     assert [card["id"] for card in cards] == ["teams-root1"]
     assert cards[0]["situation"] == "Robin needs a date by Friday"
@@ -1660,7 +1662,7 @@ def test_board_feed_folds_merged_duplicate_into_kept_card():
 
 def test_folded_duplicate_never_rewrites_the_conductor_synthesis():
     # 4 Nov: a three-person roundup was retitled as Ari's win by his folded card.
-    conductor = appmod.normalise_board_doc({"items": [{
+    conductor = board.normalise_board_doc({"items": [{
         "id": "team-wins-2026-11-04", "title": "Squad shipped data-accuracy and search fixes",
         "situation": "Quinn, James and Ari all landed work",
         "links": [{"label": "PROJ-10691", "url": "https://example.atlassian.net/browse/PROJ-10691"}],
@@ -1673,7 +1675,7 @@ def test_folded_duplicate_never_rewrites_the_conductor_synthesis():
                }]}}}]
     merged = {"celebrate-proj-10631": {"into": "team-wins-2026-11-04"}}
 
-    card = appmod.merge_board_feed_items(conductor, states, merged)[0]
+    card = board.merge_board_feed_items(conductor, states, merged)[0]
 
     assert card["title"] == "Squad shipped data-accuracy and search fixes"
     assert card["situation"] == "Quinn, James and Ari all landed work"
@@ -1698,7 +1700,7 @@ def test_record_merges_keeps_the_card_rob_talked_on(tmp_path):
 
 
 def test_roosta_engineer_failure_becomes_an_actionable_board_item():
-    item = appmod.roosta_engineer_item([{
+    item = board.roosta_engineer_item([{
         "id": "roosta-engineer",
         "status": "error",
         "last_run": "2026-09-08T07:00:00+00:00",
@@ -1713,7 +1715,7 @@ def test_roosta_engineer_failure_becomes_an_actionable_board_item():
 
 
 def test_roosta_engineer_delivery_becomes_a_review_board_item():
-    item = appmod.roosta_engineer_item([{
+    item = board.roosta_engineer_item([{
         "id": "roosta-engineer",
         "status": "success",
         "last_run": "2026-09-08T07:00:00+00:00",
@@ -1734,7 +1736,7 @@ def test_roosta_engineer_delivery_becomes_a_review_board_item():
 
 
 def test_roosta_engineer_no_change_does_not_create_noise():
-    assert appmod.roosta_engineer_item([{
+    assert board.roosta_engineer_item([{
         "id": "roosta-engineer",
         "status": "success",
         "last_run": "2026-09-08T07:00:00+00:00",
@@ -1760,14 +1762,14 @@ def test_scheduled_prompt_forbids_external_writes():
 def test_snooze_deadlines_use_local_mornings_and_utc_storage():
     bst = timezone(timedelta(hours=1))
     now = datetime(2026, 7, 16, 15, 30, tzinfo=bst)  # Thursday
-    assert appmod.snooze_deadline("one_hour", now) == "2026-07-16T15:30:00+00:00"
-    assert appmod.snooze_deadline("tomorrow", now) == "2026-07-17T08:00:00+00:00"
-    assert appmod.snooze_deadline("next_monday", now) == "2026-07-20T08:00:00+00:00"
+    assert board.snooze_deadline("one_hour", now) == "2026-07-16T15:30:00+00:00"
+    assert board.snooze_deadline("tomorrow", now) == "2026-07-17T08:00:00+00:00"
+    assert board.snooze_deadline("next_monday", now) == "2026-07-20T08:00:00+00:00"
 
 
 def test_snooze_deadline_rejects_arbitrary_input():
     with pytest.raises(ValueError):
-        appmod.snooze_deadline("2035-01-01")
+        board.snooze_deadline("2035-01-01")
 
 
 def test_split_snoozed_items_parks_future_and_resurfaces_expired():
@@ -1781,7 +1783,7 @@ def test_split_snoozed_items_parks_future_and_resurfaces_expired():
         "broken": {"until": "not-a-date"},
         "wrong-type": {"until": 123},
     }
-    active, later = appmod.split_snoozed_items(items, snoozed, now)
+    active, later = board.split_snoozed_items(items, snoozed, now)
     assert [item["id"] for item in active] == ["expired", "broken", "wrong-type", "plain"]
     assert [item["id"] for item in later] == ["future"]
     assert later[0]["snoozed_until"] == "2026-07-17T09:00:00+00:00"
@@ -1893,13 +1895,13 @@ def test_chatrouter_record_raised_preserves_first_seen(tmp_path):
 
 def test_attach_raised_at_stamps_items():
     items = [{"id": "a", "title": "A"}, {"id": "b", "title": "B", "raised_at": "keep"}]
-    appmod.attach_raised_at(items, {"a": {"at": "2026-07-01T10:00:00+00:00"}})
+    board.attach_raised_at(items, {"a": {"at": "2026-07-01T10:00:00+00:00"}})
     assert items[0]["raised_at"] == "2026-07-01T10:00:00+00:00"
     assert items[1]["raised_at"] == "keep"
 
 
 def test_reminder_to_item_carries_created_as_raised_at():
-    item = appmod.reminder_to_item({
+    item = board.reminder_to_item({
         "id": "remind-1", "title": "T", "body": "B",
         "created": "2026-07-01T09:00:00+00:00",
     })
@@ -2491,7 +2493,7 @@ def _sensor(sid, status="success", ago_seconds=0, interval=3600):
 def test_board_health_ok_when_sensors_fresh_and_successful():
     states = [_sensor("assistant", ago_seconds=60),
               _sensor("teams-actions-watch", ago_seconds=120)]
-    h = appmod.board_health(states, now=_NOW)
+    h = board.board_health(states, now=_NOW)
     assert h == {"ok": True, "degraded": [], "automation_failures": [],
                  "claude_signin_expired": False, "github_signin_expired": False}
 
@@ -2499,7 +2501,7 @@ def test_board_health_ok_when_sensors_fresh_and_successful():
 def test_board_health_flags_errored_sensor():
     states = [_sensor("assistant"),
               _sensor("self-chat-commands", status="error")]
-    h = appmod.board_health(states, now=_NOW)
+    h = board.board_health(states, now=_NOW)
     assert h["ok"] is False
     assert {"id": "self-chat-commands", "nickname": "", "reason": "last run failed"} in h["degraded"]
 
@@ -2507,7 +2509,7 @@ def test_board_health_flags_errored_sensor():
 def test_board_health_flags_stale_sensor():
     # last run older than 3x its 3600s interval => stale
     states = [_sensor("support-watch", ago_seconds=3 * 3600 + 1, interval=3600)]
-    h = appmod.board_health(states, now=_NOW)
+    h = board.board_health(states, now=_NOW)
     assert h["ok"] is False
     assert h["degraded"] == [{"id": "support-watch", "nickname": "", "reason": "stale"}]
 
@@ -2524,7 +2526,7 @@ def test_board_health_surfaces_failed_automations_without_changing_sensor_verdic
         {**_sensor("roosta-engineer", status="error"), "sensor": False},
         {"id": "assistant", "status": "success", "interval": 3600, "last_run": "junk"},
     ]
-    assert appmod.board_health(states, now=_NOW) == {
+    assert board.board_health(states, now=_NOW) == {
         "ok": True,
         "degraded": [],
         "automation_failures": [
@@ -2540,7 +2542,7 @@ def test_board_health_names_an_expired_claude_signin_once():
         {**_sensor(sid, status="error"), "last_error": appmod.CLAUDE_SIGNIN_MESSAGE}
         for sid in ("workspace-gardener", "teams-archive", "assistant")
     ]
-    h = appmod.board_health(failed, now=_NOW)
+    h = board.board_health(failed, now=_NOW)
     assert h["claude_signin_expired"] is True
     html = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "static" / "assistant.html").read_text()
     assert "h.claude_signin_expired" in html
@@ -2558,13 +2560,13 @@ def test_restart_pending_when_a_module_changed_after_start(tmp_path):
     module = tmp_path / "app.py"
     module.write_text("")
     os.utime(module, (1000, 1000))
-    assert appmod.restart_pending(started=2000, root=tmp_path) is False
+    assert board.restart_pending(started=2000, root=tmp_path) is False
     os.utime(module, (3000, 3000))
-    assert appmod.restart_pending(started=2000, root=tmp_path) is True
+    assert board.restart_pending(started=2000, root=tmp_path) is True
     # Only Python modules count: static pages reload without a restart.
     os.utime(module, (1000, 1000))
     (tmp_path / "assistant.html").write_text("")
-    assert appmod.restart_pending(started=2000, root=tmp_path) is False
+    assert board.restart_pending(started=2000, root=tmp_path) is False
 
 
 def test_health_warning_names_a_pending_restart():
@@ -2888,7 +2890,7 @@ def test_document_chat_item_resolves_a_vault_document_as_persistent(tmp_path):
     readme.parent.mkdir(parents=True)
     readme.write_text("---\ntitle: Team OKRs\n---\n\n# Team OKRs\n", encoding="utf-8")
 
-    item = appmod.document_chat_item("doc:projects/team-okrs/README.md", tmp_path)
+    item = chat_items.document_chat_item("doc:projects/team-okrs/README.md", tmp_path)
     assert item["id"] == "doc:projects/team-okrs/README.md"
     assert item["title"] == "Team OKRs"
     assert item["project_ref"] == "projects/team-okrs"
@@ -2899,11 +2901,11 @@ def test_document_chat_item_resolves_a_vault_document_as_persistent(tmp_path):
 def test_document_chat_item_rejects_escape_missing_and_foreign_ids(tmp_path):
     (tmp_path / "notes").mkdir()
     (tmp_path / "notes" / "a.md").write_text("# A\n", encoding="utf-8")
-    assert appmod.document_chat_item("doc:notes/a.md", tmp_path)["project_ref"] is None
-    assert appmod.document_chat_item("doc:../outside.md", tmp_path) is None
-    assert appmod.document_chat_item("doc:notes/missing.md", tmp_path) is None
-    assert appmod.document_chat_item("doc:.roosta/AGENTS.md", tmp_path) is None
-    assert appmod.document_chat_item("notes/a.md", tmp_path) is None
+    assert chat_items.document_chat_item("doc:notes/a.md", tmp_path)["project_ref"] is None
+    assert chat_items.document_chat_item("doc:../outside.md", tmp_path) is None
+    assert chat_items.document_chat_item("doc:notes/missing.md", tmp_path) is None
+    assert chat_items.document_chat_item("doc:.roosta/AGENTS.md", tmp_path) is None
+    assert chat_items.document_chat_item("notes/a.md", tmp_path) is None
 
 
 def test_board_chat_starts_a_document_thread_off_the_rail(monkeypatch, tmp_path):
@@ -2947,7 +2949,7 @@ def test_worker_chat_item_speaks_as_the_worker_and_points_at_its_skill(tmp_path)
         {"kind": "skill", "task_id": "other", "status": "error"},
         {"kind": "chat", "task_id": "team-wins-watch", "status": "success"},
     ]
-    item = appmod.worker_chat_item("worker:team-wins-watch", tasks, state, runs, tmp_path)
+    item = chat_items.worker_chat_item("worker:team-wins-watch", tasks, state, runs, tmp_path)
     assert item["title"] == "1:1 with team-wins-watch"
     assert item["persistent"] is True
     assert item["documents"] == [{"label": "Open SKILL.md",
@@ -2960,9 +2962,9 @@ def test_worker_chat_item_speaks_as_the_worker_and_points_at_its_skill(tmp_path)
 
 def test_worker_chat_item_rejects_unknown_and_foreign_ids(tmp_path):
     tasks = _worker_vault(tmp_path)
-    assert appmod.worker_chat_item("worker:invented", tasks, root=tmp_path) is None
-    assert appmod.worker_chat_item("team-wins-watch", tasks, root=tmp_path) is None
-    assert appmod.is_chat_id("worker:team-wins-watch")
+    assert chat_items.worker_chat_item("worker:invented", tasks, root=tmp_path) is None
+    assert chat_items.worker_chat_item("team-wins-watch", tasks, root=tmp_path) is None
+    assert chat_items.is_chat_id("worker:team-wins-watch")
 
 
 def test_board_chat_starts_a_worker_one_to_one(monkeypatch, tmp_path):
@@ -2986,7 +2988,7 @@ def test_board_chat_starts_a_worker_one_to_one(monkeypatch, tmp_path):
 
 
 def test_hire_chat_item_sets_up_a_new_worker_through_write_a_skill():
-    item = appmod.hire_chat_item("hire:0123456789ab")
+    item = chat_items.hire_chat_item("hire:0123456789ab")
     assert item["id"] == "hire:0123456789ab"
     assert item["title"] == "New worker"
     assert item["persistent"] is True
@@ -2995,9 +2997,9 @@ def test_hire_chat_item_sets_up_a_new_worker_through_write_a_skill():
     assert ".roosta/tasks.yaml" in voice and "only after" in voice
     assert "never put a schedule in the skill" in voice
     for bad in ("hire:xyz", "hire:0123456789AB", "hire:0123456789abc", "chat:0123456789ab", ""):
-        assert appmod.hire_chat_item(bad) is None
-    assert appmod.is_chat_id("hire:0123456789ab")
-    assert not appmod.is_chat_id("hire:nope")
+        assert chat_items.hire_chat_item(bad) is None
+    assert chat_items.is_chat_id("hire:0123456789ab")
+    assert not chat_items.is_chat_id("hire:nope")
 
 
 def test_board_chat_starts_a_new_worker_thread(monkeypatch):
@@ -3033,10 +3035,10 @@ def test_workers_page_offers_a_one_to_one_and_new_worker():
 def test_standing_thread_ids_accepts_only_reserved_namespaces():
     raw = ("doc:notes/a.md,proj-9807,doc:notes/a.md,,chat:0123456789ab,__general__,chat:x,worker:ada,"
            "hire:0123456789ab,hire:x")
-    assert appmod.standing_thread_ids(raw) == ["doc:notes/a.md", "chat:0123456789ab", "worker:ada",
+    assert chat_items.standing_thread_ids(raw) == ["doc:notes/a.md", "chat:0123456789ab", "worker:ada",
                                                "hire:0123456789ab"]
-    assert appmod.standing_thread_ids("") == []
-    assert len(appmod.standing_thread_ids(",".join(f"doc:notes/p{i}.md" for i in range(40)))) == 20
+    assert chat_items.standing_thread_ids("") == []
+    assert len(chat_items.standing_thread_ids(",".join(f"doc:notes/p{i}.md" for i in range(40)))) == 20
 
 
 def test_board_chat_404_for_unknown_item(monkeypatch):
@@ -3156,7 +3158,7 @@ def test_chat_list_orders_by_activity_and_archive_hides_until_new_activity():
         "chat:cccccccccccc": [{"role": "user", "text": "Archived", "at": "2026-11-06T09:00"}],
     }
     archived = {"chat:cccccccccccc": "2026-11-06T10:00", "doc:notes/a.md": "2026-11-01T00:00"}
-    rows = appmod.chat_list(histories, archived)
+    rows = chat_items.chat_list(histories, archived)
     assert [r["id"] for r in rows] == ["chat:bbbbbbbbbbbb", "doc:notes/a.md", "chat:aaaaaaaaaaaa"]
     assert rows[0]["turns"] == 2
     assert rows[2]["preview"] == "Older question here"
@@ -3265,7 +3267,7 @@ def test_recently_closed_lists_newest_first_with_titles():
               "item": {"title": "Alpha", "action_type": "review"}},
         "b": {"result": "Done B", "at": "2026-08-02T10:00:00Z"},
     }
-    rows = appmod.recently_closed(handled, FakeRouter())
+    rows = board.recently_closed(handled, FakeRouter())
     assert [r["id"] for r in rows] == ["b", "a"]
     assert rows[0]["title"] == "From topic"       # fallback via known_item
     assert rows[1]["title"] == "Alpha" and rows[1]["action_type"] == "review"
@@ -3288,19 +3290,19 @@ def test_board_reopen_restores_snapshot_to_rail(monkeypatch):
 
     router = FakeRouter()
     monkeypatch.setattr(appmod, "chat_router", router)
-    appmod._pushed_notifications.clear()
+    board._pushed_notifications.clear()
     try:
         response = asyncio.run(appmod.api_board_reopen({"item_id": "item-1"}))
         assert response.status_code == 200
         assert json.loads(response.body) == {"reopened": True, "restored": True}
         assert router.unhandled == "item-1"
-        pushed = appmod._pushed_notifications
+        pushed = board._pushed_notifications
         assert pushed and pushed[0]["id"] == "item-1"
         assert pushed[0]["title"] == "Holdout"
         assert pushed[0]["action_type"] == "review"
         assert pushed[0]["new"] is True
     finally:
-        appmod._pushed_notifications.clear()
+        board._pushed_notifications.clear()
 
 
 def test_board_reopen_404_for_item_not_closed(monkeypatch):
@@ -3464,15 +3466,15 @@ def test_board_health_names_an_expired_github_signin_from_real_run_summaries():
     ]
     for text in lost:
         state = {**_sensor("team-wins-watch", status="error"), "last_error": text}
-        assert appmod.board_health([state], now=_NOW)["github_signin_expired"] is True, text
+        assert board.board_health([state], now=_NOW)["github_signin_expired"] is True, text
     for text in ("GitHub was unreachable (network error), so merged PRs were not checked.",
                  "Teams not connected - run `msteams login`.",
                  "Jira auth was rejected."):
         state = {**_sensor("team-wins-watch", status="error"), "last_error": text}
-        assert appmod.board_health([state], now=_NOW)["github_signin_expired"] is False, text
+        assert board.board_health([state], now=_NOW)["github_signin_expired"] is False, text
     # A later successful run clears it.
     ok = {**_sensor("team-wins-watch"), "last_error": lost[0]}
-    assert appmod.board_health([ok], now=_NOW)["github_signin_expired"] is False
+    assert board.board_health([ok], now=_NOW)["github_signin_expired"] is False
     html = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "static" / "assistant.html").read_text()
     assert "h.github_signin_expired" in html
 
@@ -3524,18 +3526,18 @@ def test_setup_card_survives_setup_writing_the_name(monkeypatch):
         history = []
 
         def conversation_history(self, item_id):
-            return self.history if item_id == appmod.SETUP_ITEM_ID else []
+            return self.history if item_id == board.SETUP_ITEM_ID else []
 
     router = Router()
     monkeypatch.setattr(appmod, "chat_router", router)
     named = appmod.profile.Profile(name="Sam Example")
     monkeypatch.setattr(appmod.profile, "load", lambda path=None: named)
-    assert appmod.setup_item() is None                      # set up long ago, never via the card
+    assert board.setup_item(router) is None                      # set up long ago, never via the card
     router.history = [{"role": "user", "text": "hi"}]
-    assert appmod.setup_item()["id"] == appmod.SETUP_ITEM_ID  # mid-setup: keep the card
+    assert board.setup_item(router)["id"] == board.SETUP_ITEM_ID  # mid-setup: keep the card
     monkeypatch.setattr(appmod.profile, "load", lambda path=None: appmod.profile.Profile())
     router.history = []
-    assert appmod.setup_item() is not None                  # brand new workspace
+    assert board.setup_item(router) is not None                  # brand new workspace
 
 
 def test_new_users_get_example_prompts_that_prefill_but_never_send():
@@ -3687,7 +3689,7 @@ def test_carry_forward_fills_id_only_keep_stubs():
     details = {"items": [{"id": "a", "new": False},
                          {"id": "b", "title": "B", "why": "New why"},
                          {"id": "c", "new": True}]}
-    appmod.carry_forward_board_items(details, previous)
+    board.carry_forward_board_items(details, previous)
     a, b, c = details["items"]
     assert a["title"] == "Old title" and a["why"] == "Because" and a["links"]
     assert b["why"] == "New why"
@@ -3695,8 +3697,8 @@ def test_carry_forward_fills_id_only_keep_stubs():
 
 
 def test_carry_forward_tolerates_garbage():
-    appmod.carry_forward_board_items(None, {"items": []})
-    appmod.carry_forward_board_items({"items": [1, {"id": "a"}]}, {"items": "bad"})
+    board.carry_forward_board_items(None, {"items": []})
+    board.carry_forward_board_items({"items": [1, {"id": "a"}]}, {"items": "bad"})
 
 
 

@@ -8,7 +8,7 @@ never inside a user's workspace.
 ## Working rules
 
 - Keep scheduling and API routes in `app.py`; move self-contained subsystem logic into its own
-  module, as with `activity_log.py`, `task_config.py` and `pages.py`. Do not introduce a framework layer. Pages are static HTML + fetch, with no Jinja or build step.
+  module, as with `board.py`, `task_config.py` and `activity_log.py`. Do not introduce a framework layer. Pages are static HTML + fetch, with no Jinja or build step.
 - Use `paths.py` for `APP_ROOT` versus `WORKSPACE`; never hardcode a home directory.
   Use `profile.load().user` and `{user}` in prompts, and the profile's `reviewer` for provenance.
 - Preserve other sessions' uncommitted work. Stage by path and commit only your own hunks;
@@ -58,13 +58,15 @@ Paths below are relative to `src/roosta/` unless stated otherwise.
 | `app.py` | FastAPI endpoints, scheduling, runtime checks, harness dispatch |
 | `task_config.py` | Task model, `tasks.yaml` loading and comment-preserving edits, skill lookup |
 | `chat.py` | `ChatRouter`, markers, approvals, conversation stores |
+| `board.py` | Board card normalisation, feed merging, reminders, setup card and board health |
+| `chat_items.py` | Open, document, worker 1:1 and new-worker chat items |
 | `ai_backend.py`, `ai_connections.py`, `ai_runtime.py` | AI dispatch, named accounts, credential references and managed runtimes |
 | `pi_agent.py`, `pi_guard.mjs` | Pi RPC transport and permission hook |
 | `cursor_agent.py`, `cursor_sessions.py` | Cursor invocation, environment, transcript reading |
 | `claude_code.py`, `claude_guard.py` | Claude invocation, stream parsing, permission settings/hook |
 | `opencode_ollama.py` | Local model invocation, environment, compatibility |
 | `connectors.py` | Generic sign-in probes and external-write denials |
-| `workspace.py` | Read-only document catalogue and bounded, validated attachments |
+| `workspace.py` | Read-only document catalogue, vault path validation and bounded attachments |
 | `attachments.py` | Chat upload storage, limits and validation |
 | `pulse.py`, `usage.py` | Vault telemetry and privacy-preserving interaction signals |
 | `pages.py` | Custom pages and workspace overrides of shipped pages |

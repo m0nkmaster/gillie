@@ -23,7 +23,6 @@ from contextlib import asynccontextmanager, nullcontext, redirect_stdout
 from dataclasses import asdict, replace
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 import yaml
 from fastapi import FastAPI, Request, Depends, HTTPException
@@ -36,7 +35,7 @@ from roosta import connectors as connectors_mod
 from roosta import cli, paths, profile, skills
 from roosta import __version__
 from roosta.chat import (ChatRouter, clip_body, ConversationHistoryStore, SessionMap, TopicStore,
-                  is_general_chat_id, normalise_defer_until, resolve_alias)
+                  is_general_chat_id, normalise_defer_until)
 from roosta import ai_backend
 from roosta import ai_connections, ai_runtime, github_issues, pages, pi_agent, teletext
 from roosta.activity_log import ActivityLog
@@ -76,6 +75,38 @@ from roosta.opencode_ollama import (
     parse_cursor_models,
     parse_ollama_models,
 )
+from roosta.board import (
+    AI_SETUP_ITEM_ID,
+    SETUP_ITEM_ID,
+    attach_raised_at,
+    board_health,
+    board_merges,
+    carry_forward_board_items,
+    collect_board_items,
+    merge_board_feed_items,
+    merge_pushed_notifications,
+    normalise_board_doc,
+    push_notification,
+    recently_closed,
+    restart_pending,
+    setup_gaps,
+    setup_item,
+    snooze_deadline,
+    split_due_reminders,
+    split_snoozed_items,
+)
+from roosta.chat_items import (
+    DOCUMENT_CHAT_PREFIX,
+    GENERAL_CHAT_ITEM,
+    HIRE_CHAT_PREFIX,
+    WORKER_CHAT_PREFIX,
+    chat_list,
+    document_chat_item,
+    hire_chat_item,
+    is_chat_id,
+    standing_thread_ids,
+    worker_chat_item,
+)
 from roosta.task_config import (
     CLAUDE_HARNESS,
     CURSOR_HARNESS,
@@ -100,7 +131,9 @@ from roosta.task_config import (
 )
 from roosta.pulse import build_pulse, markdown_title, project_brief, review_project
 from roosta.usage import UsageStore
-from roosta.workspace import build_catalogue, context_documents, read_document
+from roosta.workspace import (VAULT_SOURCE_SUFFIXES, build_catalogue, context_documents,
+                              read_document, resolve_vault_markdown, resolve_vault_text,
+                              source_as_markdown)
 from roosta.workspace import metadata as workspace_metadata
 from roosta.workspace import visible_path as workspace_visible
 
@@ -128,20 +161,6 @@ MERGED_FILE = ASSISTANT_DIR / "merged.json"
 REMINDERS_FILE = ASSISTANT_DIR / "reminders.json"
 product_usage = UsageStore(PRODUCT_USAGE_FILE)
 ARCHIVED_CHATS_FILE = ASSISTANT_DIR / "archived-chats.json"
-GENERAL_CHAT_ITEM = {
-    "project_ref": None,
-    "title": "Chat",
-    "why": "",
-    "situation": "An open conversation not tied to a board attention item.",
-    "opening_move": "Help with the message that was sent.",
-    "action_type": "task",
-    "action_owner": "assistant",
-    "action_label": "Start chatting",
-    "links": [],
-    "documents": [],
-    "new": False,
-    "persistent": True,
-}
 
 agent = ai_backend.AIAgent()
 chat_router: ChatRouter | None = None  # set in lifespan once the AI backend is available
@@ -352,674 +371,6 @@ def _close_json(raw: str) -> str:
     return raw + "".join(reversed(closers))
 
 
-def _repair_teams_chat_permalink(url: str) -> str:
-    """Replace channel-only query fields on Teams group-chat permalinks."""
-    try:
-        parts = urlsplit(url)
-    except ValueError:
-        return url
-    path_parts = parts.path.split("/")
-    if (
-        parts.hostname not in {"teams.microsoft.com", "www.teams.microsoft.com"}
-        or len(path_parts) < 5
-        or path_parts[1:3] != ["l", "message"]
-        or not unquote(path_parts[3]).endswith("@thread.v2")
-    ):
-        return url
-
-    query = dict(parse_qsl(parts.query, keep_blank_values=True))
-    repaired_query = []
-    if query.get("tenantId"):
-        repaired_query.append(("tenantId", query["tenantId"]))
-    repaired_query.append(("context", json.dumps({"contextType": "chat"}, separators=(",", ":"))))
-    return urlunsplit(parts._replace(query=urlencode(repaired_query)))
-
-
-def _normalise_links(raw) -> list:
-    """Keep only well-formed CTA links: a label plus an http(s) URL.
-
-    Anything else (missing url, non-http scheme like javascript:, junk) is
-    dropped, so a fabricated or unsafe link can never reach the UI as a CTA.
-    """
-    links = []
-    for ln in raw if isinstance(raw, list) else []:
-        if not isinstance(ln, dict):
-            continue
-        url = str(ln.get("url", "")).strip()
-        if not (url.startswith("https://") or url.startswith("http://")):
-            continue
-        label = str(ln.get("label", "")).strip() or "Open"
-        links.append({"label": label, "url": _repair_teams_chat_permalink(url)})
-    return links[:4]
-
-
-def _normalise_documents(raw) -> list:
-    """Keep safe relative paths to Markdown documents in the vault."""
-    documents = []
-    for doc in raw if isinstance(raw, list) else []:
-        if not isinstance(doc, dict):
-            continue
-        raw_path = str(doc.get("path", "")).strip()
-        path = Path(raw_path)
-        if (
-            not raw_path
-            or len(raw_path) > 500
-            or path.is_absolute()
-            or path.suffix.lower() != ".md"
-            or ".." in path.parts
-            or (path.parts and path.parts[0].lower() == ".roosta")
-        ):
-            continue
-        label = str(doc.get("label", "")).strip() or "Open document"
-        documents.append({"label": label[:80], "path": path.as_posix()})
-    return documents[:4]
-
-
-def resolve_vault_markdown(raw_path: str, root: Path | None = None) -> Path:
-    """Resolve an allowlisted Markdown path without permitting vault escape."""
-    document = _normalise_documents([{"path": raw_path}])
-    if not document:
-        raise ValueError("invalid document path")
-    vault = (root or paths.WORKSPACE).resolve()
-    # SECURITY-REVIEW: the path comes from a query parameter. It is constrained
-    # to a relative Markdown path, resolved, and checked against the vault root.
-    target = (vault / document[0]["path"]).resolve()
-    try:
-        target.relative_to(vault)
-    except ValueError as exc:
-        raise ValueError("invalid document path") from exc
-    if not target.is_file():
-        raise FileNotFoundError("document not found")
-    return target
-
-
-# Plain-text files a chat reply may link (a Confluence storage body, a CSV); shown as source.
-VAULT_SOURCE_SUFFIXES = {".html", ".txt", ".json", ".yaml", ".yml", ".csv"}
-
-
-def is_workspace_config(parts: tuple[str, ...]) -> bool:
-    """A file in the user's `.roosta/` config, never its runtime `state/` or a nested dotfile."""
-    lowered = [part.lower() for part in parts]
-    return (
-        len(lowered) >= 2
-        and lowered[0] == ".roosta"
-        and lowered[1] != "state"
-        and not any(part.startswith(".") for part in lowered[1:])
-    )
-
-
-def _viewable_parts(parts: tuple[str, ...]) -> bool:
-    if any(part == ".." for part in parts):
-        return False
-    return is_workspace_config(parts) or not any(part.startswith(".") for part in parts)
-
-
-def resolve_vault_text(raw_path: str, root: Path | None = None) -> Path:
-    """Resolve a vault Markdown document, an allowlisted plain-text file, or `.roosta/` config."""
-    path = Path(str(raw_path or "").strip())
-    suffix = path.suffix.lower()
-    config = is_workspace_config(path.parts) and suffix in VAULT_SOURCE_SUFFIXES | {".md"}
-    if suffix not in VAULT_SOURCE_SUFFIXES and not config:
-        return resolve_vault_markdown(raw_path, root)
-    if len(str(path)) > 500 or path.is_absolute() or not _viewable_parts(path.parts):
-        raise ValueError("invalid document path")
-    vault = (root or paths.WORKSPACE).resolve()
-    # SECURITY-REVIEW: same containment check as resolve_vault_markdown. Dotfiles stay
-    # hidden (.env, .git, .claude) except `.roosta/` config; `.roosta/state/` holds runtime
-    # caches and agent configs with tokens, so it is refused, including via a symlink.
-    target = (vault / path).resolve()
-    try:
-        relative = target.relative_to(vault)
-    except ValueError as exc:
-        raise ValueError("invalid document path") from exc
-    if not _viewable_parts(relative.parts):
-        raise ValueError("invalid document path")
-    if not target.is_file():
-        raise FileNotFoundError("document not found")
-    return target
-
-
-def source_as_markdown(content: str, suffix: str) -> str:
-    """Fence a non-Markdown file so it renders verbatim; the fence outruns any backtick run."""
-    longest = max((len(run) for run in re.findall(r"`+", content)), default=0)
-    fence = "`" * max(3, longest + 1)
-    return f"{fence}{suffix.lstrip('.')}\n{content.rstrip()}\n{fence}"
-
-
-DOCUMENT_CHAT_PREFIX = "doc:"
-
-
-def document_chat_item(item_id: str, root: Path | None = None) -> dict | None:
-    """Build a persistent chat item for a validated ``doc:<vault path>`` id.
-
-    Opened from the document viewer. The path goes through the same allowlist
-    as `/api/vault-document`, so an arbitrary id cannot open a conversation.
-    """
-    raw = str(item_id or "")
-    if not raw.startswith(DOCUMENT_CHAT_PREFIX):
-        return None
-    vault = (root or paths.WORKSPACE).resolve()
-    try:
-        document = resolve_vault_markdown(raw[len(DOCUMENT_CHAT_PREFIX):], vault)
-        content = document.read_text(encoding="utf-8", errors="ignore")
-    except (ValueError, OSError):
-        return None
-    relative = document.relative_to(vault).as_posix()
-    title = markdown_title(content, document.stem)
-    project = re.match(r"(projects/[a-z0-9]+(?:-[a-z0-9]+)*)/", relative)
-    return {
-        "id": DOCUMENT_CHAT_PREFIX + relative,
-        "project_ref": _normalise_project_ref(project.group(1)) if project else None,
-        "title": title,
-        "why": "",
-        "situation": f"{profile.load().user} was reading the workspace document {relative} when they opened "
-                     "this chat.",
-        "opening_move": f"Read {relative} first, then help with what is asked about it.",
-        "action_type": "document",
-        "action_owner": "assistant",
-        "action_label": "Start chatting",
-        "links": [],
-        "documents": [{"label": "Open document", "path": relative}],
-        "new": False,
-        "persistent": True,
-    }
-
-
-WORKER_CHAT_PREFIX = "worker:"
-
-WORKER_VOICE = (
-    "This is a 1:1 between {user}, your manager, and you, the scheduled worker {id} that runs the "
-    "{skill} skill. Speak in the first person as that worker, candidly and warmly, like a direct "
-    "report in a good 1:1, not as {user}'s assistant. Before your first reply, read your own skill "
-    "file ({skill_path}) and your recent_runs, and look at your latest output in "
-    ".roosta/state/cache/{id}.json when it helps, so what you say rests on what you actually do. "
-    "Talk about how the role feels, whether your purpose and boundaries are clear, where your "
-    "instructions are vague, contradictory or make you waste effort, what keeps going wrong, and "
-    "any ideas or concerns. Point to the line or the run behind each claim and call a hunch a "
-    "hunch. The outcome {user} wants is a sharper skill: when you agree a change, show the exact "
-    "SKILL.md edit and make it only after {user} says yes, following the write-a-skill conventions "
-    "and the workspace AGENTS.md, then say in one line what changed. Ask before touching .roosta/tasks.yaml or "
-    "any other skill. Keep replies short and conversational: a few sentences, a short list only "
-    "when offering several suggestions. Talking about your skill, instructions and runs is the "
-    "point of this chat."
-)
-
-
-def _cadence(task: "TaskConfig") -> str:
-    if task.run_at:
-        days = ", ".join(day[:3].title() for day in task.days_of_week)
-        when = days or ("weekdays" if task.weekdays_only else "daily")
-        return f"{when} at {task.run_at}"
-    if task.interval:
-        hours = task.interval / 3600
-        every = f"{hours:g}h" if hours >= 1 else f"{task.interval // 60}m"
-        return f"every {every}" + (" on weekdays" if task.weekdays_only else "")
-    return "on demand"
-
-
-def worker_chat_item(
-    item_id: str,
-    tasks: dict[str, "TaskConfig"],
-    state: dict | None = None,
-    runs: list[dict] | None = None,
-    root: Path | None = None,
-) -> dict | None:
-    """Build a persistent 1:1 chat item for a validated ``worker:<task id>`` id.
-
-    Opened from the Office dossier or the Workers page. The id has to name a task in tasks.yaml,
-    so an arbitrary id cannot open a conversation. The model speaks as the
-    worker, and the aim of the thread is a refined SKILL.md.
-    """
-    raw = str(item_id or "")
-    if not raw.startswith(WORKER_CHAT_PREFIX):
-        return None
-    task = tasks.get(raw[len(WORKER_CHAT_PREFIX):])
-    if task is None:
-        return None
-    vault = (root or paths.WORKSPACE).resolve()
-    files = skill_files(task.skill, task.dir)
-    skill_path, documents = "not found - ask where it lives", []
-    if files:
-        resolved = files[0].resolve()
-        try:
-            skill_path = resolved.relative_to(vault).as_posix()
-            documents = [{"label": "Open SKILL.md", "path": skill_path}]
-        except ValueError:
-            skill_path = str(files[0])
-
-    state = state or {}
-    known_as = f" (known in the Office as {task.nickname})" if task.nickname else ""
-    situation = (
-        f"{profile.load().user} opened a 1:1 with the scheduled worker {task.id}{known_as}, which runs "
-        f"the {task.skill} skill {_cadence(task)}. Skill file: {skill_path}. "
-        f"{int(state.get('run_count') or 0)} runs so far"
-    )
-    if state.get("last_run"):
-        situation += f"; the last ({state.get('status', 'idle')}) started {state['last_run']}"
-    situation += "."
-    summary = str((state.get("last_output") or {}).get("summary", "")).strip()
-    if summary:
-        situation += f" Last outcome: {summary[:400]}"
-    if state.get("last_error"):
-        situation += f" Last error: {str(state['last_error'])[:300]}"
-
-    recent_runs = [
-        {key: run.get(key) for key in ("status", "started", "duration", "summary")}
-        for run in (runs or [])
-        if run.get("task_id") == task.id and run.get("kind") == "skill"
-    ][-8:]
-    return {
-        "id": raw,
-        "project_ref": None,
-        "title": f"1:1 with {task.nickname or task.id}",
-        "why": "",
-        "situation": situation,
-        "voice": WORKER_VOICE.format(id=task.id, skill=task.skill, skill_path=skill_path,
-                                     user=profile.load().user),
-        "recent_runs": recent_runs,
-        "opening_move": (
-            "Open the 1:1: how the role feels from the inside, whether your purpose is clear, "
-            "and the one change to your skill you would most like."
-        ),
-        "action_type": "task",
-        "action_owner": "assistant",
-        "action_label": "Start the 1:1",
-        "links": [],
-        "documents": documents,
-        "new": False,
-        "persistent": True,
-    }
-
-
-HIRE_CHAT_PREFIX = "hire:"
-_HIRE_ID = re.compile(r"hire:[0-9a-f]{12}")
-
-HIRE_VOICE = (
-    "This chat takes on a new worker for {user}. A worker is a skill on a schedule: a SKILL.md "
-    "under .agents/skills/<name>/ says what one run does, and an entry in .roosta/tasks.yaml says "
-    "when and how it runs. Load the write-a-skill skill and follow it, including its "
-    "references/scheduled-worker.md. Before drafting anything, check .agents/skills/ and "
-    ".roosta/tasks.yaml: if an existing skill already does the job, offer to schedule or extend it "
-    "rather than write a duplicate. Ask only what you cannot infer, one or two questions at a time: "
-    "the job, what it reads, what it should put on the Assistant board, and how often it should "
-    "run. Then show the SKILL.md draft and write it only after {user} says yes. Next propose the "
-    "tasks.yaml entry (id, nickname, cadence, harness, writer, requires) and the office-cast line, "
-    "and add them only after {user} says yes; never put a schedule in the skill. When it is done, "
-    "say in one line that the worker is on the Workers page, where Run now gives it its first "
-    "shift and its 1:1 chat refines it. Be concise in conversation; drafts can be as long as they "
-    "need. Talking about skills is the point of this chat."
-)
-
-
-def is_hire_chat_id(item_id) -> bool:
-    return bool(_HIRE_ID.fullmatch(str(item_id or "")))
-
-
-def hire_chat_item(item_id: str) -> dict | None:
-    """Build the chat that designs and schedules a new worker, for a ``hire:<12 hex>`` id.
-
-    Opened from New worker on the Workers page. Each one is its own thread, minted by
-    the page like a ``chat:`` id; the skill and the tasks.yaml entry are written only
-    after the user agrees to each.
-    """
-    if not is_hire_chat_id(item_id):
-        return None
-    user = profile.load().user
-    return {
-        "id": str(item_id),
-        "project_ref": None,
-        "title": "New worker",
-        "why": "",
-        "situation": f"{user} pressed New worker on the Workers page to set up a new scheduled skill.",
-        "voice": HIRE_VOICE.format(user=user),
-        "opening_move": "Help define the worker described in the message, then write its skill and schedule.",
-        "action_type": "task",
-        "action_owner": "assistant",
-        "action_label": "Start",
-        "links": [],
-        "documents": [],
-        "new": False,
-        "persistent": True,
-    }
-
-
-def _normalise_project_ref(raw) -> str | None:
-    """Allow only canonical top-level vault project directories."""
-    ref = str(raw or "").strip()
-    return ref if re.fullmatch(r"projects/[a-z0-9]+(?:-[a-z0-9]+)*", ref) else None
-
-
-ACTION_TYPES = {
-    "chat", "ticket", "email", "standup", "meeting",
-    "document", "review", "decision", "task",
-}
-ACTION_TYPE_ALIASES = {
-    "teams": "chat",
-    "teams_message": "chat",
-    "message": "chat",
-    "jira": "ticket",
-    "jira_ticket": "ticket",
-    "stand-up": "standup",
-    "ask_at_standup": "standup",
-    "draft": "document",
-    "decide": "decision",
-    "next_action": "task",
-}
-ACTION_LABELS = {
-    "chat": "Draft reply",
-    "ticket": "Review ticket",
-    "email": "Draft email",
-    "standup": "Prepare talking point",
-    "meeting": "Prepare for meeting",
-    "document": "Draft document",
-    "review": "Review it",
-    "decision": "Help me decide",
-    "task": "Take next step",
-}
-
-
-def _normalise_action_type(raw, item: dict) -> str:
-    """Return a small visual action category, inferring it for older board items."""
-    explicit = str(raw or "").strip().lower().replace(" ", "_")
-    explicit = ACTION_TYPE_ALIASES.get(explicit, explicit)
-    if explicit in ACTION_TYPES:
-        return explicit
-
-    text = " ".join(str(item.get(k, "")) for k in
-                    ("title", "opening_move", "situation")).lower()
-    if "standup" in text or "stand-up" in text:
-        return "standup"
-    if "email" in text or "e-mail" in text:
-        return "email"
-    if "teams" in text or re.search(r"\b(dm|message|reply|post)\b", text):
-        return "chat"
-    if "jira" in text or re.search(
-            r"\b(raise|create|update|comment on)\b.{0,30}\b(ticket|[a-z]+-\d+)\b", text):
-        return "ticket"
-    if re.search(r"\b(meeting|1:1|one-to-one)\b", text):
-        return "meeting"
-    if re.search(r"\b(draft|write|prepare)\b", text) or re.search(
-            r"\b(prd|proposal|brief|document)\b", text):
-        return "document"
-    if re.search(r"\b(decide|prioritise|choose|shape)\b", text):
-        return "decision"
-    if re.search(r"\b(review|check|investigate|assess|pull)\b", text):
-        return "review"
-    return "task"
-
-
-def _normalise_action_owner(raw) -> str:
-    """Keep ownership explicit so the UI never implies the user must act when AI can.
-
-    `user` means the person the assistant works for; their own name from the profile is
-    accepted too. Anything unrecognised falls back to the assistant.
-    """
-    owner = str(raw or "").strip().lower()
-    return "user" if owner in {"user", profile.load().user.lower()} else "assistant"
-
-
-def _normalise_action_label(raw, action_type: str) -> str:
-    """Return a short button label, with a useful fallback for older items."""
-    label = " ".join(str(raw or "").split()).strip()
-    if not label:
-        return ACTION_LABELS[action_type]
-    return label[:40].rstrip()
-
-
-def normalise_board_doc(raw) -> dict:
-    """Coerce conductor `details` into a safe board document. Garbage -> empty."""
-    if not isinstance(raw, dict):
-        raw = {}
-    items = []
-    for it in raw.get("items", []) if isinstance(raw.get("items"), list) else []:
-        if not isinstance(it, dict):
-            continue
-        item_id = str(it.get("id", "")).strip()[:200]
-        action_type = _normalise_action_type(it.get("action_type"), it)
-        items.append({
-            "id": item_id,
-            "project_ref": _normalise_project_ref(it.get("project_ref")),
-            "title": str(it.get("title", "")),
-            "why": str(it.get("why", "")),
-            "situation": str(it.get("situation", "")),
-            "opening_move": str(it.get("opening_move", "")),
-            "action_type": action_type,
-            "action_owner": _normalise_action_owner(it.get("action_owner")),
-            "action_label": _normalise_action_label(it.get("action_label"), action_type),
-            "links": _normalise_links(it.get("links")),
-            "documents": _normalise_documents(it.get("documents")),
-            "new": bool(it.get("new", False)),
-        })
-    done = []
-    for d in raw.get("done_today", []) if isinstance(raw.get("done_today"), list) else []:
-        if isinstance(d, dict):
-            done.append({"text": str(d.get("text", "")), "at": str(d.get("at", ""))})
-    return {"items": items, "done_today": done}
-
-
-# Fields a later source may refine on an existing card. Links and documents
-# are combined rather than replaced, so context accumulates.
-_REFINABLE_FIELDS = ("project_ref", "title", "why", "situation", "opening_move",
-                     "action_type", "action_owner", "action_label")
-_CARRIED_FIELDS = _REFINABLE_FIELDS + ("links", "documents")
-
-
-def carry_forward_board_items(details, previous) -> None:
-    """Fill a conductor pass's id-only "keep" stubs from the board it replaced.
-
-    The conductor's output replaces the board wholesale. On 13 Nov it began
-    keeping unchanged cards as `{id, new: false}`, which blanked them, and each
-    later pass copied the blank board. A field the new pass leaves empty keeps
-    its previous value; a field it supplies always wins. Mutates `details`.
-    """
-    if not isinstance(details, dict) or not isinstance(details.get("items"), list):
-        return
-    old_items = previous.get("items") if isinstance(previous, dict) else None
-    if not isinstance(old_items, list):
-        return
-    old = {str(it.get("id", "")).strip(): it for it in old_items
-           if isinstance(it, dict) and str(it.get("id", "")).strip()}
-    for item in details["items"]:
-        if not isinstance(item, dict):
-            continue
-        prior = old.get(str(item.get("id", "")).strip())
-        if not prior:
-            continue
-        for name in _CARRIED_FIELDS:
-            if not item.get(name) and prior.get(name):
-                item[name] = prior[name]
-
-
-def _refine_board_item(target: dict, update: dict, raw: dict,
-                       fill_only: bool = False) -> None:
-    """Apply a newer source's view of a card: supplied fields win, context merges.
-
-    `fill_only` is for a duplicate folded in by a conductor merge: the kept card
-    is the conductor's synthesis, so the duplicate's narrower view only fills
-    blanks and adds context, never rewrites the synthesis (4 Nov team-wins card).
-    """
-    for name in _REFINABLE_FIELDS:
-        if raw.get(name) and not (fill_only and target.get(name)):
-            target[name] = update[name]
-    for name, key in (("links", "url"), ("documents", "path")):
-        seen = {entry[key] for entry in target.get(name, [])}
-        extra = [entry for entry in update[name] if entry[key] not in seen]
-        target[name] = (target.get(name, []) + extra)[:4]
-    target["new"] = bool(target.get("new")) or update["new"]
-
-
-def merge_board_feed_items(conductor_items: list[dict], states: list[dict],
-                           aliases: dict | None = None) -> list[dict]:
-    """Merge every scheduled skill's `details.items` into the conductor's board.
-
-    Any skill may add a card. A skill returning an id already on the board
-    refines that card instead of duplicating it: sources apply oldest run
-    first, so the freshest view of each field wins. An update for an id not on
-    the board needs a title, so a partial refinement never becomes a blank card.
-    `aliases` maps duplicate ids the conductor folded away to the kept card, so
-    a duplicate's later returns add to the kept card instead of reappearing.
-    """
-    aliases = aliases or {}
-    run_at = {state.get("id"): str(state.get("last_run") or "") for state in states}
-    merged = []
-    by_id = {}
-    updated = {}
-    for item in conductor_items:
-        item_id = resolve_alias(item.get("id") or "", aliases)
-        if not item_id:
-            continue
-        if item_id in by_id:
-            _refine_board_item(by_id[item_id], item, item)
-            continue
-        item["id"] = item_id
-        by_id[item_id] = item
-        updated[item_id] = run_at.get("assistant", "")
-        merged.append(item)
-
-    feeds = [state for state in states if state.get("id") != "assistant"]
-    for state in sorted(feeds, key=lambda state: str(state.get("last_run") or "")):
-        state_id = state.get("id")
-        output = state.get("last_output")
-        details = output.get("details", {}) if isinstance(output, dict) else {}
-        if not isinstance(details, dict):
-            continue
-        stamp = str(state.get("last_run") or "")
-        feed_documents = _normalise_documents(details.get("documents"))
-        draft = _normalise_documents([
-            {"label": "Open draft", "path": details.get("draft", "")}
-        ])
-        for document in draft:
-            if document not in feed_documents:
-                feed_documents.append(document)
-        raw_items = details.get("items") if isinstance(details.get("items"), list) else []
-        raw_items = [raw for raw in raw_items if isinstance(raw, dict)]
-        feed_items = normalise_board_doc({"items": raw_items})["items"]
-        for raw, item in zip(raw_items, feed_items, strict=True):
-            if not item["documents"] and feed_documents:
-                item["documents"] = feed_documents[:4]
-            item_id = resolve_alias(item.get("id") or "", aliases)
-            if not item_id:
-                continue
-            folded = item_id != item.get("id")
-            item["id"] = item_id
-            if item_id in by_id:
-                if stamp >= updated[item_id]:
-                    _refine_board_item(by_id[item_id], item, raw, fill_only=folded)
-                    updated[item_id] = stamp
-                continue
-            if not item["title"].strip():
-                continue
-            by_id[item_id] = item
-            updated[item_id] = stamp
-            merged.append(item)
-        # Older task outputs put edit descriptions in `items`, but still expose
-        # the draft path at details.draft. Attach that draft to the matching
-        # conductor episode so the current rolling-comms card remains useful.
-        if feed_documents and not feed_items:
-            candidates = [
-                item for item in merged
-                if str(item.get("id", "")).startswith(f"{state_id}-")
-            ]
-            if len(candidates) == 1 and not candidates[0].get("documents"):
-                candidates[0]["documents"] = feed_documents[:4]
-    return merged
-
-
-def roosta_engineer_item(states: list[dict]) -> dict | None:
-    """Make the latest engineer delivery or failure visible on the Assistant board."""
-    state = next((row for row in states if row.get("id") == "roosta-engineer"), None)
-    if not state or not state.get("last_run"):
-        return None
-    output = state.get("last_output", {})
-    details = output.get("details", {}) if isinstance(output, dict) else {}
-    details = details if isinstance(details, dict) else {}
-    stamp = re.sub(r"[^0-9]", "", str(state["last_run"]))[:12] or "latest"
-
-    if state.get("status") == "error":
-        summary = str(output.get("summary", "") if isinstance(output, dict) else "").strip()
-        reason = str(state.get("last_error", "")).strip() or summary or "The pass did not finish."
-        return {
-            "id": f"roosta-engineer-failed-{stamp}",
-            "project_ref": None,
-            "title": "Dashboard engineer needs attention",
-            "why": "The latest autonomous improvement pass failed, so no app change shipped.",
-            "situation": reason[:240],
-            "opening_move": "Inspect the failed run and fix the blocker.",
-            "action_owner": "assistant",
-            "action_label": "Diagnose failure",
-            "action_type": "task",
-            "links": [{"label": "Open engineer run",
-                       "url": f"{paths.BASE_URL}/runner?task=roosta-engineer"}],
-            "documents": [],
-            "new": True,
-        }
-
-    built = details.get("built", [])
-    if state.get("status") != "success" or not isinstance(built, list) or not built:
-        return None
-    first = built[0] if isinstance(built[0], dict) else {}
-    what = str(first.get("what", "")).strip() or str(output.get("summary", "")).strip()
-    why = str(first.get("why", "")).strip()
-    commit = str(first.get("commit", "")).strip()
-    identity = re.sub(r"[^a-zA-Z0-9]", "", commit)[:12] or stamp
-    return {
-        "id": f"dashboard-improvement-{identity}",
-        "project_ref": None,
-        "title": f"Assistant improved: {what[:90]}" if what else "Assistant improved",
-        "why": why[:240] or "The dashboard engineer shipped a new improvement.",
-        "situation": str(output.get("summary", "")).strip()[:240],
-        "opening_move": "Review what changed and leave feedback if it missed the mark.",
-        "action_owner": "user",
-        "action_label": "Review improvement",
-        "action_type": "review",
-        "links": [{"label": "Open engineer run",
-                   "url": f"{paths.BASE_URL}/runner?task=roosta-engineer"}],
-        "documents": [],
-        "new": True,
-    }
-
-
-# Ad-hoc notifications a skill pushes via POST /api/notify. Kept in memory (they
-# are ephemeral pings); /api/board merges them so the existing desktop notifier
-# and deep-link flow handle them with zero extra plumbing.
-_pushed_notifications: list[dict] = []
-
-
-def merge_pushed_notifications(items: list[dict]) -> list[dict]:
-    """Prepend skill-pushed notifications, skipping ids the board already has."""
-    have = {i.get("id") for i in items}
-    extra = [n for n in _pushed_notifications if n["id"] not in have]
-    return extra + items
-
-
-def reminder_to_item(reminder: dict) -> dict:
-    """Render a stored reminder as a board item the user owns."""
-    item = {
-        "id": reminder["id"], "project_ref": None,
-        "title": str(reminder.get("title", ""))[:120],
-        "why": clip_body(reminder.get("body", "")),
-        "situation": "", "opening_move": "Take a look",
-        "action_owner": "user", "action_label": "Review", "action_type": "task",
-        "links": [], "documents": [], "new": True,
-    }
-    created = str(reminder.get("created", "")).strip()
-    if created:
-        item["raised_at"] = created
-    return item
-
-
-def attach_raised_at(items: list[dict], raised: dict) -> None:
-    """Stamp each item with its first-seen board time when known."""
-    if not isinstance(raised, dict):
-        return
-    for item in items:
-        if item.get("raised_at"):
-            continue
-        record = raised.get(item.get("id"))
-        if isinstance(record, dict) and record.get("at"):
-            item["raised_at"] = str(record["at"])
-
-
 def missed_weekly_slot(days: list[str], run_at: str, last_run: str, now_local: datetime) -> bool:
     """True when a weekly task's most recent scheduled slot passed without a run.
 
@@ -1038,318 +389,6 @@ def missed_weekly_slot(days: list[str], run_at: str, last_run: str, now_local: d
         if slot <= now_local and slot.strftime("%A").lower() in days:
             return last < slot
     return False
-
-
-def split_due_reminders(reminders: list[dict], now: datetime | None = None
-                        ) -> tuple[list[dict], list[dict]]:
-    """Partition file-backed reminders into due-now board items and a future
-    (later-lane) set. A reminder with no/`null` due, or an unparseable one, is
-    treated as due now so it can never be silently swallowed."""
-    current = now or datetime.now(timezone.utc)
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=timezone.utc)
-    due, later = [], []
-    for reminder in reminders:
-        if not isinstance(reminder, dict) or not reminder.get("id") or not reminder.get("title"):
-            continue
-        item = reminder_to_item(reminder)
-        raw_due = reminder.get("due")
-        if not raw_due:
-            due.append(item)
-            continue
-        try:
-            when = datetime.fromisoformat(str(raw_due).replace("Z", "+00:00"))
-        except ValueError:
-            due.append(item)
-            continue
-        if when.tzinfo is None:
-            when = when.replace(tzinfo=timezone.utc)
-        if when <= current:
-            due.append(item)
-        else:
-            later.append({**item, "new": False,
-                          "snoozed_until": when.astimezone(timezone.utc).isoformat()})
-    later.sort(key=lambda i: i["snoozed_until"])
-    return due, later
-
-
-def recently_closed(handled: dict, router, limit: int = 15) -> list[dict]:
-    """Newest-first view of closed items for the Recently closed list.
-
-    Title comes from the stored snapshot, falling back to the router's known
-    item (topic/transcript) so items closed before snapshots existed still show
-    something meaningful.
-    """
-    rows = []
-    for item_id, record in handled.items() if isinstance(handled, dict) else []:
-        if not isinstance(record, dict):
-            continue
-        snapshot = record.get("item") if isinstance(record.get("item"), dict) else None
-        title = str((snapshot or {}).get("title", "")).strip()
-        if not title and router:
-            known = router.known_item(item_id)
-            title = str((known or {}).get("title", "")).strip()
-        rows.append({
-            "id": item_id,
-            "title": title or "(closed item)",
-            "result": str(record.get("result", "")),
-            "at": str(record.get("at", "")),
-            "action_type": _normalise_action_type((snapshot or {}).get("action_type"),
-                                                   snapshot or {}),
-        })
-    rows.sort(key=lambda r: r["at"], reverse=True)
-    return rows[:limit]
-
-
-def board_merges(states: list[dict]) -> dict:
-    """Saved duplicate -> kept merges, plus any the conductor's latest pass made."""
-    conductor = next((s for s in states if s.get("id") == "assistant"), {})
-    output = conductor.get("last_output")
-    details = output.get("details", {}) if isinstance(output, dict) else {}
-    merges = details.get("merges") if isinstance(details, dict) else None
-    return chat_router.record_merges(merges) if chat_router else {}
-
-
-SETUP_ITEM_ID = "roosta-setup"
-AI_SETUP_ITEM_ID = "roosta-ai-setup"
-
-
-def setup_item() -> dict | None:
-    """The first-run card: shown until PROFILE.md names the user, and kept once a setup
-    conversation has started, because setup writes the name in its first step. The card goes
-    when setup ends with DONE (or the user closes it), through the usual handled store."""
-    if profile.load().name:
-        history = getattr(chat_router, "conversation_history", None)
-        if not (history and history(SETUP_ITEM_ID)):
-            return None
-    ready = ai_backend.connection_available()
-    needs_model = False
-    if ready:
-        try:
-            selected = ai_connections.get()
-            needs_model = selected["provider"] != "anthropic" and not ai_connections.default_model(selected["provider"])
-        except ValueError:
-            ready = False
-    if not ready or needs_model:
-        try:
-            existing = any(c["auth"] == "system" and c["connected"]
-                           for c in ai_connections.load()["connections"])
-        except ValueError:
-            existing = False
-        return {
-            "id": AI_SETUP_ITEM_ID,
-            "project_ref": None,
-            "title": "Choose your AI model" if needs_model else "Check your Claude Code connection" if existing else "Connect your AI",
-            "why": "Connect AI before setting up your workspace so Roosta can help you.",
-            "situation": ("Your account passed its connection check. Choose a model in Settings to finish connecting AI."
-                          if needs_model else "Claude Code was found on this computer. Roosta can use its existing login; no separate account or API key is needed."
-                          if existing else "Choose Claude, ChatGPT or another supported service in Settings."),
-            "opening_move": "Choose a model in Settings, then return here to set up your workspace." if needs_model else "Open AI settings and check the connection. The check sends a small model request and reads a harmless temporary file; usage may be billable. Then return here to set up your workspace.",
-            "action_type": "task", "action_owner": "user", "action_label": "Open AI settings",
-            "links": [], "documents": [], "new": True,
-        }
-    return {
-        "id": SETUP_ITEM_ID,
-        "project_ref": None,
-        "title": "Set up your workspace",
-        "why": "Roosta doesn't know who you are, what matters to you or which tools you use yet.",
-        "situation": "A new workspace. Setup takes about ten minutes and can be re-run any time.",
-        "opening_move": ("Load the 'setup' skill and run it: interview me for my profile, "
-                         "priorities and tools, connect the tools I use with my approval, turn on "
-                         "the starter schedule and create a first real board card."),
-        "action_type": "task",
-        "action_owner": "assistant",
-        "action_label": "Start setup",
-        "links": [],
-        "documents": [{"label": "Open profile", "path": "PROFILE.md"}],
-        "new": True,
-    }
-
-
-PRIORITY_ITEM = re.compile(r"^\s*(?:\d+\.|[-*])\s+\S")
-HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
-
-
-def setup_gaps() -> list[str]:
-    """Concrete setup outputs that are still missing, in the words Settings shows."""
-    gaps = []
-    if not profile.load().name:
-        gaps.append("your name in PROFILE.md")
-    try:
-        text = (paths.WORKSPACE / "PRIORITIES.md").read_text(encoding="utf-8")
-    except (OSError, ValueError):
-        text = ""
-    section = re.search(r"^##[ \t]+My priorities[ \t]*$(.*?)(?=^##[ \t]|\Z)", HTML_COMMENT.sub("", text),
-                        re.S | re.M)
-    if not section or not any(PRIORITY_ITEM.match(line) for line in section.group(1).splitlines()):
-        gaps.append("your priorities in PRIORITIES.md")
-    try:
-        if not load_tasks():
-            gaps.append("a starter schedule of workers")
-    except Exception:
-        log.warning("Could not read tasks while checking setup", exc_info=True)
-    return gaps
-
-
-def collect_board_items(items: list[dict], states: list[dict],
-                        reminders: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Build the active and future item sources shared by the board and chat."""
-    active = merge_pushed_notifications(
-        merge_board_feed_items(items, states, board_merges(states)))
-    engineer_item = roosta_engineer_item(states)
-    if engineer_item and engineer_item["id"] not in {item["id"] for item in active}:
-        active.insert(0, engineer_item)
-    # Prerequisites come from local state, never cached model output.
-    active = [item for item in active if item["id"] not in {SETUP_ITEM_ID, AI_SETUP_ITEM_ID}]
-    first_run = setup_item()
-    if first_run:
-        active.insert(0, first_run)
-    due_reminders, later_reminders = split_due_reminders(reminders)
-    have = {item["id"] for item in active}
-    active = [item for item in due_reminders if item["id"] not in have] + active
-    have.update(item["id"] for item in active)
-    later = [item for item in later_reminders if item["id"] not in have]
-    return active, later
-
-
-# The conductor's picture is only as complete as the sensors feeding its signal
-# world. If a sensor task has errored or gone stale, the board can show a false
-# all-clear - fewer items, no warning. Sensors are the conductor plus every task
-# marked `sensor: true` in tasks.yaml: the watchers gathering the signal it reasons over.
-BOARD_SENSOR_IDS = ("assistant",)
-BOARD_STALE_FACTOR = 3  # last_run older than N x interval => stale
-
-SERVER_STARTED = time.time()
-
-
-def restart_pending(started: float | None = None, root: Path | None = None) -> bool:
-    """True when a Roosta module changed on disk after this server loaded it.
-
-    An editable install or an upgrade replaces the code under a running runner; HTML and CSS
-    reload by themselves, but Python changes wait for a restart, so the board says so.
-    """
-    started = SERVER_STARTED if started is None else started
-    try:
-        return any(p.stat().st_mtime > started for p in (root or paths.APP_ROOT).glob("*.py"))
-    except OSError:
-        return False
-
-
-# A run that says the GitHub sign-in failed ("gh auth failed", "GitHub auth is broken").
-# A dot inside a hostname does not end the sentence.
-GITHUB_SIGNIN_LOST = re.compile(
-    r"\b(?:github|gh)\b(?:[^.]|\.\S){0,60}?\b(?:auth|token|login)\b"
-    r"(?:[^.]|\.\S){0,40}?\b(?:invalid|failed|broken|expired)\b",
-    re.IGNORECASE,
-)
-
-
-def board_health(states: list[dict], now: datetime | None = None) -> dict:
-    """Report failed board sensors and other scheduled automations.
-
-    Degraded if a sensor last errored or hasn't run in BOARD_STALE_FACTOR x its
-    interval. Other failed tasks are reported separately so the Assistant does
-    not hide maintenance failures. `ok` remains the sensor-trust verdict.
-    """
-    current = now or datetime.now(timezone.utc)
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=timezone.utc)
-    degraded = []
-    automation_failures = []
-    for s in states:
-        sid = s.get("id", "")
-        if sid not in BOARD_SENSOR_IDS and not s.get("sensor"):
-            if (s.get("status") == "error" and sid != "roosta-engineer"
-                    and sid):
-                automation_failures.append({
-                    "id": sid,
-                    "nickname": str(s.get("nickname") or "").strip(),
-                    "reason": str(s.get("last_error", "")).strip()[:160]
-                    or "last run failed",
-                })
-            continue
-        if s.get("status") == "error":
-            degraded.append({"id": sid, "nickname": str(s.get("nickname") or "").strip(),
-                             "reason": "last run failed"})
-            continue
-        interval = s.get("interval") or 0
-        last_run = s.get("last_run") or ""
-        if interval and last_run:
-            try:
-                last = datetime.fromisoformat(last_run)
-                if last.tzinfo is None:
-                    last = last.replace(tzinfo=timezone.utc)
-                if (current - last).total_seconds() > interval * BOARD_STALE_FACTOR:
-                    degraded.append({"id": sid, "nickname": str(s.get("nickname") or "").strip(),
-                                     "reason": "stale"})
-            except ValueError:
-                pass  # unparseable timestamp isn't itself a sensor failure
-    return {
-        "ok": not degraded,
-        "degraded": degraded,
-        "automation_failures": automation_failures,
-        # One expired sign-in fails every scheduled run; name the cause once.
-        "claude_signin_expired": any(
-            str(s.get("last_error", "")).startswith(CLAUDE_SIGNIN_MESSAGE)
-            for s in states if s.get("status") == "error"
-        ),
-        # Skills word it differently; a network blip without an auth word stays out.
-        "github_signin_expired": any(
-            GITHUB_SIGNIN_LOST.search(str(s.get("last_error", "")))
-            for s in states if s.get("status") == "error"
-        ),
-    }
-
-
-def snooze_deadline(preset: str, now: datetime | None = None) -> str:
-    """Resolve an allowlisted attention preset to a UTC instant."""
-    current = now or datetime.now().astimezone()
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=timezone.utc)
-    if preset == "one_hour":
-        deadline = current + timedelta(hours=1)
-    elif preset == "tomorrow":
-        deadline = (current + timedelta(days=1)).replace(
-            hour=9, minute=0, second=0, microsecond=0)
-    elif preset == "next_monday":
-        days = (7 - current.weekday()) % 7 or 7
-        deadline = (current + timedelta(days=days)).replace(
-            hour=9, minute=0, second=0, microsecond=0)
-    else:
-        raise ValueError("unknown snooze preset")
-    return deadline.astimezone(timezone.utc).isoformat()
-
-
-def split_snoozed_items(items: list[dict], snoozed: dict,
-                         now: datetime | None = None) -> tuple[list[dict], list[dict]]:
-    """Partition current conductor items into active and deliberately parked.
-
-    Only items the conductor still believes need the user appear in Later. Expired or
-    malformed records fail open and put the item back in the active queue.
-    """
-    current = now or datetime.now(timezone.utc)
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=timezone.utc)
-    active, later = [], []
-    for item in items:
-        record = snoozed.get(item.get("id")) if isinstance(snoozed, dict) else None
-        until_raw = record.get("until", "") if isinstance(record, dict) else ""
-        if not isinstance(until_raw, str):
-            active.append(item)
-            continue
-        try:
-            until = datetime.fromisoformat(until_raw.replace("Z", "+00:00"))
-            if until.tzinfo is None:
-                until = until.replace(tzinfo=timezone.utc)
-        except (TypeError, ValueError):
-            active.append(item)
-            continue
-        if until <= current:
-            active.append(item)
-            continue
-        later.append({**item, "snoozed_until": until.astimezone(timezone.utc).isoformat()})
-    later.sort(key=lambda item: item["snoozed_until"])
-    return active, later
 
 
 async def _terminate(proc) -> None:
@@ -2642,7 +1681,7 @@ async def api_ai_connections(item_id: str = ""):
                 f"legacy:{ai_backend.current()}" if sessions.get(item_id) else ai_backend.default_connection())
             selected_model = sessions.model(item_id)
         data = {**data, "connections": [{**c, "signed_in": ai_backend.signed_in(c)} for c in data["connections"]]}
-        onboarding = setup_item()
+        onboarding = setup_item(chat_router)
         missing = setup_gaps() if (onboarding and onboarding["id"] == SETUP_ITEM_ID
                                    and SETUP_ITEM_ID not in (chat_router.handled() if chat_router else {})) else []
         return ai_settings_result({**data, "providers": ai_connections.PROVIDERS, "runtimes": runtimes,
@@ -3368,56 +2407,12 @@ async def runner_page():
     return FileResponse(pages.page_file("index"))
 
 
-def is_chat_id(item_id: str) -> bool:
-    """Chats the user starts (a question, a document, a worker, a new worker), never board items."""
-    item_id = str(item_id or "")
-    return len(item_id) <= 520 and (
-        is_general_chat_id(item_id)
-        or is_hire_chat_id(item_id)
-        or item_id.startswith((DOCUMENT_CHAT_PREFIX, WORKER_CHAT_PREFIX)))
-
-
-def standing_thread_ids(raw: str) -> list[str]:
-    """Chat ids the board page has open, so their history comes back with the board.
-
-    Only the reserved namespaces are accepted, and the list is capped.
-    """
-    ids = []
-    for part in str(raw or "").split(","):
-        item_id = part.strip()
-        if is_chat_id(item_id) and item_id not in ids:
-            ids.append(item_id)
-    return ids[:20]
-
-
 def archived_chats() -> dict[str, str]:
     try:
         data = json.loads(ARCHIVED_CHATS_FILE.read_text())
     except (OSError, json.JSONDecodeError):
         return {}
     return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
-
-
-def chat_list(histories: dict, archived: dict[str, str], limit: int = 100) -> list[dict]:
-    """The Chats tab: every chat the user started, newest activity first.
-
-    Archiving hides a chat only until it has newer activity, so reopening and
-    asking again brings it back without an unarchive step.
-    shortcut: newest 100 only, page it if the history ever needs scrolling further back.
-    """
-    rows = []
-    for item_id, history in histories.items():
-        if not (history and is_chat_id(item_id)):
-            continue
-        at = history[-1].get("at", "")
-        if item_id in archived and archived[item_id] >= at:
-            continue
-        opening = next((t for t in history if t.get("role") == "user"), {})
-        first = opening.get("text") or next((a["name"] for a in opening.get("attachments", [])), "")
-        rows.append({"id": item_id, "at": at, "preview": " ".join(first.split())[:140],
-                     "turns": len(history)})
-    rows.sort(key=lambda r: r["at"], reverse=True)
-    return rows[:limit]
 
 
 @app.get("/api/board")
@@ -3432,7 +2427,7 @@ async def api_board(threads: str = ""):
     doc = normalise_board_doc((state or {}).get("last_output", {}).get("details", {}))
     states = runner.get_states()
     reminders = chat_router.reminders() if chat_router else []
-    doc["items"], later_reminders = collect_board_items(doc["items"], states, reminders)
+    doc["items"], later_reminders = collect_board_items(doc["items"], states, reminders, chat_router)
     handled = chat_router.handled() if chat_router else {}
     current_items = [i for i in doc["items"] if i["id"] not in handled]
     snoozed = chat_router.snoozed() if chat_router else {}
@@ -3481,7 +2476,7 @@ async def api_board_count():
     state = runner.get_state("assistant")
     doc = normalise_board_doc((state or {}).get("last_output", {}).get("details", {}))
     reminders = chat_router.reminders() if chat_router else []
-    items, _ = collect_board_items(doc["items"], runner.get_states(), reminders)
+    items, _ = collect_board_items(doc["items"], runner.get_states(), reminders, chat_router)
     handled = chat_router.handled() if chat_router else {}
     snoozed = chat_router.snoozed() if chat_router else {}
     items, later = split_snoozed_items([i for i in items if i["id"] not in handled], snoozed)
@@ -3539,8 +2534,7 @@ async def api_notify(body: dict):
         "action_type": str(body.get("action_type", "task"))[:20],
         "links": links, "new": True,
     }
-    _pushed_notifications[:] = [n for n in _pushed_notifications if n["id"] != item_id]
-    _pushed_notifications.append(item)
+    push_notification(item)
     return JSONResponse({"ok": True, "id": item_id})
 
 
@@ -3550,7 +2544,7 @@ def _current_board_item(item_id: str) -> dict | None:
     doc = normalise_board_doc((state or {}).get("last_output", {}).get("details", {}))
     active, later = collect_board_items(
         doc["items"], runner.get_states(),
-        chat_router.reminders() if chat_router else [])
+        chat_router.reminders() if chat_router else [], chat_router)
     return next((i for i in active + later if i["id"] == item_id), None)
 
 
@@ -3586,24 +2580,11 @@ async def api_board_reopen(body: dict):
         return JSONResponse({"error": "item not closed"}, status_code=404)
     snapshot = chat_router.unhandle(item_id)
     if snapshot:
-        item = {
-            "id": item_id,
-            "project_ref": _normalise_project_ref(snapshot.get("project_ref")),
-            "title": str(snapshot.get("title", "")) or "Reopened item",
-            "why": str(snapshot.get("why", "")),
-            "situation": str(snapshot.get("situation", "")),
-            "opening_move": str(snapshot.get("opening_move", "Take a look")),
-            "action_type": _normalise_action_type(snapshot.get("action_type"), snapshot),
-            "action_owner": _normalise_action_owner(snapshot.get("action_owner")),
-            "action_label": _normalise_action_label(
-                snapshot.get("action_label"),
-                _normalise_action_type(snapshot.get("action_type"), snapshot)),
-            "links": _normalise_links(snapshot.get("links")),
-            "documents": _normalise_documents(snapshot.get("documents")),
-            "new": True,
-        }
-        _pushed_notifications[:] = [n for n in _pushed_notifications if n["id"] != item_id]
-        _pushed_notifications.append(item)
+        item = normalise_board_doc({"items": [{**snapshot, "id": item_id}]})["items"][0]
+        item["title"] = item["title"] or "Reopened item"
+        item["opening_move"] = item["opening_move"] or "Take a look"
+        item["new"] = True
+        push_notification(item)
     return JSONResponse({"reopened": True, "restored": bool(snapshot)})
 
 
@@ -3625,7 +2606,7 @@ async def api_board_snooze(body: dict):
     state = runner.get_state("assistant")
     doc = normalise_board_doc((state or {}).get("last_output", {}).get("details", {}))
     current_items, _ = collect_board_items(
-        doc["items"], runner.get_states(), chat_router.reminders())
+        doc["items"], runner.get_states(), chat_router.reminders(), chat_router)
     handled = chat_router.handled()
     current_items = [item for item in current_items if item["id"] not in handled]
     active_items, _ = split_snoozed_items(current_items, chat_router.snoozed())
@@ -3657,7 +2638,7 @@ async def api_board_chat(body: dict):
         return JSONResponse({"error": "need item_id"}, status_code=400)
     item_id = str(body["item_id"])
     if item_id == AI_SETUP_ITEM_ID or (
-        (setup_item() or {}).get("id") == AI_SETUP_ITEM_ID
+        (setup_item(chat_router) or {}).get("id") == AI_SETUP_ITEM_ID
         and (item_id == SETUP_ITEM_ID or not chat_router._sessions.get(item_id))
     ):
         return JSONResponse({"error": "Connect and check your AI in Settings before starting workspace setup or a new chat.",
@@ -3685,7 +2666,7 @@ async def api_board_chat(body: dict):
         state = runner.get_state("assistant")
         doc = normalise_board_doc((state or {}).get("last_output", {}).get("details", {}))
         active, later = collect_board_items(
-            doc["items"], runner.get_states(), chat_router.reminders())
+            doc["items"], runner.get_states(), chat_router.reminders(), chat_router)
         item = next((i for i in active + later if i["id"] == item_id), None)
         if item is None:
             # The conductor drops items it considers resolved, capped out or aged
@@ -3953,7 +2934,7 @@ async def api_pulse():
     handled = chat_router.handled() if chat_router else {}
     state = runner.get_state("assistant")
     doc = normalise_board_doc((state or {}).get("last_output", {}).get("details", {}))
-    doc["items"] = merge_board_feed_items(doc["items"], states, board_merges(states))
+    doc["items"] = merge_board_feed_items(doc["items"], states, board_merges(states, chat_router))
     doc["items"] = merge_pushed_notifications(doc["items"])
     reminders = chat_router.reminders() if chat_router else []
     due_reminders, later_reminders = split_due_reminders(reminders)

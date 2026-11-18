@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
+from roosta import chat_items
 from roosta import app as appmod
 from roosta import attachments
 from roosta import chat as cmod
@@ -205,7 +206,7 @@ def send_chat(body):
 def test_chat_passes_uploaded_files_to_the_turn(chat_env):
     item_id = "chat:0123456789ab"
     saved = attachments.save(appmod.UPLOADS_DIR, item_id, "shot.png", PNG)
-    before = dict(appmod.GENERAL_CHAT_ITEM)
+    before = dict(chat_items.GENERAL_CHAT_ITEM)
     response = send_chat({"item_id": item_id, "message": "", "uploads": [saved["id"]]})
     assert response.status_code == 200
     (turn_id, item, message), = chat_env.turns
@@ -214,7 +215,7 @@ def test_chat_passes_uploaded_files_to_the_turn(chat_env):
     assert upload_info["name"] == "shot.png" and upload_info["image"] is True
     assert (appmod.paths.WORKSPACE / upload_info["path"]).read_bytes() == PNG
     assert not Path(upload_info["path"]).is_absolute()
-    assert appmod.GENERAL_CHAT_ITEM == before and "uploaded_files" not in appmod.GENERAL_CHAT_ITEM
+    assert chat_items.GENERAL_CHAT_ITEM == before and "uploaded_files" not in chat_items.GENERAL_CHAT_ITEM
 
 
 def test_chat_rejects_bad_uploads_without_starting_a_turn(chat_env):
@@ -240,7 +241,7 @@ def test_firing_a_worker_removes_its_uploads(tmp_path, monkeypatch):
     forgotten = []
     monkeypatch.setattr(appmod, "chat_router", SimpleNamespace(forget=forgotten.append))
     monkeypatch.setattr(appmod.runner, "remove", lambda task_id: True)
-    item_id = f"{appmod.WORKER_CHAT_PREFIX}scout"
+    item_id = f"{chat_items.WORKER_CHAT_PREFIX}scout"
     attachments.save(appmod.UPLOADS_DIR, item_id, "a.txt", b"x")
     kept = attachments.save(appmod.UPLOADS_DIR, "chat:0123456789ab", "a.txt", b"x")
     assert asyncio.run(appmod.api_task_delete("scout")).status_code == 200
@@ -280,7 +281,7 @@ def test_chat_list_preview_falls_back_to_the_file_name():
     at = "2026-11-16T10:00:00+00:00"
     attached = {"role": "user", "text": "", "at": at,
                 "attachments": [{"id": "0123456789ab", "name": "shot.png", "size": 1, "image": True}]}
-    rows = appmod.chat_list({"chat:0123456789ab": [attached],
+    rows = chat_items.chat_list({"chat:0123456789ab": [attached],
                              "chat:ba9876543210": [{**attached, "text": "Look at this"}]}, {})
     previews = {row["id"]: row["preview"] for row in rows}
     assert previews == {"chat:0123456789ab": "shot.png", "chat:ba9876543210": "Look at this"}

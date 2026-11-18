@@ -8,6 +8,7 @@ from textwrap import shorten
 
 import yaml
 
+from roosta import paths
 from roosta.pulse import markdown_title
 
 
@@ -204,3 +205,90 @@ def context_documents(root: Path, paths: list) -> list[dict]:
             raise ValueError("Selected files exceed the 192 KB context limit. Choose fewer files.")
         documents.append({"path": path, "content": content})
     return documents
+
+
+def markdown_path(raw) -> str | None:
+    """A safe relative path to a Markdown document in the vault, or None."""
+    raw_path = str(raw or "").strip()
+    path = Path(raw_path)
+    if (
+        not raw_path
+        or len(raw_path) > 500
+        or path.is_absolute()
+        or path.suffix.lower() != ".md"
+        or ".." in path.parts
+        or (path.parts and path.parts[0].lower() == ".roosta")
+    ):
+        return None
+    return path.as_posix()
+
+
+def resolve_vault_markdown(raw_path: str, root: Path | None = None) -> Path:
+    """Resolve an allowlisted Markdown path without permitting vault escape."""
+    relative = markdown_path(raw_path)
+    if relative is None:
+        raise ValueError("invalid document path")
+    vault = (root or paths.WORKSPACE).resolve()
+    # SECURITY-REVIEW: the path comes from a query parameter. It is constrained
+    # to a relative Markdown path, resolved, and checked against the vault root.
+    target = (vault / relative).resolve()
+    try:
+        target.relative_to(vault)
+    except ValueError as exc:
+        raise ValueError("invalid document path") from exc
+    if not target.is_file():
+        raise FileNotFoundError("document not found")
+    return target
+
+
+# Plain-text files a chat reply may link (a Confluence storage body, a CSV); shown as source.
+VAULT_SOURCE_SUFFIXES = {".html", ".txt", ".json", ".yaml", ".yml", ".csv"}
+
+
+def is_workspace_config(parts: tuple[str, ...]) -> bool:
+    """A file in the user's `.roosta/` config, never its runtime `state/` or a nested dotfile."""
+    lowered = [part.lower() for part in parts]
+    return (
+        len(lowered) >= 2
+        and lowered[0] == ".roosta"
+        and lowered[1] != "state"
+        and not any(part.startswith(".") for part in lowered[1:])
+    )
+
+
+def _viewable_parts(parts: tuple[str, ...]) -> bool:
+    if any(part == ".." for part in parts):
+        return False
+    return is_workspace_config(parts) or not any(part.startswith(".") for part in parts)
+
+
+def resolve_vault_text(raw_path: str, root: Path | None = None) -> Path:
+    """Resolve a vault Markdown document, an allowlisted plain-text file, or `.roosta/` config."""
+    path = Path(str(raw_path or "").strip())
+    suffix = path.suffix.lower()
+    config = is_workspace_config(path.parts) and suffix in VAULT_SOURCE_SUFFIXES | {".md"}
+    if suffix not in VAULT_SOURCE_SUFFIXES and not config:
+        return resolve_vault_markdown(raw_path, root)
+    if len(str(path)) > 500 or path.is_absolute() or not _viewable_parts(path.parts):
+        raise ValueError("invalid document path")
+    vault = (root or paths.WORKSPACE).resolve()
+    # SECURITY-REVIEW: same containment check as resolve_vault_markdown. Dotfiles stay
+    # hidden (.env, .git, .claude) except `.roosta/` config; `.roosta/state/` holds runtime
+    # caches and agent configs with tokens, so it is refused, including via a symlink.
+    target = (vault / path).resolve()
+    try:
+        relative = target.relative_to(vault)
+    except ValueError as exc:
+        raise ValueError("invalid document path") from exc
+    if not _viewable_parts(relative.parts):
+        raise ValueError("invalid document path")
+    if not target.is_file():
+        raise FileNotFoundError("document not found")
+    return target
+
+
+def source_as_markdown(content: str, suffix: str) -> str:
+    """Fence a non-Markdown file so it renders verbatim; the fence outruns any backtick run."""
+    longest = max((len(run) for run in re.findall(r"`+", content)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return f"{fence}{suffix.lstrip('.')}\n{content.rstrip()}\n{fence}"

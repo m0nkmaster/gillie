@@ -1,7 +1,9 @@
 # Assistant board and conversations
 
 [Agent guide](../../AGENTS.md). Read before changing board feeds, chat identity, markers, reminders or approvals.
-Implementation: `src/roosta/chat.py`, `app.py` and `static/assistant.html`. Store paths
+Implementation: `src/roosta/chat.py`, `board.py` (card normalisation, feed merging, reminders,
+setup and health), `chat_items.py` (open, document, worker and new-worker chats), `app.py`
+(routes) and `static/assistant.html`. Store paths
 starting `assistant/` are under the workspace's `.roosta/state/`. Also see
 [harnesses](harnesses.md) and [shared UI rules](ui.md).
 

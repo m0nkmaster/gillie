@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from roosta import chat_items
 from roosta import app as appmod
 from roosta import workspace as wmod
 
@@ -99,7 +100,7 @@ def test_chat_receives_full_context_and_rejects_invalid_files(tmp_path, monkeypa
     assert response.status_code == 202
     assert seen[0][1]['context_documents'] == [{'path': 'notes/context.md', 'content': body}]
     assert seen[0][2] == 'Compare this'
-    assert 'context_documents' not in appmod.GENERAL_CHAT_ITEM
+    assert 'context_documents' not in chat_items.GENERAL_CHAT_ITEM
     for paths in [['private/secret.md'], ['missing.md'], 'notes/context.md', ['notes/context.md'] * 9]:
         response = asyncio.run(appmod.api_board_chat({**request, 'context_paths': paths}))
         assert response.status_code == 400

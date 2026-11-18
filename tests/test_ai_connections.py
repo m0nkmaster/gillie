@@ -12,6 +12,7 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
+from roosta import board
 from roosta import task_config
 from roosta import ai_backend, ai_connections as connections, ai_runtime, app, chat, pi_agent
 
@@ -252,10 +253,10 @@ def test_task_default_and_explicit_connections_preserve_legacy_fields(accounts, 
 
 
 def test_generic_action_categories_keep_old_aliases():
-    assert app._normalise_action_type('teams',{})=='chat'
-    assert app._normalise_action_type('jira_ticket',{})=='ticket'
-    assert app._normalise_action_type('chat',{})=='chat'
-    assert app._normalise_action_type('ticket',{})=='ticket'
+    assert board._normalise_action_type('teams',{})=='chat'
+    assert board._normalise_action_type('jira_ticket',{})=='ticket'
+    assert board._normalise_action_type('chat',{})=='chat'
+    assert board._normalise_action_type('ticket',{})=='ticket'
 
 
 @pytest.mark.parametrize("mismatch", ["model", "effort"])
@@ -1076,38 +1077,38 @@ def test_first_run_requires_connection_check_before_workspace_setup(accounts, tm
     router = chat.ChatRouter(None, chat.SessionMap(tmp_path/'sessions.json'), str(tmp_path))
     monkeypatch.setattr(app, 'chat_router', router)
     c = create('anthropic', auth='system', tested=False) if existing_claude else None
-    card = app.setup_item()
-    assert card['id'] == app.AI_SETUP_ITEM_ID
+    card = board.setup_item(router)
+    assert card['id'] == board.AI_SETUP_ITEM_ID
     assert card['action_owner'] == 'user'
     assert ('Claude Code' in card['title']) == existing_claude
     assert 'billable' in card['opening_move']
     assert not router._sessions._connections
-    for item in (app.AI_SETUP_ITEM_ID, app.SETUP_ITEM_ID, 'chat:0123456789ab'):
+    for item in (board.AI_SETUP_ITEM_ID, board.SETUP_ITEM_ID, 'chat:0123456789ab'):
         response = asyncio.run(app.api_board_chat({'item_id':item,'message':'hello'}))
         assert response.status_code == 503
         assert json.loads(response.body)['settings_url'] == '/settings#account-setup'
     assert not router._sessions._map and not router._sessions._connections
     # Cached model output cannot replace the deterministic prerequisite or show workspace setup early.
-    monkeypatch.setattr(app, 'board_merges', lambda states: {})
-    monkeypatch.setattr(app, 'roosta_engineer_item', lambda states: None)
-    items, _ = app.collect_board_items([
-        {'id':app.AI_SETUP_ITEM_ID, 'title':'wrong', 'action_owner':'assistant'},
-        {'id':app.SETUP_ITEM_ID, 'title':'too early'},
+    monkeypatch.setattr(board, 'board_merges', lambda states, router=None: {})
+    monkeypatch.setattr(board, 'roosta_engineer_item', lambda states: None)
+    items, _ = board.collect_board_items([
+        {'id':board.AI_SETUP_ITEM_ID, 'title':'wrong', 'action_owner':'assistant'},
+        {'id':board.SETUP_ITEM_ID, 'title':'too early'},
     ], [], [])
-    assert [i['id'] for i in items] == [app.AI_SETUP_ITEM_ID]
+    assert [i['id'] for i in items] == [board.AI_SETUP_ITEM_ID]
     assert items[0]['action_owner'] == 'user'
     # A failed check keeps the prerequisite. Only a tested default unlocks setup.
-    assert app.setup_item()['id'] == app.AI_SETUP_ITEM_ID
+    assert board.setup_item(router)['id'] == board.AI_SETUP_ITEM_ID
     c = connections.update(c['id'], tested=True) if c else create()
     connections.set_default(c['id'])
-    assert app.setup_item()['id'] == app.SETUP_ITEM_ID
+    assert board.setup_item(router)['id'] == board.SETUP_ITEM_ID
     data = json.loads(asyncio.run(app.api_ai_connections()).body)
     assert data['workspace_setup_ready'] is True
     assert data['workspace_setup_missing'] == ['your name in PROFILE.md', 'your priorities in PRIORITIES.md',
                                                'a starter schedule of workers']
     assert not router._sessions._connections
-    assert router._sessions.connection(app.SETUP_ITEM_ID) == c['id']
-    monkeypatch.setattr(router, 'handled', lambda: {app.SETUP_ITEM_ID: {'result': 'done', 'at': 'now'}})
+    assert router._sessions.connection(board.SETUP_ITEM_ID) == c['id']
+    monkeypatch.setattr(router, 'handled', lambda: {board.SETUP_ITEM_ID: {'result': 'done', 'at': 'now'}})
     data = json.loads(asyncio.run(app.api_ai_connections()).body)
     assert data['workspace_setup_ready'] is False
     assert data['workspace_setup_missing'] == []
@@ -1117,7 +1118,7 @@ def test_first_run_requires_connection_check_before_workspace_setup(accounts, tm
     monkeypatch.setattr(router, 'conversation_history', lambda item: [{'role': 'user'}], raising=False)
     (tmp_path / 'PRIORITIES.md').write_text('## My priorities\n\n1. Ship it\n')
     (tmp_path / 'tasks.yaml').write_text('tasks:\n  - id: t\n    skill: actor\n')
-    assert app.setup_item()['id'] == app.SETUP_ITEM_ID
+    assert board.setup_item(router)['id'] == board.SETUP_ITEM_ID
     data = json.loads(asyncio.run(app.api_ai_connections()).body)
     assert data['workspace_setup_ready'] is False
     assert data['workspace_setup_missing'] == []
@@ -1144,7 +1145,7 @@ def test_claude_detection_runs_before_the_board_and_starts_no_model(accounts, mo
 def test_established_workspace_is_not_forced_through_new_onboarding(accounts, monkeypatch):
     monkeypatch.setattr(app, 'chat_router', None)
     assert app.profile.load().name
-    assert app.setup_item() is None
+    assert board.setup_item() is None
 
 
 def test_first_run_guard_preserves_existing_legacy_conversation(accounts, tmp_path, monkeypatch):
@@ -1167,29 +1168,29 @@ def test_first_run_local_ai_requires_a_model_before_workspace_setup(accounts, mo
     monkeypatch.setattr(app.profile, 'load', lambda: app.profile.Profile())
     c = create('ollama', auth='local')
     connections.set_default(c['id'])
-    assert app.setup_item()['id'] == app.AI_SETUP_ITEM_ID
-    assert app.setup_item()['title'] == 'Choose your AI model'
+    assert board.setup_item()['id'] == board.AI_SETUP_ITEM_ID
+    assert board.setup_item()['title'] == 'Choose your AI model'
     monkeypatch.setattr(ai_runtime, 'default_model', lambda provider: 'local-model')
-    assert app.setup_item()['id'] == app.SETUP_ITEM_ID
+    assert board.setup_item()['id'] == board.SETUP_ITEM_ID
 
 
 def test_setup_gaps_read_priorities_and_schedule(tmp_path, monkeypatch):
     monkeypatch.setattr(app.profile, 'load', lambda: app.profile.Profile(name='Sam'))
     monkeypatch.setattr(app.paths, 'WORKSPACE', tmp_path)
-    monkeypatch.setattr(app, 'load_tasks', lambda: ['task'])
-    assert app.setup_gaps() == ['your priorities in PRIORITIES.md']
+    monkeypatch.setattr(board, 'load_tasks', lambda: ['task'])
+    assert board.setup_gaps() == ['your priorities in PRIORITIES.md']
     skeleton = Path(app.paths.SKELETON_DIR) / 'PRIORITIES.md'
     (tmp_path / 'PRIORITIES.md').write_text(skeleton.read_text())
-    assert app.setup_gaps() == ['your priorities in PRIORITIES.md']
+    assert board.setup_gaps() == ['your priorities in PRIORITIES.md']
     (tmp_path / 'PRIORITIES.md').write_text(skeleton.read_text().replace('\n1.\n', '\n1. Finish the report\n'))
-    assert app.setup_gaps() == []
+    assert board.setup_gaps() == []
     (tmp_path / 'PRIORITIES.md').write_text('## My priorities\n<!-- - hidden -->\n\n- Second style\n\n## Other\n')
-    assert app.setup_gaps() == []
+    assert board.setup_gaps() == []
     (tmp_path / 'PRIORITIES.md').write_text('## My priorities\n\n## Other\n1. not mine\n')
-    assert app.setup_gaps() == ['your priorities in PRIORITIES.md']
-    monkeypatch.setattr(app, 'load_tasks', lambda: [])
-    assert app.setup_gaps() == ['your priorities in PRIORITIES.md', 'a starter schedule of workers']
+    assert board.setup_gaps() == ['your priorities in PRIORITIES.md']
+    monkeypatch.setattr(board, 'load_tasks', lambda: [])
+    assert board.setup_gaps() == ['your priorities in PRIORITIES.md', 'a starter schedule of workers']
     def broken():
         raise ValueError('bad yaml')
-    monkeypatch.setattr(app, 'load_tasks', broken)
-    assert app.setup_gaps() == ['your priorities in PRIORITIES.md']
+    monkeypatch.setattr(board, 'load_tasks', broken)
+    assert board.setup_gaps() == ['your priorities in PRIORITIES.md']
