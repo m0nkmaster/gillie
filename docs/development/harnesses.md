@@ -92,7 +92,11 @@ The runtimes own the model/tool loop and context. Prompts use stdin. Named runs 
 observe idle/absolute deadlines and reap their process group, including cancellation. Pi's error
 messages are checked even on exit 0. The Pi extension translates the existing permission profile
 and connector denials; these shell/MCP rules are guardrails, not an OS sandbox. Only an explicitly
-approved sender or an existing privileged task uses the unrestricted profile. Ordinary Claude runs
+approved sender or an existing privileged task uses the unrestricted profile. Named Claude connections
+also protect connection state, the managed runtime directory and the running application package
+(`paths.APP_ROOT`) under every profile. With an editable install the package is inside the source
+checkout. Give a product engineering worker a separate Git worktree and point its skill there.
+It can keep the ordinary profile and launch from the workspace to discover its custom skill. Ordinary Claude runs
 use `dontAsk`, including the legacy path (the previous implementation incorrectly bypassed permissions).
 
 `SessionMap` reads old string values and writes `{session_id, connection}` records. Existing legacy

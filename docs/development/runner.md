@@ -121,7 +121,7 @@ Scheduled skills must never write to chat tools; they return board-shaped `detai
 merges those feeds with the conductor snapshot, and the Electron main process owns native
 notifications. Chat sends remain available only through the board's explicit draft and approval flow.
 
-**Git push is the only standing external write, and only for `allow_git_push` tasks.** Each such
+**Git push requires an `allow_git_push` task.** Each such
 skill names one repository and may run exactly `git push origin main` there. Three prompts keep
 the approval honest, and they must stay task-neutral so any push task fits them:
 
@@ -132,6 +132,23 @@ the approval honest, and they must stay task-neutral so any push task fits them:
 - **Timer, no `push_on_schedule`** checks freshness and returns a
   board item only; missing interactive AWS, Databricks or Jira authentication also becomes a board
   item rather than a partial refresh.
+
+### Standing approval for issue updates
+
+For a named connection, the workspace owner can put an `issue-grants.json` file in its
+`.roosta/state/ai-connections/<connection-id>/` directory. Each entry binds a task id
+to an exact skill and GitHub.com repository. Remove the entry to revoke approval.
+
+```json
+{"engineering-worker": {"skill": "engineering-skill", "repository": "owner/repo"}}
+```
+
+Manual and scheduled runs use the same grant. The model returns at most one
+`details.issue_update` in a successful result. The runner checks the grant again, verifies an
+open issue carrying `ready`, posts the comment, and adds `in review` only when `complete` is true.
+The host's signed-in GitHub CLI performs the requests. The repository must already have the label.
+On failure the activity records an error. A repeated request with the same text skips an existing
+comment. Issue creation and other GitHub changes still use board approval.
 
 ## Adding a task
 
@@ -152,7 +169,7 @@ Add to the workspace's `.roosta/tasks.yaml`:
     requires: [github]       # optional: wait while these connectors are signed out
     precheck: scripts/new.sh # optional: exit 1 = nothing new, skip the scheduled model run
     sensor: true             # optional: feeds the board; board health warns when it fails
-    unrestricted: true       # optional: no local deny rules (prompt still forbids external writes)
+    unrestricted: true       # optional: removes profile denials; named connections still protect runtime paths
     idle_timeout: 300       # optional: silence limit; defaults to 300 Agent / 1800 Ollama
     max_timeout: 3600       # optional: absolute runtime ceiling (default TASK_MAX_TIMEOUT)
     connection: default     # or a tested named connection id; legacy harness/model fields remain supported

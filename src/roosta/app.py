@@ -38,7 +38,7 @@ from roosta import __version__
 from roosta.chat import (ChatRouter, clip_body, ConversationHistoryStore, SessionMap, TopicStore,
                   is_general_chat_id, normalise_defer_until, resolve_alias)
 from roosta import ai_backend
-from roosta import ai_connections, ai_runtime, pi_agent
+from roosta import ai_connections, ai_runtime, github_issues, pi_agent
 from roosta.claude_code import (
     CLAUDE_SIGNIN_MESSAGE,
     claude_args,
@@ -1883,6 +1883,13 @@ async def run_task(
             run = ai_backend.prepare(task.connection, task.dir, session_id=chat_id,
                 model=connection_task_model(task, ai_connections.get(task.connection)),
                 profile="unrestricted" if task.unrestricted else "git-push" if task.allow_git_push else "safe")
+            repo = github_issues.approved_repo(run.connection["id"], task.id, task.skill)
+            if repo:
+                prompt += (f" For one open ready issue in {repo}, the runner has standing approval "
+                           "to post your clarification or completion comment and, on completion, add "
+                           "the in review label. Leave the GitHub write to the runner. Request it in "
+                           'details.issue_update as {"issue": positive integer, "comment": text, '
+                           '"complete": boolean} in a successful result. Omit it when no update is needed.')
             chat_id = run.session_id
             stdout = "".join([line async for line in ai_backend.stream(run, prompt, idle=idle, maximum=maxt)])
         except (ValueError, OSError) as exc:
@@ -1892,6 +1899,17 @@ async def run_task(
         status = TASK_STATUS_ALIASES.get(str(output.get("status", "")).strip().lower(), output.get("status"))
         if "<task-output>" not in text or status not in ("success", "error"):
             return "error", output, "Harness did not return a valid <task-output> result", chat_id
+        details = output.get("details")
+        if status == "success" and isinstance(details, dict) and "issue_update" in details:
+            try:
+                if not repo or github_issues.approved_repo(run.connection["id"], task.id, task.skill) != repo:
+                    raise ValueError("No current standing approval for this worker's GitHub issue update")
+                receipt = await asyncio.to_thread(github_issues.apply_update, repo, details["issue_update"])
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                error = f"GitHub issue update incomplete: {exc}"
+                output.update(status="error", summary=f"{output.get('summary', '')} {error}".strip())
+                return "error", output, error, chat_id
+            output["summary"] = f"{output.get('summary', '')} {receipt}".strip()
         return status, output, "" if status == "success" else str(output.get("summary", ""))[:500], chat_id
     if task.harness == OPENCODE_OLLAMA_HARNESS:
         if task.allow_git_push:

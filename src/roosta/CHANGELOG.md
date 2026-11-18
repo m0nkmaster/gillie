@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.3.0 - 2026-11-18
+
+- Grant a named worker standing approval to comment on open ready issues and add the in review label in one GitHub repository.
+
 ## 0.2.0 - 2026-11-18
 
 - Resize the side-by-side columns on the Assistant, Workspace, Workers and Pulse pages by dragging the divider between them, or by focusing it and using the arrow keys. Double-click the divider or press Enter to restore the default. Each page remembers your widths, including after you restart the app.

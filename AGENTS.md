@@ -16,8 +16,9 @@ never inside a user's workspace.
 - Every shipped dashboard change needs a dated `CHANGELOG.md` entry and version bump.
   Follow the rules at the top of that file; check for concurrent edits before writing.
 - Keep external writes behind the board's explicit draft/approval/sender flow. Scheduled
-  skills report findings as board items. The sole standing exception is a task with explicit
-  `allow_git_push` approval for exactly `git push origin main` in its named repository;
+  skills report findings as board items. The runner may apply scoped issue comments and the `in review` label under an explicit
+  per-worker repository grant (see Runner). A task with explicit
+  `allow_git_push` approval may run exactly `git push origin main` in its named repository;
   timer pushes also require `push_on_schedule`. Unrestricted tools do not grant permission.
 - Treat workspace paths and model output as untrusted. Preserve resolved-symlink validation,
   attachment limits, Markdown sanitisation and sender-action validation.
