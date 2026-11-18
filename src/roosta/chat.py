@@ -40,7 +40,6 @@ _CURSOR_CHAT_ID = re.compile(
 )
 TOPIC_SESSION_TURNS = 24
 # Each open question is its own chat, id "chat:<12 hex>", minted by the board page.
-CHAT_PREFIX = "chat:"
 _CHAT_ID = re.compile(r"chat:[0-9a-f]{12}")
 
 
@@ -1241,7 +1240,6 @@ class ChatRouter:
         """Async generator of events: text deltas, then a terminal event."""
         lock = self._topic_locks.setdefault(item_id, asyncio.Lock())
         async with lock:
-            persistent = bool(item.get("persistent"))
             uploads = item.get("uploaded_files") or []
             if (message or uploads) and self._persistent_history:
                 self._persistent_history.append(item_id, "user", message, [

@@ -2426,52 +2426,19 @@ def test_dashboard_uses_one_status_vocabulary():
     assert "--tag-colour: #8d949e;" in pulse[start:start + 500]
 
 
-def test_skill_runner_frontend_javascript_parses():
+STATIC_DIR = Path(__file__).resolve().parent.parent / "src" / "roosta" / "static"
+
+
+@pytest.mark.parametrize("page", sorted(p.name for p in STATIC_DIR.glob("*.html")))
+def test_page_inline_scripts_parse(page):
     node = shutil.which("node")
     if not node:
         pytest.skip("node not available")
-    html = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "static" / "index.html").read_text()
-    script = re.search(r"<script>(.*)</script>", html, re.S)
-    assert script, "skill runner script not found"
-    subprocess.run(
-        [node, "--check"],
-        input=script.group(1),
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-
-
-def test_assistant_frontend_javascript_parses():
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("node not available")
-    html = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "static" / "assistant.html").read_text()
-    script = re.search(r"<script>(.*)</script>", html, re.S)
-    assert script, "assistant script not found"
-    subprocess.run(
-        [node, "--check"],
-        input=script.group(1),
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-
-
-def test_vault_document_frontend_javascript_parses():
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("node not available")
-    html = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "static" / "document.html").read_text()
-    script = re.search(r"<script>(.*)</script>", html, re.S)
-    assert script, "document script not found"
-    subprocess.run(
-        [node, "--check"],
-        input=script.group(1),
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    scripts = re.findall(r"<script>(.*?)</script>", (STATIC_DIR / page).read_text(), re.S)
+    assert scripts, f"{page} has no inline script"
+    for script in scripts:
+        result = subprocess.run([node, "--check"], input=script, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
 
 
 # --- frontend schedule() display (the user's recurring "shows only interval" complaint) ---

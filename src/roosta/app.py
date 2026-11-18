@@ -19,7 +19,7 @@ import time
 import urllib.error
 import uuid
 from collections.abc import Awaitable, Callable, Iterable
-from contextlib import asynccontextmanager, nullcontext, redirect_stdout, suppress
+from contextlib import asynccontextmanager, nullcontext, redirect_stdout
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -659,14 +659,6 @@ def load_tasks_map() -> dict[str, TaskConfig]:
     return {t.id: t for t in load_tasks()}
 
 
-# --- Auth check ---
-
-
-async def check_auth() -> bool:
-    """Retained for live Assistant availability checks on the selected backend."""
-    return ai_backend.available()
-
-
 async def check_task_runtime(task: TaskConfig) -> bool:
     """Check the selected task harness without starting a model."""
     if task.connection or task.harness == "connection":
@@ -1294,9 +1286,9 @@ def carry_forward_board_items(details, previous) -> None:
         prior = old.get(str(item.get("id", "")).strip())
         if not prior:
             continue
-        for field in _CARRIED_FIELDS:
-            if not item.get(field) and prior.get(field):
-                item[field] = prior[field]
+        for name in _CARRIED_FIELDS:
+            if not item.get(name) and prior.get(name):
+                item[name] = prior[name]
 
 
 def _refine_board_item(target: dict, update: dict, raw: dict,
@@ -1307,13 +1299,13 @@ def _refine_board_item(target: dict, update: dict, raw: dict,
     is the conductor's synthesis, so the duplicate's narrower view only fills
     blanks and adds context, never rewrites the synthesis (4 Nov team-wins card).
     """
-    for field in _REFINABLE_FIELDS:
-        if raw.get(field) and not (fill_only and target.get(field)):
-            target[field] = update[field]
-    for field, key in (("links", "url"), ("documents", "path")):
-        seen = {entry[key] for entry in target.get(field, [])}
-        extra = [entry for entry in update[field] if entry[key] not in seen]
-        target[field] = (target.get(field, []) + extra)[:4]
+    for name in _REFINABLE_FIELDS:
+        if raw.get(name) and not (fill_only and target.get(name)):
+            target[name] = update[name]
+    for name, key in (("links", "url"), ("documents", "path")):
+        seen = {entry[key] for entry in target.get(name, [])}
+        extra = [entry for entry in update[name] if entry[key] not in seen]
+        target[name] = (target.get(name, []) + extra)[:4]
     target["new"] = bool(target.get("new")) or update["new"]
 
 
@@ -1363,7 +1355,7 @@ def merge_board_feed_items(conductor_items: list[dict], states: list[dict],
         raw_items = details.get("items") if isinstance(details.get("items"), list) else []
         raw_items = [raw for raw in raw_items if isinstance(raw, dict)]
         feed_items = normalise_board_doc({"items": raw_items})["items"]
-        for raw, item in zip(raw_items, feed_items):
+        for raw, item in zip(raw_items, feed_items, strict=True):
             if not item["documents"] and feed_documents:
                 item["documents"] = feed_documents[:4]
             item_id = resolve_alias(item.get("id") or "", aliases)
