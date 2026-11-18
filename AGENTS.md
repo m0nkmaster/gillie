@@ -7,8 +7,8 @@ never inside a user's workspace.
 
 ## Working rules
 
-- Keep scheduling and API logic in `app.py`. Small transport-specific modules are fine;
-  do not introduce a framework layer. Pages are static HTML + fetch, with no Jinja or build step.
+- Keep scheduling and API routes in `app.py`; move self-contained subsystem logic into its own
+  module, as with `pages.py` and `teletext.py`. Do not introduce a framework layer. Pages are static HTML + fetch, with no Jinja or build step.
 - Use `paths.py` for `APP_ROOT` versus `WORKSPACE`; never hardcode a home directory.
   Use `profile.load().user` and `{user}` in prompts, and the profile's `reviewer` for provenance.
 - Preserve other sessions' uncommitted work. Stage by path and commit only your own hunks;
@@ -66,6 +66,8 @@ Paths below are relative to `src/roosta/` unless stated otherwise.
 | `workspace.py` | Read-only document catalogue and bounded, validated attachments |
 | `attachments.py` | Chat upload storage, limits and validation |
 | `pulse.py`, `usage.py` | Vault telemetry and privacy-preserving interaction signals |
+| `pages.py` | Custom pages and workspace overrides of shipped pages |
+| `teletext.py` | Office lounge TV feeds: BBC headlines and the daily quiz |
 | `static/` | Pages; shared `nav-count.js`, `shell.css`, `theme.js`, `column-resize.js`, Markdown helpers |
 | `desktop/` (repo root) | Native macOS shell and runner supervision |
 

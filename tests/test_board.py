@@ -1,4 +1,4 @@
-import sys, asyncio, json, os, re, shutil, subprocess
+import asyncio, json, os, re, shutil, subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import pytest

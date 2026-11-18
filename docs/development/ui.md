@@ -100,7 +100,7 @@ See [Assistant contracts](assistant.md) and [Office rendering](office.md) for pa
   only `/api/vault/files?glob=` (frontmatter, no bodies), `/api/vault-document`, `/api/tasks`,
   `/api/board`, `/api/profile` and `/api/pages/<name>/data/<file>.json`, which serves JSON skills
   write to `.roosta/state/pages/<name>/`. A page folder named like a shipped page replaces it
-  (`page_file`). There are no Python plug-ins: a missing capability becomes a generic API here.
+  (`pages.page_file`). There are no Python plug-ins: a missing capability becomes a generic API here.
 
 ## Workspace and documents
 

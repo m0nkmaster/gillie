@@ -632,7 +632,8 @@ def test_session_map_models_read_old_formats_and_follow_provider(accounts, tmp_p
 
 def test_chat_model_endpoint(accounts, tmp_path, monkeypatch):
     create, _ = accounts
-    claude, pi = create('anthropic', auth='system'), create('openai')
+    create('anthropic', auth='system')
+    pi = create('openai')
     sessions = chat.SessionMap(tmp_path / 'sessions.json')
     router = chat.ChatRouter(None, sessions, str(tmp_path))
     monkeypatch.setattr(app, 'chat_router', router)

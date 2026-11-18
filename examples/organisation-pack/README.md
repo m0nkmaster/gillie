@@ -5,4 +5,3 @@ provides the matching CLI, copy its reference into your workspace's connector sk
 from TOOLS.md. Keep authentication, checks and write denials specific to that organisation.
 
 - [Microsoft Teams via msteams](connectors/references/msteams.md)
-- [YellowPages service directory](connectors/references/yellowpages.md)

@@ -2,7 +2,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 
 from roosta import app as appmod
 from roosta.cursor_sessions import read_cursor_transcript, valid_session_id

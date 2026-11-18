@@ -38,7 +38,7 @@ from roosta import __version__
 from roosta.chat import (ChatRouter, clip_body, ConversationHistoryStore, SessionMap, TopicStore,
                   is_general_chat_id, normalise_defer_until, resolve_alias)
 from roosta import ai_backend
-from roosta import ai_connections, ai_runtime, github_issues, pi_agent
+from roosta import ai_connections, ai_runtime, github_issues, pages, pi_agent, teletext
 from roosta.claude_code import (
     CLAUDE_SIGNIN_MESSAGE,
     claude_args,
@@ -3846,55 +3846,7 @@ async def index(request: Request):
     return RedirectResponse("/assistant", status_code=307)
 
 
-# --- Custom pages ---
-#
-# A page is static HTML and JS in .roosta/pages/<name>/, served at /pages/<name>/. Pages read the
-# generic read-only APIs below plus JSON that scheduled skills write to .roosta/state/pages/<name>/.
-# A workspace page named like a shipped one (assistant, pulse, office, ...) replaces it.
-
-PAGE_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")
-PAGE_ASSET = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,80}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,80}){0,3}")
-PAGE_DATA_DIR = paths.STATE_DIR / "pages"
-PAGE_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
-              ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".woff2": "font/woff2"}
-PAGE_FILES_LIMIT = 500
-
-
-def page_file(name: str, pages_dir: Path | None = None) -> Path:
-    """The workspace's own version of a shipped page if it has one, else Roosta's."""
-    override = (pages_dir or paths.PAGES_DIR) / name / "index.html"
-    return override if override.is_file() else DASHBOARD_ROOT / "static" / f"{name}.html"
-
-
-def _contained(root: Path, relative: str) -> Path | None:
-    """Resolve a validated relative path inside root, refusing symlink escapes."""
-    if not PAGE_ASSET.fullmatch(relative) or ".." in relative.split("/"):
-        return None
-    base = root.resolve()
-    target = (root / relative).resolve()
-    try:
-        target.relative_to(base)
-    except ValueError:
-        return None
-    return target if target.is_file() else None
-
-
-# Folders with these names replace a shipped page (page_file), so they already have a nav link.
-SHIPPED_PAGES = frozenset({"assistant", "index", "workspace", "pulse", "office", "document", "changelog", "settings"})
-
-
-def custom_pages(pages_dir: Path | None = None) -> list[dict]:
-    """Every custom page with an index.html, titled from its <title> tag. Shipped-page overrides are excluded."""
-    root = pages_dir or paths.PAGES_DIR
-    pages = []
-    for folder in sorted(root.iterdir()) if root.is_dir() else []:
-        index = folder / "index.html"
-        if not PAGE_NAME.fullmatch(folder.name) or folder.name in SHIPPED_PAGES or not index.is_file():
-            continue
-        match = re.search(r"<title>(.*?)</title>", index.read_text(encoding="utf-8", errors="ignore")[:4000], re.S | re.I)
-        title = re.sub(r"\s+", " ", match.group(1)).strip() if match else folder.name.replace("-", " ").title()
-        pages.append({"name": folder.name, "title": title[:40], "url": f"/pages/{folder.name}/"})
-    return pages
+# --- Custom pages (see pages.py) ---
 
 
 def vault_files(pattern: str, root: Path | None = None) -> list[dict]:
@@ -3918,14 +3870,14 @@ def vault_files(pattern: str, root: Path | None = None) -> list[dict]:
             "frontmatter": workspace_metadata(text),
             "modified": datetime.fromtimestamp(resolved.stat().st_mtime, timezone.utc).isoformat(),
         })
-        if len(out) >= PAGE_FILES_LIMIT:
+        if len(out) >= pages.PAGE_FILES_LIMIT:
             break
     return out
 
 
 @app.get("/api/pages")
 async def api_pages():
-    return JSONResponse(custom_pages())
+    return JSONResponse(pages.custom_pages())
 
 
 @app.get("/api/vault/files")
@@ -3941,9 +3893,9 @@ async def api_vault_files(glob: str = "**/*.md"):
 @app.get("/api/pages/{name}/data/{file}")
 async def api_page_data(name: str, file: str):
     """JSON a scheduled skill wrote for a page, from .roosta/state/pages/<name>/<file>."""
-    if not PAGE_NAME.fullmatch(name) or not file.endswith(".json"):
+    if not pages.PAGE_NAME.fullmatch(name) or not file.endswith(".json"):
         return JSONResponse({"error": "not found"}, status_code=404)
-    target = _contained(PAGE_DATA_DIR / name, file)
+    target = pages.contained(pages.PAGE_DATA_DIR / name, file)
     if target is None:
         return JSONResponse({"error": "not found"}, status_code=404)
     return FileResponse(target, media_type="application/json", headers={"Cache-Control": "no-store"})
@@ -3951,12 +3903,12 @@ async def api_page_data(name: str, file: str):
 
 @app.get("/pages/{name}/{asset:path}")
 async def custom_page(name: str, asset: str = ""):
-    if not PAGE_NAME.fullmatch(name):
+    if not pages.PAGE_NAME.fullmatch(name):
         return JSONResponse({"error": "not found"}, status_code=404)
-    target = _contained(paths.PAGES_DIR / name, asset or "index.html")
-    if target is None or target.suffix.lower() not in PAGE_TYPES:
+    target = pages.contained(paths.PAGES_DIR / name, asset or "index.html")
+    if target is None or target.suffix.lower() not in pages.PAGE_TYPES:
         return JSONResponse({"error": "not found"}, status_code=404)
-    return FileResponse(target, media_type=PAGE_TYPES[target.suffix.lower()],
+    return FileResponse(target, media_type=pages.PAGE_TYPES[target.suffix.lower()],
                         headers={"Cache-Control": "no-cache"})
 
 
@@ -4051,7 +4003,7 @@ async def api_chat_ideas():
 
 @app.get("/runner")
 async def runner_page():
-    return FileResponse(page_file("index"))
+    return FileResponse(pages.page_file("index"))
 
 
 def is_chat_id(item_id: str) -> bool:
@@ -4549,161 +4501,25 @@ async def api_changelog():
     return {"version": changelog_version(text), "content": text}
 
 
-NEWS_FEEDS = {"news": "https://feeds.bbci.co.uk/news/rss.xml", "sport": "https://feeds.bbci.co.uk/sport/rss.xml"}
-NEWS_TTL = 900
 _news_cache: dict = {"at": 0.0, "data": None}
-
-
-def parse_rss(xml_bytes: bytes, limit: int = 10) -> list[dict]:
-    """Headline + standfirst pairs from an RSS 2.0 feed."""
-    import xml.etree.ElementTree as ET
-    out = []
-    for item in ET.fromstring(xml_bytes).iter("item"):
-        title = (item.findtext("title") or "").strip()
-        if title:
-            out.append({"title": title, "summary": (item.findtext("description") or "").strip(),
-                        "link": (item.findtext("link") or "").strip()})
-        if len(out) >= limit:
-            break
-    return out
-
-
-def lead_paragraphs(page_html: str, limit: int = 2) -> list[str]:
-    """The opening paragraphs of a BBC article: the <p>s inside its text-block components."""
-    import html as html_lib
-    out = []
-    for block in re.findall(r'data-component="text-block".*?</div>', page_html, re.S):
-        for p in re.findall(r"<p\b[^>]*>(.*?)</p>", block, re.S):
-            text = html_lib.unescape(re.sub(r"<[^>]+>", "", p)).strip()
-            if text:
-                out.append(text)
-            if len(out) >= limit:
-                return out
-    return out
-
-
-def _fetch(url: str, limit: int) -> bytes:
-    import urllib.request
-    req = urllib.request.Request(url, headers={"User-Agent": "office-dashboard/1.0"})
-    with urllib.request.urlopen(req, timeout=8) as resp:
-        return resp.read(limit)
-
-
-def _article_body(item: dict) -> None:
-    try:
-        item["body"] = lead_paragraphs(_fetch(item["link"], 2_000_000).decode("utf-8", "replace")) if item.get("link") else []
-    except Exception:  # no body is fine: the page falls back to the RSS standfirst
-        item["body"] = []
-
-
-def fetch_news() -> dict:
-    from concurrent.futures import ThreadPoolExecutor
-    sections = {}
-    for name, url in NEWS_FEEDS.items():
-        try:
-            sections[name] = parse_rss(_fetch(url, 1_000_000))
-        except Exception as exc:  # a dead feed shows as "not in transmission", never breaks the page
-            logging.getLogger(__name__).info("news feed %s failed: %s", name, exc)
-            sections[name] = []
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        list(pool.map(_article_body, [it for items in sections.values() for it in items]))
-    return {"source": "BBC", "fetched": datetime.now(timezone.utc).isoformat(), "sections": sections}
+_bamboozle_lock = asyncio.Lock()
 
 
 @app.get("/api/news")
 async def api_news():
     """Public BBC headlines for the Office lounge TV (Ceefax style), cached for 15 minutes."""
-    if _news_cache["data"] is None or time.time() - _news_cache["at"] > NEWS_TTL:
-        data = await asyncio.to_thread(fetch_news)
+    if _news_cache["data"] is None or time.time() - _news_cache["at"] > teletext.NEWS_TTL:
+        data = await asyncio.to_thread(teletext.fetch_news)
         if any(data["sections"].values()) or _news_cache["data"] is None:
             _news_cache.update(at=time.time(), data=data)
     return _news_cache["data"]
-
-
-# Bamboozle! (the Teletext quiz) on the lounge TV: ten fresh questions a day, easiest first.
-BAMBOOZLE_FILE = CACHE_DIR / "bamboozle.json"
-BAMBOOZLE_SOURCES = (
-    ("The Trivia API", "https://the-trivia-api.com/v2/questions?limit=10&region=GB"),
-    ("Open Trivia DB", "https://opentdb.com/api.php?amount=10&type=multiple&encode=url3986"),
-)
-BAMBOOZLE_MIN = 5
-_bamboozle_lock = asyncio.Lock()
-
-
-def parse_quiz(source: str, payload) -> list[dict]:
-    """Normalise either trivia API into {question, category, difficulty, correct, wrong}."""
-    out = []
-    if source == "Open Trivia DB":
-        rows = (payload or {}).get("results") or []
-        get = lambda r: (unquote(r.get("question") or ""), unquote(r.get("category") or ""), r.get("difficulty"),
-                         unquote(r.get("correct_answer") or ""), [unquote(a) for a in r.get("incorrect_answers") or []])
-    else:
-        rows = payload if isinstance(payload, list) else []
-        get = lambda r: (((r.get("question") or {}).get("text") or ""), (r.get("category") or "").replace("_", " "),
-                         r.get("difficulty"), r.get("correctAnswer") or "", list(r.get("incorrectAnswers") or []))
-    for row in rows:
-        try:
-            q, cat, diff, right, wrong = get(row)
-        except (AttributeError, TypeError):
-            continue
-        q, right, wrong = str(q).strip(), str(right).strip(), [str(a).strip() for a in wrong][:3]
-        if not q or not right or len(wrong) != 3 or len({right, *wrong}) != 4 or not all(wrong):
-            continue  # every question needs four distinct answers, one per coloured key
-        out.append({"question": q, "category": str(cat).strip().upper(), "difficulty": diff if diff in ("easy", "medium", "hard") else "medium",
-                    "correct": right, "wrong": wrong})
-    return out
-
-
-def build_quiz(day: str, source: str, questions: list[dict]) -> dict:
-    """Order easiest first and shuffle answers reproducibly for the day."""
-    import random
-    rank = {"easy": 0, "medium": 1, "hard": 2}
-    rng = random.Random(day)
-    out = []
-    for q in sorted(questions, key=lambda q: rank[q["difficulty"]])[:10]:
-        options = [q["correct"], *q["wrong"]]
-        rng.shuffle(options)
-        out.append({"question": q["question"], "category": q["category"], "difficulty": q["difficulty"],
-                    "options": options, "answer": options.index(q["correct"])})
-    return {"date": day, "source": source, "questions": out}
-
-
-def fetch_quiz_questions() -> tuple[str, list[dict]] | None:
-    import urllib.request
-    for source, url in BAMBOOZLE_SOURCES:
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "office-dashboard/1.0"})
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                questions = parse_quiz(source, json.loads(resp.read(1_000_000)))
-            if len(questions) >= BAMBOOZLE_MIN:
-                return source, questions
-        except Exception as exc:  # try the next source; no source means an off-air page, not an error
-            logging.getLogger(__name__).info("quiz source %s failed: %s", source, exc)
-    return None
-
-
-def daily_quiz(day: str, cache_file: Path = BAMBOOZLE_FILE, fetch=fetch_quiz_questions) -> dict | None:
-    """Today's quiz, fetched once a day; yesterday's set (marked stale) if every source is down."""
-    try:
-        cached = json.loads(cache_file.read_text())
-    except (OSError, ValueError):
-        cached = None
-    if cached and cached.get("date") == day:
-        return cached
-    got = fetch()
-    if got:
-        quiz = build_quiz(day, *got)
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text(json.dumps(quiz))
-        return quiz
-    return {**cached, "stale": True} if cached else None
 
 
 @app.get("/api/bamboozle")
 async def api_bamboozle():
     """Today's Bamboozle! quiz for the Office lounge TV."""
     async with _bamboozle_lock:  # one fetch per day even if several tabs ask at once
-        quiz = await asyncio.to_thread(daily_quiz, datetime.now().date().isoformat())
+        quiz = await asyncio.to_thread(teletext.daily_quiz, datetime.now().date().isoformat())
     if not quiz:
         return JSONResponse({"error": "not in transmission"}, status_code=503)
     return quiz
@@ -4711,22 +4527,22 @@ async def api_bamboozle():
 
 @app.get("/changelog")
 async def changelog_page():
-    return FileResponse(page_file("changelog"))
+    return FileResponse(pages.page_file("changelog"))
 
 
 @app.get("/settings")
 async def settings_page():
-    return FileResponse(page_file("settings"))
+    return FileResponse(pages.page_file("settings"))
 
 
 @app.get("/document")
 async def document_page():
-    return FileResponse(page_file("document"))
+    return FileResponse(pages.page_file("document"))
 
 
 @app.get("/workspace")
 async def workspace_page():
-    return FileResponse(page_file("workspace"))
+    return FileResponse(pages.page_file("workspace"))
 
 
 @app.get("/api/workspace")
@@ -4764,7 +4580,7 @@ async def api_workspace_reveal():
 
 @app.get("/assistant")
 async def assistant_page():
-    return FileResponse(page_file("assistant"))
+    return FileResponse(pages.page_file("assistant"))
 
 
 @app.get("/api/pulse")
@@ -4848,18 +4664,18 @@ async def api_constellation_review(slug: str, body: dict):
 
 @app.get("/office")
 async def office_page():
-    return FileResponse(page_file("office"))
+    return FileResponse(pages.page_file("office"))
 
 
 @app.get("/pulse")
 async def pulse_page():
-    return FileResponse(page_file("pulse"))
+    return FileResponse(pages.page_file("pulse"))
 
 
 @app.get("/constellation")
 async def constellation_page():
     # Same page in full-screen mode; pulse.html switches layout on the path.
-    return FileResponse(page_file("pulse"))
+    return FileResponse(pages.page_file("pulse"))
 
 
 # Mount static after routes so / doesn't get overridden

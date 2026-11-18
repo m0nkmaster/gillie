@@ -143,3 +143,14 @@ def test_init_without_git_does_not_invoke_developer_tools(tmp_path, monkeypatch)
     monkeypatch.setattr(cli.subprocess, "run", unexpected)
     assert cli.init(tmp_path / "desktop", check=False, initialise_git=False) == 0
     assert (tmp_path / "desktop" / ".roosta" / "tasks.yaml").exists()
+
+
+def test_core_skills_have_a_single_source():
+    # The repo-root .agents/skills copy drifted from the shipped skills, and the runner prefers
+    # a task directory's .agents/skills, so a task run in a Roosta checkout loaded stale skills.
+    repo = Path(__file__).resolve().parents[1]
+    if not (repo / ".git").exists():
+        pytest.skip("not a git checkout")
+    tracked = subprocess.run(["git", "ls-files", ".agents", ".claude"], cwd=repo,
+                             capture_output=True, text=True, check=True).stdout
+    assert tracked == "", "core skills belong only in src/roosta/skills"

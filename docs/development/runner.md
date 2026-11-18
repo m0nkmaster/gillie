@@ -114,8 +114,8 @@ from it, and OpenCode `bash` rules). A connector with no `check` only contribute
 - `verdict` is pure: `success`, `auth-failed` (the check ran and says signed out) or `error` (it
   could not run or its output made no sense). `error` never blocks.
 - The desktop app notifies once per distinct sign-in reason while any task waits on it.
-- The `connectors` core skill holds a catalogue of common tools; organisation-specific entries are
-  offered only when their CLI exists on the machine.
+- The `connectors` core skill holds a catalogue of common tools. Organisation-specific recipes live in
+  `examples/organisation-pack/` and are not shipped; a workspace adds them through TOOLS.md.
 
 Scheduled skills must never write to chat tools; they return board-shaped `details.items`, `/api/board`
 merges those feeds with the conductor snapshot, and the Electron main process owns native

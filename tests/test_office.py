@@ -96,20 +96,20 @@ def test_new_starter_tag_and_probation():
 
 
 def test_rss_headlines_for_the_lounge_tv():
-    from roosta import app
+    from roosta import teletext
     xml = (b"<rss><channel><title>BBC</title><item><title> First </title><description>One</description></item>"
            b"<item><title></title></item><item><title>Second</title></item></channel></rss>")
-    assert app.parse_rss(xml) == [{"title": "First", "summary": "One", "link": ""}, {"title": "Second", "summary": "", "link": ""}]
-    assert len(app.parse_rss(xml, limit=1)) == 1
+    assert teletext.parse_rss(xml) == [{"title": "First", "summary": "One", "link": ""}, {"title": "Second", "summary": "", "link": ""}]
+    assert len(teletext.parse_rss(xml, limit=1)) == 1
 
 
 def test_article_lead_paragraphs():
-    from roosta import app
+    from roosta import teletext
     page = ('<p>nav junk</p><div data-component="text-block"><p class="x">First &amp; <b>bold</b>.</p></div>'
             '<div data-component="image-block"><p>caption</p></div>'
             '<div data-component="text-block"><p>Second.</p></div><div data-component="text-block"><p>Third.</p></div>')
-    assert app.lead_paragraphs(page) == ["First & bold.", "Second."]
-    assert app.lead_paragraphs("<p>no blocks</p>") == []
+    assert teletext.lead_paragraphs(page) == ["First & bold.", "Second."]
+    assert teletext.lead_paragraphs("<p>no blocks</p>") == []
 
 
 def test_ceefax_wraps_headlines_to_the_screen():
@@ -127,35 +127,35 @@ def _trivia(n, diff="easy"):
 
 
 def test_bamboozle_parses_both_trivia_sources():
-    from roosta import app
+    from roosta import teletext
     bad = {"question": {"text": "Dupes?"}, "correctAnswer": "x", "incorrectAnswers": ["x", "y", "z"]}
-    got = app.parse_quiz("The Trivia API", _trivia(1) + [bad, "junk"])
+    got = teletext.parse_quiz("The Trivia API", _trivia(1) + [bad, "junk"])
     assert got == [{"question": "Q0?", "category": "FILM AND TV", "difficulty": "easy", "correct": "right0", "wrong": ["a0", "b0", "c0"]}]
     otdb = {"results": [{"question": "Capital%20of%20Romania%3F", "category": "Geography", "difficulty": "hard",
                          "correct_answer": "Bucharest", "incorrect_answers": ["Sofia", "Belgrade", "Budapest"]}]}
-    assert app.parse_quiz("Open Trivia DB", otdb)[0]["question"] == "Capital of Romania?"
-    assert app.parse_quiz("Open Trivia DB", None) == []
+    assert teletext.parse_quiz("Open Trivia DB", otdb)[0]["question"] == "Capital of Romania?"
+    assert teletext.parse_quiz("Open Trivia DB", None) == []
 
 
 def test_bamboozle_is_easiest_first_and_stable_for_the_day():
-    from roosta import app
-    qs = app.parse_quiz("The Trivia API", _trivia(2, "hard") + _trivia(12))
-    a, b = app.build_quiz("2026-11-08", "src", qs), app.build_quiz("2026-11-08", "src", qs)
+    from roosta import teletext
+    qs = teletext.parse_quiz("The Trivia API", _trivia(2, "hard") + _trivia(12))
+    a, b = teletext.build_quiz("2026-11-08", "src", qs), teletext.build_quiz("2026-11-08", "src", qs)
     assert a == b and len(a["questions"]) == 10
     assert all(q["difficulty"] == "easy" for q in a["questions"])
     assert all(q["options"][q["answer"]].startswith("right") for q in a["questions"])
 
 
 def test_bamboozle_fetches_once_a_day_and_falls_back_to_yesterday(tmp_path):
-    from roosta import app
+    from roosta import teletext
     f, calls = tmp_path / "bz.json", []
-    fetch = lambda: calls.append(1) or ("src", app.parse_quiz("The Trivia API", _trivia(10)))
-    assert app.daily_quiz("2026-11-08", f, fetch)["date"] == "2026-11-08"
-    app.daily_quiz("2026-11-08", f, fetch)
+    fetch = lambda: calls.append(1) or ("src", teletext.parse_quiz("The Trivia API", _trivia(10)))
+    assert teletext.daily_quiz("2026-11-08", f, fetch)["date"] == "2026-11-08"
+    teletext.daily_quiz("2026-11-08", f, fetch)
     assert len(calls) == 1
-    stale = app.daily_quiz("2026-11-09", f, lambda: None)
+    stale = teletext.daily_quiz("2026-11-09", f, lambda: None)
     assert stale["date"] == "2026-11-08" and stale["stale"] is True
-    assert app.daily_quiz("2026-11-09", tmp_path / "none.json", lambda: None) is None
+    assert teletext.daily_quiz("2026-11-09", tmp_path / "none.json", lambda: None) is None
 
 
 def test_bamboozle_one_wrong_answer_and_you_are_out():
