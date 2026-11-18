@@ -404,6 +404,16 @@ def prepare(connection_id: str, workspace: str, *, model: str = "", session_id: 
     return ConnectionRun(connection, backend, args, env, workspace, sid, secret, model)
 
 
+async def kill(proc) -> None:
+    """Kill a still-running child process group at once and reap its leader."""
+    if proc and proc.returncode is None:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (AttributeError, ProcessLookupError):
+            proc.kill()
+        await proc.wait()
+
+
 async def terminate(proc) -> None:
     if proc is None or proc.returncode is not None:
         return

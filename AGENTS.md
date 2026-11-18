@@ -61,6 +61,8 @@ Paths below are relative to `src/roosta/` unless stated otherwise.
 | `board.py` | Board card normalisation, feed merging, reminders, setup card and board health |
 | `chat_items.py` | Open, document, worker 1:1 and new-worker chat items |
 | `ai_backend.py`, `ai_connections.py`, `ai_runtime.py` | AI dispatch, named accounts, credential references and managed runtimes |
+| `ai_settings.py` | Worker runtime checks and options, model lists and validation, Settings setup jobs |
+| `workspace_settings.py` | How Roosta is run, the skills lock and the workspace folder browser |
 | `pi_agent.py`, `pi_guard.mjs` | Pi RPC transport and permission hook |
 | `cursor_agent.py`, `cursor_sessions.py` | Cursor invocation, environment, transcript reading |
 | `claude_code.py`, `claude_guard.py` | Claude invocation, stream parsing, permission settings/hook |

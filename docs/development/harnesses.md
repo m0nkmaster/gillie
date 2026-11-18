@@ -5,7 +5,9 @@ Paths such as `cache/` are under the workspace's `.roosta/state/`; Python module
 
 ## Named AI connections
 
-`ai_backend.py` owns dispatch for named connections. `ai_connections.py` stores only metadata in
+`ai_backend.py` owns dispatch for named connections. `ai_settings.py` lists runtime options and
+models, validates model choices and runs Settings' install, test and sign-in jobs.
+`ai_connections.py` stores only metadata in
 `.roosta/state/ai-connections.json`; API keys go through `keyring` to an allowlisted native OS backend.
 A missing/locked vault fails closed. `ai_runtime.py` downloads the latest published standalone
 Pi and unmodified Claude Code binaries into versioned workspace cache directories. Install/update

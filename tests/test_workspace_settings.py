@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from roosta import app, cli, paths
+from roosta import app, cli, paths, workspace_settings
 
 STATIC = Path(app.paths.STATIC_DIR)
 
@@ -310,7 +310,7 @@ def test_folder_browser_rejects_bad_paths(env, client, monkeypatch):
 def test_folder_browser_caps_the_listing(env, client, monkeypatch):
     for name in ('a', 'b', 'c'):
         (env.tmp / 'many' / name).mkdir(parents=True)
-    monkeypatch.setattr(app, 'FOLDER_LIST_LIMIT', 2)
+    monkeypatch.setattr(workspace_settings, 'FOLDER_LIST_LIMIT', 2)
     data = client.get('/api/settings/folders', params={'path': str(env.tmp / 'many')}).json()
     assert [f['name'] for f in data['folders']] == ['a', 'b'] and data['truncated'] is True
 

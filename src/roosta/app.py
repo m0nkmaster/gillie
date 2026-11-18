@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import ipaddress
 import json
 import logging
@@ -11,15 +10,12 @@ import os
 import re
 import shlex
 import shutil
-import signal
-import ssl
 import subprocess
 import sys
 import time
-import urllib.error
 import uuid
 from collections.abc import Awaitable, Callable
-from contextlib import asynccontextmanager, nullcontext, redirect_stdout
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import asdict, replace
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -37,13 +33,12 @@ from roosta import __version__
 from roosta.chat import (ChatRouter, clip_body, ConversationHistoryStore, SessionMap, TopicStore,
                   is_general_chat_id, normalise_defer_until)
 from roosta import ai_backend
-from roosta import ai_connections, ai_runtime, github_issues, pages, pi_agent, teletext
+from roosta import ai_connections, ai_runtime, ai_settings, github_issues, pages, pi_agent, teletext
 from roosta.activity_log import ActivityLog
 from roosta.claude_code import (
     CLAUDE_SIGNIN_MESSAGE,
     claude_args,
     claude_env,
-    claude_model,
     claude_result_text,
     claude_stream_has_progress,
     is_claude_auth_failure,
@@ -56,24 +51,17 @@ from roosta.cursor_agent import (
     GIT_PUSH_CONFIG_DIR,
     SAFE_CONFIG_DIR,
     cursor_args,
-    cursor_available,
     cursor_env,
-    cursor_model,
     cursor_result_text,
     cursor_stream_has_progress,
     is_transient_agent_failure,
 )
 from roosta.cursor_sessions import read_cursor_transcript, valid_session_id
 from roosta.opencode_ollama import (
-    OLLAMA,
     is_unexecuted_tool_call,
-    opencode_model_compatible,
     opencode_ollama_args,
-    opencode_ollama_available,
     opencode_ollama_env,
     opencode_result_text,
-    parse_cursor_models,
-    parse_ollama_models,
 )
 from roosta.board import (
     AI_SETUP_ITEM_ID,
@@ -107,13 +95,14 @@ from roosta.chat_items import (
     standing_thread_ids,
     worker_chat_item,
 )
+from roosta.ai_settings import (available_runtime_options, check_task_runtime, model_efforts, provider_models,
+                                runtime_unavailable_message, validate_model)
+from roosta.workspace_settings import captured, list_folders, skills_lock, workspace_managed_by, workspace_target
 from roosta.task_config import (
     CLAUDE_HARNESS,
     CURSOR_HARNESS,
-    HARNESS_LABELS,
     OPENCODE_OLLAMA_HARNESS,
     TASK_SETTING_FLAGS,
-    VALID_HARNESSES,
     TaskConfig,
     TaskState,
     connection_task_model,
@@ -217,118 +206,6 @@ def outcome_summary(output: dict, error: str) -> str:
     return str(summary or error or "")
 
 
-async def check_task_runtime(task: TaskConfig) -> bool:
-    """Check the selected task harness without starting a model."""
-    if task.connection or task.harness == "connection":
-        return ai_backend.connection_available(task.connection)
-    if task.harness == CLAUDE_HARNESS:
-        return ai_backend.available(ai_backend.CLAUDE)
-    if task.harness == CURSOR_HARNESS:
-        return cursor_available()
-    if task.harness == OPENCODE_OLLAMA_HARNESS:
-        return opencode_ollama_available(task.model)
-    return False
-
-
-def runtime_unavailable_message(task: TaskConfig) -> str:
-    if task.connection or task.harness == "connection":
-        try:
-            ai_connections.get(task.connection)
-        except ValueError as exc:
-            return str(exc)
-        return "Test or repair this worker's AI connection in Settings"
-    if task.harness == OPENCODE_OLLAMA_HARNESS:
-        if not opencode_model_compatible(task.model):
-            return f"{task.model} cannot execute OpenCode tool calls; choose another Ollama model"
-        return "OpenCode or Ollama is unavailable"
-    if task.harness not in VALID_HARNESSES:
-        return f"Unknown harness {task.harness!r}; choose Claude Code, Cursor or Ollama"
-    return ai_backend.unavailable_message(task_engine(task))
-
-
-async def _runtime_command_output(
-    *command: str,
-    env: dict | None = None,
-    timeout: float = 20,
-    cwd: str | None = None,
-) -> str:
-    """Capture a bounded local command output."""
-    proc = None
-    try:
-        # SECURITY-REVIEW: fixed local executables and arguments only; no shell.
-        proc = await asyncio.create_subprocess_exec(
-            *command,
-            env=env,
-            cwd=cwd,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        await _terminate(proc)
-        return ""
-    except OSError:
-        return ""
-    return stdout.decode(errors="replace") if proc.returncode == 0 else ""
-
-
-async def claude_model_choices(key: str = "legacy:claude") -> list[dict]:
-    listing = await ai_backend.claude_models(key)
-    return [{"id": entry["value"], "label": entry.get("displayName") or entry["value"]}
-            for entry in listing["models"]]
-
-
-def cursor_model_choices(models: list[dict]) -> list[dict]:
-    """Mark the user's CURSOR_MODEL, if set, as the default; otherwise Cursor's own default stands."""
-    default = cursor_model()
-    return [
-        {**m, "label": re.sub(r"\s*\((?:current|default)\)$", "", m["label"], flags=re.I)
-         + (" (default)" if m["id"] == default else "")}
-        for m in models
-    ]
-
-
-async def available_runtime_options() -> dict:
-    """List every task harness with its models and whether it can run now.
-
-    `model_key` says which task field the model choice fills.
-    """
-    cursor_stdout, ollama_stdout = await asyncio.gather(
-        _runtime_command_output(CURSOR_AGENT, "models", env=cursor_env()),
-        _runtime_command_output(OLLAMA, "list", env=opencode_ollama_env()),
-    )
-    ollama_models = parse_ollama_models(ollama_stdout)
-    harnesses = [
-        {
-            "id": CLAUDE_HARNESS,
-            "label": HARNESS_LABELS[CLAUDE_HARNESS],
-            "model_key": runtime_model_key(CLAUDE_HARNESS),
-            "default_model": claude_model(),
-            "models": await claude_model_choices(),
-            "available": ai_backend.available(ai_backend.CLAUDE),
-        },
-        {
-            "id": CURSOR_HARNESS,
-            "label": HARNESS_LABELS[CURSOR_HARNESS],
-            "model_key": runtime_model_key(CURSOR_HARNESS),
-            "default_model": cursor_model(),
-            "models": cursor_model_choices(parse_cursor_models(cursor_stdout)),
-            "available": cursor_available(),
-        },
-        {
-            "id": OPENCODE_OLLAMA_HARNESS,
-            "label": HARNESS_LABELS[OPENCODE_OLLAMA_HARNESS],
-            "model_key": runtime_model_key(OPENCODE_OLLAMA_HARNESS),
-            "default_model": "",
-            "models": ollama_models,
-            "available": bool(ollama_models) and opencode_ollama_available(ollama_models[0]["id"]),
-        },
-    ]
-    return {"backend": ai_backend.current(), "harnesses": harnesses,
-            "connections": ai_connections.load()["connections"], "default_connection": ai_backend.default_connection()}
-
-
 # --- Task execution ---
 
 
@@ -389,16 +266,6 @@ def missed_weekly_slot(days: list[str], run_at: str, last_run: str, now_local: d
         if slot <= now_local and slot.strftime("%A").lower() in days:
             return last < slot
     return False
-
-
-async def _terminate(proc) -> None:
-    """Kill a still-running child process group and reap its leader."""
-    if proc and proc.returncode is None:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (AttributeError, ProcessLookupError):
-            proc.kill()
-        await proc.wait()
 
 
 def task_idle_timeout(task: TaskConfig, override: float | None = None) -> float:
@@ -577,7 +444,7 @@ async def run_task(
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    await _terminate(proc)
+                    await ai_backend.kill(proc)
                     return "error", {}, f"Task exceeded max runtime of {maxt:g}s", chat_id
                 try:
                     chunk = await asyncio.wait_for(
@@ -589,7 +456,7 @@ async def run_task(
                     # was killed as "hung" on wake. Only awake silence counts.
                     if time.monotonic() - last_output < idle / 2:
                         continue
-                    await _terminate(proc)
+                    await ai_backend.kill(proc)
                     if time.monotonic() >= deadline:
                         return "error", {}, f"Task exceeded max runtime of {maxt:g}s", chat_id
                     return "error", {}, f"Task produced no output for {idle:g}s - presumed hung", chat_id
@@ -601,7 +468,7 @@ async def run_task(
             await proc.wait()
             stdout = b"".join(stdout_chunks)
         except Exception as e:
-            await _terminate(proc)
+            await ai_backend.kill(proc)
             return "error", {}, str(e), chat_id
         finally:
             if stderr_task is not None:
@@ -1395,7 +1262,7 @@ async def lifespan(app: FastAPI):
     runner.start()
     await _start_chat_router()
     yield
-    jobs = [task for task in _ai_job_tasks.values() if not task.done()]
+    jobs = [task for task in ai_settings.job_tasks.values() if not task.done()]
     for task in jobs:
         task.cancel()
     await asyncio.gather(*jobs, return_exceptions=True)
@@ -1469,10 +1336,6 @@ def same_origin_upload(request: Request) -> None:
         raise HTTPException(403, "Cross-site upload denied")
 
 
-_ai_jobs: dict[str, dict] = {}
-_ai_job_tasks: dict[str, asyncio.Task] = {}
-
-
 def ai_settings_result(data: dict, status_code: int = 200) -> JSONResponse:
     return JSONResponse(data, status_code=status_code, headers={"Cache-Control": "no-store"})
 
@@ -1495,46 +1358,6 @@ def connection_affected(connection_id: str) -> dict:
             "pending_approvals": pending}
 
 
-def workspace_managed_by() -> str:
-    if os.environ.get("ASSISTANT_DESKTOP") == "1":
-        return "desktop"
-    if os.environ.get("XPC_SERVICE_NAME") == cli.LAUNCHD_LABEL or (
-            sys.platform.startswith("linux") and os.environ.get("INVOCATION_ID")):
-        return "service"
-    return "terminal"
-
-
-def skills_lock() -> dict:
-    try:
-        data = json.loads((paths.ROOSTA_DIR / skills.LOCK_NAME).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def workspace_target(body: dict) -> tuple[Path | None, str]:
-    raw = body.get("path")
-    if not isinstance(raw, str) or not raw.strip() or len(raw) > 1024:
-        return None, "Enter the full path to the folder."
-    target = Path(raw.strip()).expanduser()
-    if not target.is_absolute():
-        return None, "Enter the full path to the folder."
-    try:
-        target = target.resolve()
-    except (OSError, RuntimeError):
-        return None, "That folder path cannot be used."
-    if target.exists() and not target.is_dir():
-        return None, f"{target} is not a folder."
-    return target, ""
-
-
-def captured(call: Callable[[], int]) -> tuple[int, str]:
-    out = io.StringIO()
-    with redirect_stdout(out):
-        code = call()
-    return code, out.getvalue().strip()
-
-
 @app.get("/api/settings/workspace", dependencies=[Depends(local_ai_settings)])
 async def api_settings_workspace():
     config = cli.read_config()
@@ -1551,34 +1374,6 @@ async def api_settings_workspace():
         "managed_by": workspace_managed_by(), "service": service,
         "skills": {"modified": sorted(n for n, e in entries.items() if isinstance(e, dict) and e.get("modified")),
                    "roosta": str(lock.get("roosta") or "")}})
-
-
-FOLDER_LIST_LIMIT = 500
-
-
-def list_folders(directory: Path) -> dict:
-    names = []
-    for entry in os.scandir(directory):
-        if entry.name.startswith("."):
-            continue
-        try:
-            if entry.is_dir():
-                names.append(entry.name)
-        except OSError:
-            continue
-    names.sort(key=str.casefold)
-    folders = []
-    for name in names[:FOLDER_LIST_LIMIT]:
-        child = directory / name
-        try:
-            workspace = (child / ".roosta").is_dir()
-        except OSError:
-            workspace = False
-        folders.append({"name": name, "path": str(child), "workspace": workspace})
-    return {"path": str(directory), "parent": str(directory.parent) if directory.parent != directory else None,
-            "home": str(Path.home()), "is_workspace": (directory / ".roosta").is_dir(),
-            "is_empty": not any(True for _ in os.scandir(directory)),
-            "folders": folders, "truncated": len(names) > FOLDER_LIST_LIMIT}
 
 
 @app.get("/api/settings/folders", dependencies=[Depends(local_ai_settings)])
@@ -1687,65 +1482,11 @@ async def api_ai_connections(item_id: str = ""):
         return ai_settings_result({**data, "providers": ai_connections.PROVIDERS, "runtimes": runtimes,
             "engines": engines, "terminal_available": sys.platform == "darwin",
             "workspace_setup_ready": bool(missing), "workspace_setup_missing": missing,
-            "jobs": _ai_jobs, "selected": selected, "selected_model": selected_model,
+            "jobs": ai_settings.jobs, "selected": selected, "selected_model": selected_model,
             "legacy": ai_backend.current(),
             "affected": {c["id"]: connection_affected(c["id"]) for c in data["connections"]}})
     except ValueError as exc:
         return ai_settings_result({"error": str(exc)}, 400)
-
-
-async def ollama_model_ids() -> list[str]:
-    stdout = await _runtime_command_output(OLLAMA, "list", env=opencode_ollama_env())
-    return [m["id"] for m in parse_ollama_models(stdout)]
-
-
-async def provider_models(provider: str, general: bool = False, key: str = "", refresh: bool = False) -> dict:
-    default = ai_connections.default_model(provider, general=general)
-    if provider == "anthropic":
-        listing = await ai_backend.claude_models(key or "legacy:claude", refresh=refresh)
-        models = [ai_backend.claude_model_choice(entry) for entry in listing["models"]]
-        member = ai_backend.claude_member(listing, default) if default else None
-        label = ((member or {}).get("displayName") or default) if default else ai_backend.default_label(listing["default"])
-        shown = member or listing["default"] or {}
-        result = {"default": default, "default_label": label, "models": models,
-                  "default_efforts": shown.get("supportedEffortLevels") or []}
-        if listing.get("fallback"):
-            result["error"] = listing["error"]
-        return result
-    if provider == "ollama":
-        return {"default": "", "default_label": "", "models": [{"id": m, "label": m} for m in await ollama_model_ids()]}
-    models = []
-    for model in await asyncio.to_thread(ai_runtime.model_catalog, provider):
-        try:
-            ai_connections.runtime(provider, model)
-        except ValueError:
-            continue
-        models.append({"id": model, "label": model})
-    default = default if any(m["id"] == default for m in models) else ""
-    return {"default": default, "default_label": default, "models": models}
-
-
-async def validate_model(provider: str, model: str, key: str = "", current: str = "") -> None:
-    """A new model choice must be in the harness's own list; an already-stored valid one stays accepted."""
-    if not model:
-        return
-    ai_connections.runtime(provider, model)
-    if model == current:
-        return
-    if provider == "anthropic":
-        listing = await ai_backend.claude_models(key or "legacy:claude")
-        name, _, effort = model.partition("@")
-        if not name and effort:
-            return
-        if ai_backend.claude_member(listing, model) is None:
-            raise ValueError("Claude Code doesn't offer that model; choose one from the list")
-        return
-    try:
-        available = await ollama_model_ids() if provider == "ollama" else await asyncio.to_thread(ai_runtime.model_catalog, provider)
-    except (ValueError, OSError):
-        return
-    if model not in available:
-        raise ValueError("That model isn't offered by this provider; choose one from the list")
 
 
 @app.get("/api/ai/models", dependencies=[Depends(local_ai_settings)])
@@ -1773,14 +1514,6 @@ async def api_ai_connection_create(body: dict):
         return ai_settings_result({"error": str(exc)}, 400)
     except Exception:
         return ai_settings_result({"error": "The OS credential store could not save this key; unlock it and try again"}, 400)
-
-
-async def model_efforts(connection: dict, model: str) -> list[str]:
-    if connection["provider"] == "anthropic":
-        listing = await ai_backend.claude_models(connection["id"])
-        member = ai_backend.claude_member(listing, model)
-        return (member or {}).get("supportedEffortLevels") or []
-    return await asyncio.to_thread(ai_runtime.model_efforts, connection["provider"], model)
 
 
 @app.get("/api/ai/efforts", dependencies=[Depends(local_ai_settings)])
@@ -1870,79 +1603,6 @@ async def validate_claude_task_model(task_id: str, harness: str, model: str) -> 
         await validate_model("anthropic", model, "legacy:claude", (existing or {}).get("claude_model", ""))
 
 
-async def _ai_operation(key: str, operation: str) -> None:
-    proc = None
-    terminal = None
-    try:
-        if operation == "install":
-            await asyncio.to_thread(ai_runtime.install, key)
-        elif operation == "test":
-            await ai_backend.test_connection(key)
-            await ensure_chat_router()
-        else:
-            connection = ai_connections.get(key)
-            if connection["provider"] not in {"anthropic", "openai"} or connection["auth"] != "cli":
-                raise ValueError("Choose an OpenAI or Anthropic account sign-in connection")
-            binary = ai_runtime.find(ai_connections.engine(connection["provider"]))
-            if not binary:
-                raise ValueError("Install the AI runtime first")
-            env = ai_backend.connection_env(connection)
-            if connection["provider"] == "openai":
-                # Pi requires a terminal; its browser callback completes sign-in without pasted tokens.
-                terminal, slave = os.openpty()
-                os.set_blocking(terminal, False)
-                def discard_auth_output():
-                    try:
-                        if os.read(terminal, 65536):
-                            return
-                    except BlockingIOError:
-                        return
-                    except OSError:
-                        pass
-                    asyncio.get_running_loop().remove_reader(terminal)
-                asyncio.get_running_loop().add_reader(terminal, discard_auth_output)
-                try:
-                    proc = await asyncio.create_subprocess_exec(binary, "auth", "login", "openai",
-                        cwd=env["PI_CODING_AGENT_DIR"], env=env, stdin=slave, stdout=slave, stderr=slave,
-                        start_new_session=True)
-                finally:
-                    os.close(slave)
-            else:
-                proc = await asyncio.create_subprocess_exec(binary, "auth", "login", "--sso",
-                    env=env, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL, start_new_session=True)
-            try:
-                await asyncio.wait_for(proc.wait(), 300)
-            except asyncio.TimeoutError:
-                raise ValueError("Sign-in timed out; retry in a browser on this computer and close any other pending AI sign-in") from None
-            if proc.returncode:
-                raise ValueError("Sign-in did not complete; close other pending AI sign-ins, retry and check your organisation's account access")
-        _ai_jobs[key] = {"status": "success", "operation": operation}
-    except asyncio.CancelledError:
-        _ai_jobs[key] = {"status": "interrupted", "operation": operation}
-        raise
-    except Exception as exc:
-        log.exception("AI %s operation failed", operation)
-        if isinstance(exc, ValueError):
-            reason = str(exc)
-        elif isinstance(exc, ssl.SSLError) or (isinstance(exc, urllib.error.URLError) and isinstance(exc.reason, ssl.SSLError)):
-            reason = "Download failed: this computer's security certificates couldn't be verified"
-        elif isinstance(exc, urllib.error.URLError) and operation == "install":
-            reason = f"Download failed: {exc.reason}"
-        elif isinstance(exc, OSError) and operation == "install":
-            reason = f"Download failed: {exc}"
-        else:
-            reason = "Operation failed; check network access and the OS credential store, then retry"
-        _ai_jobs[key] = {"status": "error", "operation": operation, "error": reason}
-    finally:
-        if operation == "install":
-            ai_runtime.INSTALLING.discard(key)
-        await ai_backend.terminate(proc)
-        if terminal is not None:
-            asyncio.get_running_loop().remove_reader(terminal)
-            os.close(terminal)
-
-
 @app.post("/api/ai/operations", dependencies=[Depends(local_ai_settings)])
 async def api_ai_operation(body: dict):
     key, operation = body.get("id"), body.get("operation")
@@ -1960,19 +1620,19 @@ async def api_ai_operation(body: dict):
                 raise ValueError("Finish current turns and pending approvals before signing this account in again")
             if operation == "login" and connection["provider"] == "openai" and any(
                 job.get("operation") == "login" and job.get("status") == "running"
-                and ai_connections.get(other)["provider"] == "openai" for other, job in _ai_jobs.items()
+                and ai_connections.get(other)["provider"] == "openai" for other, job in ai_settings.jobs.items()
             ):
                 raise ValueError("Finish the other OpenAI sign-in before starting this one")
         else:
             raise ValueError("Unknown operation")
-        if key in _ai_job_tasks and not _ai_job_tasks[key].done():
+        if key in ai_settings.job_tasks and not ai_settings.job_tasks[key].done():
             return ai_settings_result({"error": "This operation is already running"}, 409)
         if operation == "install":
             ai_runtime.INSTALLING.add(key)
         elif operation == "login":
             ai_connections.update(key, tested=False)
-        _ai_jobs[key] = {"status": "running", "operation": operation}
-        _ai_job_tasks[key] = asyncio.create_task(_ai_operation(key, operation))
+        ai_settings.jobs[key] = {"status": "running", "operation": operation}
+        ai_settings.job_tasks[key] = asyncio.create_task(ai_settings.run_operation(key, operation, ensure_chat_router))
         return ai_settings_result({"status": "running"}, 202)
     except ValueError as exc:
         return ai_settings_result({"error": str(exc)}, 400)
@@ -1994,7 +1654,7 @@ async def api_ai_terminal(body: dict):
     command = f"cd -- {shlex.quote(str(paths.WORKSPACE))} && exec {shlex.quote(binary)}"
     script = '\n'.join(['on run argv', 'tell application "Terminal"', 'activate',
                         'do script (item 1 of argv)', 'end tell', 'return "opened"', 'end run'])
-    result = await _runtime_command_output("/usr/bin/osascript", "-e", script, command)
+    result = await ai_settings.command_output("/usr/bin/osascript", "-e", script, command)
     if result.strip() != "opened":
         return ai_settings_result({"error": "Could not open Terminal; check macOS automation permissions and try again"}, 400)
     return ai_settings_result({"ok": True})
@@ -2004,7 +1664,7 @@ async def api_ai_terminal(body: dict):
 async def api_ai_change(connection_id: str, body: dict):
     affected = connection_affected(connection_id)
     if (ai_backend.ACTIVE_CONNECTIONS[connection_id] or affected["pending_approvals"] or
-            _ai_jobs.get(connection_id, {}).get("status") == "running"):
+            ai_settings.jobs.get(connection_id, {}).get("status") == "running"):
         return ai_settings_result({"error": "Finish current turns, setup operations and pending approvals before changing this connection"}, 409)
     try:
         return ai_settings_result(ai_connections.change(connection_id, body))
@@ -2016,7 +1676,7 @@ async def api_ai_change(connection_id: str, body: dict):
 
 @app.post("/api/ai/connections/{connection_id}/disconnect", dependencies=[Depends(local_ai_settings)])
 async def api_ai_disconnect(connection_id: str):
-    if ai_backend.ACTIVE_CONNECTIONS[connection_id] or _ai_jobs.get(connection_id, {}).get("status") == "running":
+    if ai_backend.ACTIVE_CONNECTIONS[connection_id] or ai_settings.jobs.get(connection_id, {}).get("status") == "running":
         return ai_settings_result({"error": "Wait for this account's current turn or setup operation to finish"}, 409)
     try:
         connection = ai_connections.get(connection_id, connected=False)

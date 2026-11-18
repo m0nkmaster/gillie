@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from roosta import ai_settings
 from roosta import task_config
 from roosta import app as appmod
 from roosta.activity_log import ActivityLog
@@ -758,12 +759,12 @@ def test_worker_skill_preview_rejects_unsafe_documents(monkeypatch, tmp_path, pr
 
 
 def test_runtime_model_list_parsers():
-    cursor = appmod.parse_cursor_models(
+    cursor = opencode_ollama.parse_cursor_models(
         "Available models\n\n"
         "auto - Auto (default)\n"
         "gpt-5.6-sol-high - GPT-5.6 Sol 1M High\n"
     )
-    ollama = appmod.parse_ollama_models(
+    ollama = opencode_ollama.parse_ollama_models(
         "NAME ID SIZE MODIFIED\n"
         "qwen2.5-coder:3b old 1.9 GB 1 day ago\n"
         "qwen3.5:latest abc 6.6 GB 1 day ago\n"
@@ -783,7 +784,7 @@ def test_runtime_model_list_parsers():
         harness="opencode-ollama",
         model="qwen2.5-coder:3b",
     )
-    assert "cannot execute OpenCode tool calls" in appmod.runtime_unavailable_message(incompatible)
+    assert "cannot execute OpenCode tool calls" in ai_settings.runtime_unavailable_message(incompatible)
 
 
 def test_opencode_disables_reasoning_only_for_supported_qwen_models():
@@ -1032,9 +1033,9 @@ def test_runtime_options_list_every_harness_whatever_the_engine(monkeypatch):
     async def fake_output(*command, **_kwargs):
         return "gpt-5.6-sol-high - GPT\n" if "models" in command else ""
 
-    monkeypatch.setattr(appmod, "_runtime_command_output", fake_output)
+    monkeypatch.setattr(ai_settings, "command_output", fake_output)
     monkeypatch.setattr(appmod.ai_backend, "current", lambda path=None: "claude")
-    options = asyncio.run(appmod.available_runtime_options())
+    options = asyncio.run(ai_settings.available_runtime_options())
     by_id = {h["id"]: h for h in options["harnesses"]}
     assert options["backend"] == "claude"
     assert [h["label"] for h in options["harnesses"]] == ["Claude Code", "Cursor", "Ollama (OpenCode)"]

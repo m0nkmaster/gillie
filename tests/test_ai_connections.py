@@ -12,6 +12,7 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
+from roosta import ai_settings
 from roosta import board
 from roosta import task_config
 from roosta import ai_backend, ai_connections as connections, ai_runtime, app, chat, pi_agent
@@ -396,12 +397,12 @@ auth.write_text('{{}}')
 ''')
     binary.chmod(0o700)
     monkeypatch.setattr(ai_runtime, 'find', lambda runtime: str(binary) if runtime == 'pi' else '')
-    monkeypatch.setattr(app, '_ai_jobs', {})
+    monkeypatch.setattr(ai_settings, 'jobs', {})
     monkeypatch.setattr(app, 'chat_router', None)
     monkeypatch.setattr(app, 'load_tasks', lambda: [])
-    asyncio.run(app._ai_operation(first['id'], 'login'))
-    assert app._ai_jobs[first['id']]['status'] == ('error' if exit_code else 'success')
-    assert 'private-auth-output' not in json.dumps(app._ai_jobs)
+    asyncio.run(ai_settings.run_operation(first['id'], 'login'))
+    assert ai_settings.jobs[first['id']]['status'] == ('error' if exit_code else 'success')
+    assert 'private-auth-output' not in json.dumps(ai_settings.jobs)
     if not exit_code:
         run = ai_backend.prepare(first['id'], str(tmp_path))
         assert 'fake' in (Path(run.env['PI_CODING_AGENT_DIR']) / 'auth.json').read_text()
@@ -420,13 +421,13 @@ def test_openai_login_cancellation_reaps_process_and_closes_terminal(accounts, t
     binary.write_text(f'#!{sys.executable}\nimport os,time,pathlib\npathlib.Path({str(marker)!r}).write_text(str(os.getpid()))\ntime.sleep(60)\n')
     binary.chmod(0o700)
     monkeypatch.setattr(ai_runtime, 'find', lambda runtime: str(binary))
-    monkeypatch.setattr(app, '_ai_jobs', {})
+    monkeypatch.setattr(ai_settings, 'jobs', {})
     fds, openpty = [], os.openpty
     def record_terminal():
         pair = openpty(); fds.extend(pair); return pair
     monkeypatch.setattr(os, 'openpty', record_terminal)
     async def cancel():
-        task = asyncio.create_task(app._ai_operation(c['id'], 'login'))
+        task = asyncio.create_task(ai_settings.run_operation(c['id'], 'login'))
         try:
             async with asyncio.timeout(3):
                 while not marker.exists(): await asyncio.sleep(.01)
@@ -434,7 +435,7 @@ def test_openai_login_cancellation_reaps_process_and_closes_terminal(accounts, t
             task.cancel()
             with pytest.raises(asyncio.CancelledError): await task
     asyncio.run(cancel())
-    assert app._ai_jobs[c['id']]['status'] == 'interrupted'
+    assert ai_settings.jobs[c['id']]['status'] == 'interrupted'
     with pytest.raises(ProcessLookupError): os.kill(int(marker.read_text()), 0)
     for fd in fds:
         with pytest.raises(OSError): os.fstat(fd)
@@ -445,7 +446,7 @@ def test_openai_sign_ins_do_not_compete_for_browser_callback(accounts, monkeypat
     first, second = create(auth='cli'), create(auth='cli')
     monkeypatch.setattr(app, 'chat_router', None)
     monkeypatch.setattr(app, 'load_tasks', lambda: [])
-    monkeypatch.setattr(app, '_ai_jobs', {first['id']: {'operation':'login', 'status':'running'}})
+    monkeypatch.setattr(ai_settings, 'jobs', {first['id']: {'operation':'login', 'status':'running'}})
     response = asyncio.run(app.api_ai_operation({'id':second['id'], 'operation':'login'}))
     assert response.status_code == 400 and 'other OpenAI sign-in' in json.loads(response.body)['error']
 
@@ -562,9 +563,9 @@ def test_install_ssl_failure_reports_certificate_error(accounts, monkeypatch):
     def fail(runtime, root=None):
         raise urllib.error.URLError(ai_runtime.ssl.SSLError('certificate verify failed'))
     monkeypatch.setattr(ai_runtime, 'install', fail)
-    monkeypatch.setattr(app, '_ai_jobs', {})
-    asyncio.run(app._ai_operation('claude', 'install'))
-    job = app._ai_jobs['claude']
+    monkeypatch.setattr(ai_settings, 'jobs', {})
+    asyncio.run(ai_settings.run_operation('claude', 'install'))
+    job = ai_settings.jobs['claude']
     assert job['status'] == 'error' and 'certificates' in job['error']
 
 
@@ -734,7 +735,7 @@ def test_model_choices_validate_against_the_harness_list(accounts, tmp_path, mon
     create, _ = accounts
     claude, pi = create('anthropic', auth='system'), create('openai')
     fake_claude(monkeypatch)
-    check = lambda provider, model, key='', current='': asyncio.run(app.validate_model(provider, model, key, current))
+    check = lambda provider, model, key='', current='': asyncio.run(ai_settings.validate_model(provider, model, key, current))
     check('anthropic', 'opus@high', claude['id'])
     check('anthropic', 'claude-opus-5-5', claude['id'])
     with pytest.raises(ValueError, match="doesn't offer"):
@@ -980,7 +981,7 @@ def test_terminal_launch_quotes_paths_and_rejects_invalid_requests(accounts, tmp
     async def command(*args):
         seen.append(args)
         return 'opened\n'
-    monkeypatch.setattr(app, '_runtime_command_output', command)
+    monkeypatch.setattr(ai_settings, 'command_output', command)
     for runtime in ('claude', 'pi'):
         response = asyncio.run(app.api_ai_terminal({'id':runtime}))
         assert response.status_code == 200
@@ -1002,7 +1003,7 @@ def test_terminal_launch_handles_installation_and_automation_failure(accounts, m
     monkeypatch.setattr(app.sys, 'platform', 'darwin')
     async def fail(*args):
         return ''
-    monkeypatch.setattr(app, '_runtime_command_output', fail)
+    monkeypatch.setattr(ai_settings, 'command_output', fail)
     response = asyncio.run(app.api_ai_terminal({'id':'pi'}))
     assert response.status_code == 400 and b'automation permissions' in response.body
     monkeypatch.setattr(ai_runtime, 'INSTALLING', {'pi'})
@@ -1135,7 +1136,7 @@ def test_claude_detection_runs_before_the_board_and_starts_no_model(accounts, mo
     monkeypatch.setattr(app, '_start_chat_router', router)
     monkeypatch.setattr(app.runner, 'stop', stop)
     monkeypatch.setattr(app.agent, 'stop', stop)
-    monkeypatch.setattr(app, '_ai_job_tasks', {})
+    monkeypatch.setattr(ai_settings, 'job_tasks', {})
     async def run():
         async with app.lifespan(app.app):
             assert events == ['detect', 'runner', 'router']
