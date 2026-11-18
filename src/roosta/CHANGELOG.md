@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.2.0 - 2026-11-18
+
+- Roosta Engineer now improves your workspace exclusively. It drafts feedback for your review when a change belongs in the app.
+
 ## 0.1.3 - 2026-11-17
 
 - The Assistant chat no longer asks permission again and again for workspace changes you asked for, and it points at the approval button instead of asking "Approve?" as a question. Typing "go" while a card waits gets a one-line pointer to the button, not a fresh draft.

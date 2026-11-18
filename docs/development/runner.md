@@ -245,10 +245,7 @@ here.
   coarse interaction metadata and stores it in gitignored `cache/product-usage.jsonl`; it rejects
   item ids, titles and message text. `roosta usage --days 14` gives the roosta-engineer a
   compact evidence summary. Its deliveries and failures become Assistant board items, while
-  no-change passes stay quiet. Before each engineer pass the runner auto-commits any dirty
-  `.roosta/` tree so the agent never blocks on leftover work. The maintainer's interactive sessions
-  also ship dashboard changes directly, often the same day they hit the friction, so check `main`
-  (and `git log main..origin/main` for merged PRs) before building anything a chat asked for.
+  no-change passes stay quiet. The shipped skill edits workspace customisations and drafts product feedback for review.
 
 Named connections resolve the default once at execution, after the writer queue, and bind activity
 to that connection id. Missing/disconnected/untested connections wait with a Settings repair message;

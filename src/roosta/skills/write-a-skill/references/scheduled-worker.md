@@ -22,7 +22,7 @@ dwight: { body: m, tone: Tan, hair: parted/Charcoal, glasses: halfmoon }  # my-t
 - **Fit the job:** let the look say what the worker does. Reviewers, archivists and auditors get glasses; a senior or long-running job gets silver hair or `head: old`; a fast watcher gets something short and practical (buzzcut, bob); a creative job can get bold colour (idol Violet, natural Green). Comment each line `# <task id>, the <one-word job>`.
 - **Shirt is automatic:** the Office picks it from the role in the task id or skill name (`watch`/`support` Lookout, `tracker`/`incident` Detective, `gardener`, `learner`, `auditor`, `engineer`, digest/brief/review/triage Clerk, otherwise Worker). Choose a name with the right word so the role, and so the shirt and desk habits, fit.
 
-The vocabulary comes from the sprite layers vendored in the Roosta checkout (`roosta_repo` in `.roosta/engineer/config.yaml`, under `src/roosta/static/vendor/lpc/`). Before adding an unfamiliar value, `ls` there to confirm it: the server silently drops any look with a missing layer, and the worker falls back to a random male default.
+Use the listed sprite combinations. The Office falls back to its default look when a layer is missing.
 
 ## 3. Check
 

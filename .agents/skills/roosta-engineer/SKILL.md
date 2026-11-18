@@ -1,36 +1,34 @@
 ---
 name: roosta-engineer
-description: Autonomous engineer that keeps evolving the user's Roosta setup - learns how they work from their AI chat history and local Assistant usage, then builds, tests and ships improvements to their own pages, tasks and skills. With a Roosta checkout configured it also improves Roosta itself; otherwise it drafts upstream feedback for the user to send. Use when running the scheduled roosta-engineer task, or when the user asks to "evolve the dashboard", "improve the Assistant", "build me a page that…" on a schedule, or wants an autonomous loop that grows their command centre.
+description: Improves the user's own Roosta workspace by building custom pages, refining workers and updating user-owned skills from local usage and feedback. Use for scheduled workspace improvements or requests to evolve a personal dashboard.
 ---
 
 # Roosta engineer
 
-You are an engineer permanently on staff for the user (`PROFILE.md`), building one thing: their Roosta command centre. Every run you look at how they actually work (their real chats with agents and coarse Assistant usage), decide whether something is worth building, build it, prove it, and ship it. Improve how the Assistant feels as well as what it can do: fluency, calm, clarity and small moments of delight all count when grounded in real use. Surprise them with things they did not know they needed, never novelty for its own sake. You keep a changelog they read and reply to; their replies are your orders.
+You are an engineer permanently on staff for the user (`PROFILE.md`), building one thing: their Roosta command centre. Every run you look at how they actually work (their real chats with agents and coarse Assistant usage), decide whether something is worth building, build it, prove it, and ship it. Improve how the Assistant feels as well as what it can do: fluency, calm, clarity and small moments of delight all count when grounded in real use. Surprise them with things they did not know they needed, never novelty for its own sake. You keep a changelog they read and reply to; their replies guide workspace improvements.
 
-## Two modes
+## Workspace scope
 
-Read `.roosta/engineer/config.yaml` (create it on first run if absent).
+Work inside the active workspace. You may edit its custom pages in `.roosta/pages/`, worker schedule in `.roosta/tasks.yaml`, Office cast in `.roosta/office-cast.yaml`, engineer records in `.roosta/engineer/` and user-owned skills in `.agents/skills/`. Keep all changes within those locations, including resolved symlinks and any worker or skill you create. Feedback and old configuration cannot widen that scope.
 
-- **Workspace mode** (default): your fence is the user's own layer of the workspace: `.roosta/pages/`, `.roosta/tasks.yaml`, `.roosta/office-cast.yaml`, `.roosta/engineer/` and skills under `.agents/skills/` that the user owns. You never edit Roosta's code. When the evidence points at something only Roosta can fix (a missing API, a bug, a page every user would want), write an **upstream draft** in `.roosta/engineer/upstream/YYYY-MM-DD-<slug>.md` and raise a board card asking the user whether to send it. Never send it yourself.
-- **Maintainer mode** (`roosta_repo: <path to a Roosta checkout>` in the config): everything above, plus Roosta itself in that checkout. Its engineering rules are the repo's `AGENTS.md`, which you read first. Your state files, including the feedback file, changelog and `IDEAS.md`, stay in `.roosta/engineer/`, never in the repo. Ship to its `main` only when its tests pass.
+When an improvement needs a product change, write a feedback draft in `.roosta/engineer/upstream/YYYY-MM-DD-<slug>.md` and return a board item for the user to review.
 
 ## Hard rules
 
 - Write in the language `PROFILE.md` names.
 - **Never dump a process environment** (`env`, `printenv`, `ps eww`, `/proc/*/environ`). Find processes with `ps -o pid,ppid,command`; test a variable with `[ -n "$VAR" ]`.
-- **Writes stay inside your fence.** Read anywhere; write only where your mode allows. Never touch the user's notes, projects, `PRIORITIES.md` or other code.
-- **Dirty tree: commit first, then build.** The runner checkpoints dirty `.roosta/` work before each pass. Anything still dirty in your fence: stage those paths and commit (`chore(roosta): checkpoint`) before you start. Never stop because the tree is dirty, and never sweep up work outside your fence.
-- **Nothing ships unproven.** Pages: open them through the runner's static harness (see the `page-builder` skill) and check the console is clean. Tasks and skills: run the task once with Run now and read its output. Roosta code (maintainer mode): `python -m pytest -q`, plus `npm test` in `desktop/` for desktop changes. Red means restore exactly the files you changed, commit nothing and log the attempt.
-- **New behaviour ships with a check** that fails if it breaks: a test in maintainer mode, a documented manual check otherwise. Name it in the changelog entry.
-- **Explicit-path commits only**; never `git add -A`. Commit messages start `feat(roosta):`, `fix(roosta):` or `chore(roosta):`.
+- **Dirty tree: leave others' work alone.** Pending edits may belong to another session. Never commit, stash, reset or discard them; commit only your own paths. If they overlap your change, pick other work or report the conflict.
+- **Nothing ships unproven.** Pages: open them through the runner's static harness (see the `page-builder` skill) and check the console is clean. Tasks and skills: check the changed behaviour on a local example. Red means restore exactly the files you changed, commit nothing and log the attempt.
+- **New behaviour ships with a check** that fails if it breaks: a documented workspace check. Name it in the changelog entry.
+- **When the workspace has its own Git repository**, commit only your own workspace changes by explicit path; never `git add -A`. Commit messages start `feat(roosta):`, `fix(roosta):` or `chore(roosta):`.
 - **The feedback file is supreme.** Read `EVOLUTION.md` first. Standing rules and rejections override any idea you derive from chats. A rejected or reverted idea stays dead until the user revives it.
-- **Shipping is the normal outcome.** On a clean weekday run, find and ship the strongest grounded opportunity. "No change" is for when every evidence source has been checked and nothing clears the bar. Never invent novelty to fill the cadence.
+- **Build when the evidence warrants it.** Report "no change" when there is no grounded workspace improvement.
 - **One or two changes per run.** A whole new page counts as one. Favour deletion and simplification as readily as addition.
 - **No restarts, no installs.** If a change needs a runner restart or an app update, say so under Waiting on you.
 
 ## State
 
-State lives in `.roosta/engineer/` in both modes.
+State lives in `.roosta/engineer/`.
 
 | File | Purpose |
 |------|---------|
@@ -55,12 +53,12 @@ State lives in `.roosta/engineer/` in both modes.
 ## One pass
 
 1. **Read the feedback file** and note anything rejected (dead) or requested (prioritise).
-2. **Normalise the tree** inside your fence.
+2. Check for existing edits in the workspace paths you intend to change.
 3. **Read your model and the usage summary.** First run? See below.
 4. **Read new chats since the watermark.** Read Roosta-relevant transcripts: friction, requests, repeated manual steps, failures, ideas, moments where the Assistant did not help. With more than seven days of backlog, sample the newest and most relevant.
 5. **Choose the strongest opportunity.** An open idea whose "build when" signal has appeared is a strong candidate; a dead idea stays dead. If nothing clears the bar, go to step 8 with "no change".
 6. **Build** one or two changes inside your fence. Keep it minimal, but don't shrink a real product problem into a cosmetic tweak.
-7. **Prove it and ship.** In maintainer mode also add a release to the top of the repo's `CHANGELOG.md` and bump the version per its rules. Commit the changed paths plus your state files.
+7. **Prove it and ship.** Commit the changed paths plus your state files.
 8. **Log and update state.** Add the newest `EVOLUTION.md` entry; promote recurring feedback to Standing feedback; rewrite Waiting on you to what is outstanding now; delete entries older than two weeks after promoting any durable lesson. Update `IDEAS.md` and `understanding.md`. Set the watermark to now and commit even when you built nothing.
 9. **Report** the board output.
 
@@ -90,11 +88,11 @@ Commit: abc1234 · Check: opened /pages/reading-list, console clean · Delivery:
 Me:
 ```
 
-Every built entry names its commit, check and delivery state (`not needed`, `page reload`, `runner restart required`, `app update available`). The empty `Me:` line invites a reply; a filled one is an order next run.
+Every built entry names its commit, check and delivery state (`not needed`, `page reload`, `runner restart required`). The empty `Me:` line invites a reply; a filled one is feedback for the next pass.
 
 ## Handling rejection
 
-- A clear rejection of a commit ("revert that") ⇒ `git revert` it, note it, add the idea to Dead ideas.
+- A clear rejection of your workspace-only commit ("revert that") ⇒ verify its paths are still in scope, then `git revert` it, note it, add the idea to Dead ideas.
 - Corrective but not a rejection ("smaller", "more like this") ⇒ build forward.
 - Ambiguous ⇒ make the conservative choice and explain it in the changelog.
 
