@@ -17,17 +17,20 @@ document.getElementById("flavour").textContent = FLAVOURS[Math.floor(Math.random
 const status = document.getElementById("status");
 const retry = document.getElementById("retry");
 const repair = document.getElementById("repair");
+const workspace = document.getElementById("workspace");
 const logs = document.getElementById("logs");
 
 function setBusy(busy) {
   retry.disabled = busy;
   repair.disabled = busy;
+  workspace.disabled = busy;
   logs.disabled = busy;
 }
 
 window.assistantDesktop.onRecoveryStatus((update) => {
   status.textContent = update.message || "The Roosta runner is unavailable.";
   repair.hidden = !update.repairSuggested && repair.hidden;
+  workspace.hidden = !update.workspaceMissing;
   setBusy(Boolean(update.busy));
 });
 
@@ -42,6 +45,12 @@ repair.addEventListener("click", async () => {
   repair.hidden = false;
   setBusy(true);
   await window.assistantDesktop.repairRunner();
+});
+
+workspace.addEventListener("click", async () => {
+  setBusy(true);
+  const result = await window.assistantDesktop.chooseWorkspace();
+  if (!result.ok) setBusy(false);
 });
 
 logs.addEventListener("click", () => window.assistantDesktop.openLogs());

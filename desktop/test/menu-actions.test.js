@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -63,4 +64,39 @@ test("workspace setup asks for migration or adoption and treats Cancel as refusa
   assert.equal(dialogs[1].message, "Adopt this folder as your Roosta workspace?");
   assert.equal(dialogs[1].buttons[0], "Adopt folder");
   assert.equal(dialogs[1].buttons[dialogs[1].cancelId], "Cancel");
+});
+
+test("missing workspace recovery chooses and remembers an existing Roosta workspace", async (t) => {
+  const vm = require("node:vm");
+  const main = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
+  const source = main.slice(main.indexOf("async function chooseWorkspace("), main.indexOf("async function refreshAssistant("));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "roosta-choose-workspace-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const workspace = path.join(directory, "workspace");
+  fs.mkdirSync(path.join(workspace, ".roosta"), { recursive: true });
+  let selected = directory;
+  let recoveryMessage = "";
+  let saved;
+  const supervisor = {};
+  const choose = vm.runInNewContext(`${source}; chooseWorkspace`, {
+    CONFIG_FILE: "/config.json",
+    dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [selected] }) },
+    fs,
+    mainWindow: {},
+    path,
+    readJson: () => ({ host: "127.0.0.1" }),
+    runnerStatus: "ready",
+    showRecovery: (message) => { recoveryMessage = message; },
+    startRunner: async () => {},
+    supervisor,
+    writeJson: (_file, value) => { saved = value; },
+  });
+
+  assert.equal((await choose()).ok, false);
+  assert.match(recoveryMessage, /not a Roosta workspace/);
+  selected = workspace;
+  assert.equal((await choose()).ok, true);
+  assert.equal(supervisor.workspaceDir, workspace);
+  assert.equal(saved.host, "127.0.0.1");
+  assert.equal(saved.workspace, workspace);
 });

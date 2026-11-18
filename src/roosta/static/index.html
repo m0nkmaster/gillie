@@ -590,6 +590,7 @@
             const busy = t.status === 'running' || t.queued;
             const iv = intervalParts(t.interval);
             const daysMode = t.days_of_week?.length ? 'specific' : t.weekdays_only ? 'weekdays' : 'every';
+            const defaultConnection = (runtimeOptions.connections || []).find(c => c.id === runtimeOptions.default_connection);
             return `
                 <form class="task-settings" data-task-id="${id}" data-connection="${esc(t.connection || '')}" novalidate>
                     <div class="settings-grid">
@@ -655,11 +656,10 @@
                         <div class="runtime-field wide">
                             <label for="connection-${id}">AI connection</label>
                             <select class="form-select" id="connection-${id}" name="connection" ${busy ? 'disabled' : ''}>
-                              <option value="">${t.connection ? 'Use previous setup' : 'Keep existing setup'}</option>
-                              <option value="default" ${t.connection === 'default' ? 'selected' : ''}>Use the connected default</option>
+                              <option value="" ${t.connection ? '' : 'selected'}>Default${defaultConnection ? ` · ${esc(defaultConnection.label)}` : ' · choose one in Settings'}</option>
                               ${(runtimeOptions.connections || []).map(c => `<option value="${esc(c.id)}" ${c.id === t.connection ? 'selected' : ''} ${!c.connected || !c.tested ? 'disabled' : ''}>${esc(c.label)} · ${esc(c.billing)}${!c.connected ? ' (disconnected)' : !c.tested ? ' (test first)' : ''}</option>`).join('')}
                             </select>
-                            <span class="hint">Changing connection starts a new execution session; previous settings and history are retained. <a href="/settings">Manage connections</a></span>
+                            <span class="hint">Default follows Settings and adds nothing to tasks.yaml. Choosing an account pins this worker to it. <a href="/settings">Manage connections</a></span>
                         </div>
                         <div class="runtime-field wide" data-model-field hidden>
                             <label for="cmodel-${id}">Model</label>
@@ -682,7 +682,7 @@
         }
 
         function workerModel(t) {
-            const id = t.connection === 'default' ? runtimeOptions.default_connection : t.connection;
+            const id = t.connection || runtimeOptions.default_connection;
             const connection = (runtimeOptions.connections || []).find(c => c.id === id);
             return connection ? (connection.provider === 'anthropic' ? t.claude_model : t.model) || '' : '';
         }
@@ -692,7 +692,7 @@
             const field = form.querySelector('[data-model-field]');
             const select = form.elements.connection_model;
             const effort = form.elements.connection_effort;
-            const connection = form.elements.connection?.value || form.dataset.connection;
+            const connection = form.elements.connection?.value || runtimeOptions.default_connection;
             if (!field || !select || !connection) { if (field) field.hidden = true; if (effort) effort.closest('[data-effort-field]').hidden = true; return; }
             try {
                 const data = await roostaModelPicker.load(connection, {refresh});

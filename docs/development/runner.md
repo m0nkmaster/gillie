@@ -173,7 +173,7 @@ Add to the workspace's `.roosta/tasks.yaml`:
     unrestricted: true       # optional: removes profile denials; named connections still protect runtime paths
     idle_timeout: 300       # optional: silence limit; defaults to 300 Agent / 1800 Ollama
     max_timeout: 3600       # optional: absolute runtime ceiling (default TASK_MAX_TIMEOUT)
-    connection: default     # or a tested named connection id; legacy harness/model fields remain supported
+    connection: account-id  # optional: pin a tested named connection; omitted follows the default
     model: composer-2  # optional: Cursor or Ollama model; otherwise CURSOR_MODEL, else Cursor's default
     claude_model: opus      # optional: Claude Code model; otherwise CLAUDE_MODEL
     dir: /path/to/run/in    # harness workspace and process working directory
@@ -265,6 +265,6 @@ here.
   compact evidence summary. Its deliveries and failures become Assistant board items, while
   no-change passes stay quiet. The shipped skill edits workspace customisations and drafts product feedback for review.
 
-Named connections resolve the default once at execution, after the writer queue, and bind activity
+Workers with no `connection` resolve the default once at execution, after the writer queue, and bind activity
 to that connection id. Missing/disconnected/untested connections wait with a Settings repair message;
 manual triggers are cleared on the same auth gate as legacy tasks. See [AI harnesses](harnesses.md).

@@ -125,6 +125,12 @@ function missingRoosta() {
   return error;
 }
 
+function missingWorkspace(workspaceDir) {
+  const error = new Error(`Workspace not found: ${workspaceDir}`);
+  error.code = "MISSING_WORKSPACE";
+  return error;
+}
+
 function migrationSources(workspaceDir) {
   return fs.readdirSync(workspaceDir, { withFileTypes: true })
     .filter((entry) => entry.name.startsWith(".") && entry.name !== ".roosta" && entry.isDirectory())
@@ -187,6 +193,10 @@ class RunnerSupervisor extends EventEmitter {
     }
     if (!this.roosta) throw missingRoosta();
     await this.prepareWorkspace();
+    if (!fs.statSync(this.workspaceDir, { throwIfNoEntry: false })?.isDirectory()
+        || !fs.statSync(path.join(this.workspaceDir, ".roosta"), { throwIfNoEntry: false })?.isDirectory()) {
+      throw missingWorkspace(this.workspaceDir);
+    }
     return this._launch();
   }
 

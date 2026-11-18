@@ -133,9 +133,9 @@ models and local Ollama models run through Pi. Anthropic models on OpenRouter ar
 an Anthropic connection explicitly. Roosta never automatically changes an account or billing route.
 
 Chats retain their account when the default changes. Model changes in Settings apply to subsequent
-turns on that provider; account and model controls live in Settings. Workers can use a
-named connection or `connection: default`; existing Cursor and OpenCode/Ollama settings remain
-until you explicitly choose a replacement. Disconnect lists affected chats, approvals and workers.
+turns on that provider; account and model controls live in Settings. Workers follow the connected
+default when `connection` is omitted; choosing a named connection pins only that worker.
+Disconnect lists affected chats, approvals and workers.
 **Install / Update to latest** downloads the publisher's latest release and verifies its checksum,
 preserving other CLI installs. Roosta runs the newest installed copy of Claude Code or Pi, preferring
 your own installation when versions match. Updates are explicit and wait for active AI turns to finish;

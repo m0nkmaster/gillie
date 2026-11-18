@@ -5,6 +5,8 @@ See [Assistant contracts](assistant.md) and [Office rendering](office.md) for pa
 
 ## Shared shell and components
 
+- **Worker AI selection** uses the connected default when `connection` is absent. The Workers page shows one default choice that writes nothing to `tasks.yaml`; only choosing a named account persists a connection id. There is no legacy “keep/use previous setup” choice.
+
 - **`static/nav-count.js`** - The one shared header. Every page, shipped or custom, carries an empty
   `<header class="workspace-header navbar" aria-label="Workspace"></header>` and loads this script, which
   renders the brand, the nav (shipped pages, then custom pages), the Assistant count and, top right, the

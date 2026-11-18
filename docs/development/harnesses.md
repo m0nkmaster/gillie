@@ -104,10 +104,11 @@ use `dontAsk`, including the legacy path (the previous implementation incorrectl
 `SessionMap` reads old string values and writes `{session_id, connection}` records. Existing legacy
 sessions retain their engine; new chats bind the connected default once. Changing the default never
 moves an existing chat or approval. Explicit chat migration retains rendered history and topic summary,
-rotates execution context, and is rejected during a live turn or pending approval. Worker YAML accepts
-`connection: default` or a stable id, keeping legacy harness/model fields for explicit rollback. The
+rotates execution context, and is rejected during a live turn or pending approval. Worker YAML omits
+`connection` to follow the current default and stores a stable id only for an explicit account pin. The
 runner resolves the default once after waiting for its writer slot and stores the concrete connection
-id on activity. Disconnected or untested accounts do not fall back to another account.
+id on activity. An old `connection: default` is read as omitted. Disconnected or untested accounts do
+not fall back to another account.
 
 The disclosed setup probe uses a temporary file with a random value and requires both a successful
 read-tool result and an assistant response containing it. It does not load workspace MCP or skills.
@@ -153,7 +154,7 @@ backend API and saved selection remain for compatibility; new selections use nam
   task output in a reasoning event and emit no assistant text. Timed-out harnesses run in their own
   process group so their OpenCode children are killed with the Ollama wrapper.
 
-- **The legacy backend API** (`POST /api/ai-backend`) retains the old Cursor/Claude default for unbound legacy chats and tasks without a named connection or explicit `harness:`. Existing schedules with explicit harnesses ignore it. It is persisted in gitignored `cache/ai-backend.json`,
+- **The legacy backend API** (`POST /api/ai-backend`) applies only when no named default is configured. It retains the old Cursor/Claude default for unbound legacy chats and tasks without an explicit `harness:`; explicit legacy harnesses ignore it. It is persisted in gitignored `cache/ai-backend.json`,
   with `AI_BACKEND` (process environment, then workspace `.env`) as the fallback, and is read at
   the start of each run, so no restart is needed. Claude
   runs `claude --print --output-format stream-json --verbose --permission-mode dontAsk --settings

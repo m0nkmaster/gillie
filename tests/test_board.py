@@ -2315,7 +2315,10 @@ def test_skill_runner_selects_connection_per_task():
     assert 'name="harness"' not in html
     assert "fetch('/api/runtime-options')" in html
     assert "body.connection = f.connection.value" in html
-    assert "Keep existing setup" in html
+    assert "Keep existing setup" not in html
+    assert "Use previous setup" not in html
+    assert "Use the connected default" not in html
+    assert "Default follows Settings and adds nothing to tasks.yaml" in html
 
 
 def test_skill_runner_tasks_are_sortable_alphabetical_by_default():

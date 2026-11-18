@@ -50,7 +50,7 @@ class TaskConfig:
     dir: str = str(paths.WORKSPACE)
     harness: str = CURSOR_HARNESS  # cursor, claude or opencode-ollama; see resolve_harness
     model: str = ""  # Cursor or Ollama model; empty means CURSOR_MODEL, else the harness's own default
-    connection: str = ""    # stable named connection id; empty retains legacy selection
+    connection: str = ""    # stable named connection id; empty follows the connected default
     claude_model: str = ""    # Claude Code model; empty means CLAUDE_MODEL
     run_at: str = ""          # HH:MM local time; run once per day at this time
     weekdays_only: bool = False  # skip Saturday and Sunday when True
@@ -77,7 +77,7 @@ class TaskState:
     custom_description: str = ""
     harness: str = CURSOR_HARNESS
     model: str = ""
-    connection: str = ""    # stable named connection id; empty retains legacy selection
+    connection: str = ""    # stable named connection id; empty follows the connected default
     claude_model: str = ""
     run_at: str = ""
     weekdays_only: bool = False
@@ -459,6 +459,9 @@ def load_tasks() -> list[TaskConfig]:
             continue
         working_dir = t.get("dir", str(paths.WORKSPACE))
         custom_description = str(t.get("description", "") or "").strip()
+        connection = str(t.get("connection") or "")
+        if connection == "default":  # Read old files without keeping the sentinel alive.
+            connection = ""
         tasks.append(TaskConfig(
             id=t["id"],
             skill=t["skill"],
@@ -468,9 +471,8 @@ def load_tasks() -> list[TaskConfig]:
             custom_description=custom_description,
             interval=t.get("interval", 1800),
             dir=working_dir,
-            harness="connection" if t.get("connection") else resolve_harness(t.get("harness")),
-            connection=(str(t.get("connection") or "") or
-                        ("default" if not t.get("harness") and ai_backend.default_connection() else "")),
+            harness="connection" if connection or ai_backend.default_connection() else resolve_harness(t.get("harness")),
+            connection=connection,
             model=str(t.get("model", "") or ""),
             claude_model=str(t.get("claude_model", "") or ""),
             run_at=t.get("run_at", ""),

@@ -92,7 +92,7 @@
     button.primary { background: #ff8a2a; border-color: transparent; color: #1a0b03; font-weight: 600; }
     button.primary:hover { filter: brightness(1.08); }
     button:disabled { opacity: .5; cursor: wait; }
-    #repair[hidden] { display: none; }
+    #repair[hidden], #workspace[hidden] { display: none; }
     @media (prefers-reduced-motion: reduce) {
       .hero::before, .hero img, .statusline .dot { animation: none; }
     }
@@ -110,6 +110,7 @@
     </div>
     <div class="actions">
       <button class="primary" id="retry">Retry</button>
+      <button class="primary" id="workspace" hidden>Choose Workspace…</button>
       <button id="repair" hidden>Set up or repair dashboard</button>
       <button id="logs">View logs</button>
     </div>

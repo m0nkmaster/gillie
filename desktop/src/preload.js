@@ -4,6 +4,7 @@ if (globalThis.location.protocol === "file:") {
   contextBridge.exposeInMainWorld("assistantDesktop", {
     retryRunner: () => ipcRenderer.invoke("runner-retry"),
     repairRunner: () => ipcRenderer.invoke("runner-repair"),
+    chooseWorkspace: () => ipcRenderer.invoke("workspace-choose"),
     openLogs: () => ipcRenderer.send("logs-open"),
     readLogs: () => ipcRenderer.invoke("logs-read"),
     copyLogs: () => ipcRenderer.invoke("logs-copy"),

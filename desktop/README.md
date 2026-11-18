@@ -18,6 +18,7 @@ without requiring Git or Python, and never automatically adopt a non-empty unrel
 - Offers Restart Roosta from both the macOS app menu and menu-bar icon
 - Shows latest skill output and recent run history in View Logs; runner diagnostics stay secondary
 - Restarts a crashed runner twice, then stops the crash loop and reports it
+- Reports a missing saved workspace and lets you choose another existing Roosta workspace
 - Reuses a healthy runner already listening on `127.0.0.1:7667`
 
 The app does not launch at login. Quitting it stops only a runner process that it started.

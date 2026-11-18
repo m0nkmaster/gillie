@@ -241,15 +241,15 @@ def test_checksum_failure_preserves_existing_runtime(tmp_path, monkeypatch):
     assert destination.read_text() == 'working'
 
 
-def test_task_default_and_explicit_connections_preserve_legacy_fields(accounts, tmp_path, monkeypatch):
+def test_task_default_is_implicit_and_supersedes_legacy_fields(accounts, tmp_path, monkeypatch):
     create, _ = accounts
     c=create(); connections.update(c['id'],tested=True); connections.set_default(c['id'])
     tasks=tmp_path/'tasks.yaml'
     tasks.write_text('tasks:\n  - id: new\n    skill: actor\n  - id: old\n    skill: actor\n    harness: cursor\n    model: old-model\n')
     monkeypatch.setattr(app.paths,'TASKS_FILE',tasks)
     loaded=task_config.load_tasks()
-    assert loaded[0].connection=='default' and loaded[0].harness=='connection'
-    assert loaded[1].connection=='' and loaded[1].harness=='cursor'
+    assert loaded[0].connection=='' and loaded[0].harness=='connection'
+    assert loaded[1].connection=='' and loaded[1].harness=='connection'
     task_config.update_task_fields(tasks,'old',{'connection':c['id']})
     assert 'harness: cursor' in tasks.read_text() and 'model: old-model' in tasks.read_text()
 
@@ -811,6 +811,7 @@ def test_worker_settings_write_the_connection_model_field(accounts, tmp_path, mo
     from test_runner import make_runner
     create, _ = accounts
     claude, pi = create('anthropic', auth='system'), create('openai')
+    connections.set_default(pi['id'])
     tasks_file = tmp_path / 'tasks.yaml'
     tasks_file.write_text('tasks:\n  - id: local\n    skill: skill\n')
     task = task_config.TaskConfig(id='local', skill='skill')
@@ -818,6 +819,9 @@ def test_worker_settings_write_the_connection_model_field(accounts, tmp_path, mo
     runner._tasks = runner._load_tasks()
     runner._states[task.id] = runner._load_state(task)
     runner._triggers[task.id] = asyncio.Event()
+    runner.set_settings('local', {'connection_model': 'gpt-5-mini'})
+    assert '    model: gpt-5-mini' in tasks_file.read_text()
+    assert 'connection:' not in tasks_file.read_text()
     runner.set_settings('local', {'connection': claude['id'], 'connection_model': 'haiku'})
     assert 'claude_model: haiku' in tasks_file.read_text()
     runner.set_settings('local', {'connection': pi['id'], 'connection_model': 'gpt-5-mini'})

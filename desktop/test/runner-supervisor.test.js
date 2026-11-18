@@ -74,6 +74,25 @@ test("the runner launches the installed roosta command, preferring the uv tool p
   assert.equal(findRoosta("/home/z", () => false), null);
 });
 
+test("a missing source workspace is reported before spawning the runner", async (t) => {
+  const { RunnerSupervisor } = require("../src/runner-supervisor");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "roosta-missing-workspace-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  for (const name of ["gone", "ordinary-folder"]) {
+    const workspace = path.join(directory, name);
+    if (name === "ordinary-folder") fs.mkdirSync(workspace);
+    const runner = new RunnerSupervisor({ workspaceDir: workspace, logFile: path.join(directory, `${name}.log`), roosta: "/bin/true" });
+    runner.isHealthy = async () => false;
+
+    await assert.rejects(runner.start(), (error) => {
+      assert.equal(error.code, "MISSING_WORKSPACE");
+      assert.equal(error.message, `Workspace not found: ${workspace}`);
+      return true;
+    });
+    assert.equal(runner.child, null);
+  }
+});
+
 test("bundled first launch initialises without installing external tools", async () => {
   const fs = require("node:fs");
   const os = require("node:os");

@@ -21,11 +21,12 @@ const { buildSkillLogs, formatSkillLogs } = require("./skill-logs");
 
 const BASE_URL = "http://127.0.0.1:7667"; // R-O-O-S on a phone keypad
 const NO_CACHE_HEADERS = "Cache-Control: no-cache, no-store, must-revalidate\nPragma: no-cache\n";
+const CONFIG_FILE = path.join(os.homedir(), ".config", "roosta", "config.json");
 // SECURITY-REVIEW: the workspace comes from ROOSTA_WORKSPACE (development), else the one
 // `roosta init` last recorded, else ~/workspace. Runner commands stay fixed and shell-free.
 function configuredWorkspace() {
   try {
-    const config = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "roosta", "config.json"), "utf8"));
+    const config = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
     return typeof config.workspace === "string" && config.workspace ? config.workspace : null;
   } catch {
     return null;
@@ -266,7 +267,7 @@ function openNoticeTarget(notice) {
   if (route) showPage(route);
 }
 
-function showRecovery(message, repairSuggested = false, reveal = true) {
+function showRecovery(message, repairSuggested = false, reveal = true, workspaceMissing = false) {
   lastRunnerFailure = message;
   runnerStatus = "stopped";
   updateTray();
@@ -274,6 +275,7 @@ function showRecovery(message, repairSuggested = false, reveal = true) {
     mainWindow.webContents.send("recovery-status", {
       message,
       repairSuggested,
+      workspaceMissing,
       busy: false,
     });
   });
@@ -444,7 +446,7 @@ async function pollDashboard() {
       try {
         await supervisor.start();
       } catch (error) {
-        showRecovery(error.message, error.code === "MISSING_ENVIRONMENT");
+        showRecovery(error.message, error.code === "MISSING_ENVIRONMENT", true, error.code === "MISSING_WORKSPACE");
       }
     }
   }
@@ -462,7 +464,7 @@ async function startRunner() {
   try {
     await supervisor.start();
   } catch (error) {
-    showRecovery(error.message, error.code === "MISSING_ENVIRONMENT");
+    showRecovery(error.message, error.code === "MISSING_ENVIRONMENT", true, error.code === "MISSING_WORKSPACE");
   }
 }
 
@@ -478,8 +480,31 @@ async function restartRunner() {
       showPage("/assistant");
     }
   } catch (error) {
-    showRecovery(error.message, error.code === "MISSING_ENVIRONMENT");
+    showRecovery(error.message, error.code === "MISSING_ENVIRONMENT", true, error.code === "MISSING_WORKSPACE");
   }
+}
+
+async function chooseWorkspace() {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Choose Roosta workspace",
+    properties: ["openDirectory"],
+  });
+  if (result.canceled) return { ok: false, canceled: true };
+  const workspaceDir = path.resolve(result.filePaths[0]);
+  let valid = false;
+  try {
+    valid = fs.statSync(path.join(workspaceDir, ".roosta"), { throwIfNoEntry: false })?.isDirectory();
+  } catch {
+    // The selected folder may not be readable.
+  }
+  if (!valid) {
+    showRecovery("That folder is not a Roosta workspace. Choose a folder containing .roosta.", false, true, true);
+    return { ok: false };
+  }
+  supervisor.workspaceDir = workspaceDir;
+  writeJson(CONFIG_FILE, { ...readJson(CONFIG_FILE, {}), workspace: workspaceDir });
+  await startRunner();
+  return { ok: runnerStatus === "ready" };
 }
 
 async function refreshAssistant() {
@@ -558,6 +583,10 @@ function registerIpc() {
       showRecovery(error.message, true);
       return { ok: false, error: error.message };
     }
+  });
+  ipcMain.handle("workspace-choose", async (event) => {
+    requireControlPage(event, ["recovery.html"]);
+    return chooseWorkspace();
   });
   ipcMain.handle("logs-read", async (event) => {
     requireControlPage(event, ["logs.html"]);

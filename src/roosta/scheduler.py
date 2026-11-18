@@ -673,6 +673,8 @@ class TaskRunner:
                 raise ValueError("Choose a model")
             current = values.get("connection", "" if "connection" in remove else state.connection)
             if not current:
+                current = "default" if ai_backend.default_connection() else ""
+            if not current:
                 raise ValueError("Choose an AI connection before choosing its model")
             provider = ai_connections.get("" if current == "default" else current, connected=False)["provider"]
             model_field = "claude_model" if provider == "anthropic" else "model"
@@ -699,6 +701,8 @@ class TaskRunner:
                 raise RuntimeError(str(exc)) from exc
         if "connection" in values or "connection" in remove:
             state.connection = values.get("connection", "")
+            if state.connection or ai_backend.default_connection():
+                state.harness = "connection"
         for key in ("model", "claude_model"):
             if key in values or key in remove:
                 setattr(state, key, values.get(key, ""))
@@ -1013,7 +1017,7 @@ class TaskRunner:
                     self._cancelled.discard(task_id)
                     self._triggers[task_id].clear()
                 else:
-                    if task.connection == "default" or (task.harness == "connection" and not task.connection):
+                    if task.harness == "connection" and not task.connection:
                         # Bind once after the writer queue, before activity and execution.
                         task = replace(task, connection=ai_connections.get(connected=False)["id"])
                     source = "manual" if self._triggers[task_id].is_set() else "scheduled"

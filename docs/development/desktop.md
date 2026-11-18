@@ -18,6 +18,7 @@ keep stale nav.
 - View Logs leads with each task's latest skill output plus recent run history. Raw Python/uvicorn
   output is secondary under a collapsed Runner diagnostics section.
 - The app retries a crashed runner twice with backoff, then stops the crash loop and reports it.
+- A missing saved workspace is reported before launch; recovery can choose and remember another existing Roosta workspace, then retry automatically.
 - **Never enable a dev reloader without `reload_excludes` for runtime state.** Tasks write
   `.roosta/state/cache/*.json` and `.roosta/state/assistant/*.json`; watching those outputs can
   create a restart loop. The current `roosta start` and supervised desktop launch do not enable

@@ -2,6 +2,11 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.4.0 - 2026-11-18
+
+- If the saved workspace has moved or been deleted, Roosta now says **Workspace not found** and lets you choose another workspace instead of reporting runner exit code `-2`.
+- Workers now follow the connected default without writing a `connection` setting. Choosing a named account is the only action that pins a worker, and the ambiguous previous-setup choices are gone.
+
 ## 0.3.1 - 2026-11-18
 
 - **Back to Pulse** on the full-screen constellation now returns to the Pulse page straight away, instead of doing nothing until you had selected a project.

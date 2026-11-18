@@ -679,6 +679,7 @@ def test_shipped_tasks_yaml_flags_are_real_booleans():
     from roosta import paths
     flags = ("weekdays_only", "writer", "allow_git_push", "unrestricted", "sensor")
     for task in yaml.safe_load((paths.CORE_SKILLS_DIR / "setup" / "references" / "starter-tasks.yaml").read_text())["tasks"]:
+        assert "connection" not in task
         for flag in flags:
             assert isinstance(task.get(flag, False), bool), (task["id"], flag)
 
