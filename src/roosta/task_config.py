@@ -151,6 +151,33 @@ def skill_description(skill: str, working_dir: str | Path) -> str:
     return ""
 
 
+# The dashboard invokes these core skills itself; putting one on a schedule would be a mistake.
+DASHBOARD_SKILLS = frozenset({"actor", "sender"})
+
+
+def workspace_skills() -> list[str]:
+    """Names of the skills this workspace holds, from its own skill roots only."""
+    names: set[str] = set()
+    for root in (paths.WORKSPACE / ".agents" / "skills", paths.WORKSPACE / ".claude" / "skills",
+                 paths.WORKSPACE / ".cursor" / "skills"):
+        try:
+            entries = list(root.iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            if (re.fullmatch(r"[A-Za-z0-9._-]{1,100}", entry.name) and not entry.name.startswith(".")
+                    and (entry / "SKILL.md").is_file()):
+                names.add(entry.name)
+    return sorted(names, key=str.lower)
+
+
+def unscheduled_skills(tasks) -> list[dict]:
+    """Workspace skills no task runs, with their own descriptions, for the Workers page."""
+    scheduled = {t.skill for t in tasks}
+    return [{"skill": name, "description": skill_description(name, paths.WORKSPACE)}
+            for name in workspace_skills() if name not in scheduled and name not in DASHBOARD_SKILLS]
+
+
 def runtime_model_key(harness: str) -> str:
     """The tasks.yaml field holding the model for this harness.
 

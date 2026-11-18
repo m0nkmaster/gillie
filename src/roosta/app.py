@@ -82,7 +82,9 @@ from roosta.task_config import (
     load_tasks,
     load_tasks_map,
     skill_files,
+    unscheduled_skills,
     valid_runtime,
+    workspace_skills,
 )
 from roosta.pulse import build_pulse, markdown_title, project_brief, review_project
 from roosta.usage import UsageStore
@@ -681,15 +683,35 @@ async def api_task_skill(task_id: str):
     task = load_tasks_map().get(task_id)
     if task is None:
         return JSONResponse({"error": "Worker not found"}, status_code=404)
-    files = skill_files(task.skill, task.dir)
+    return skill_preview(task.skill, task.dir)
+
+
+def skill_preview(skill: str, working_dir) -> JSONResponse:
+    files = skill_files(skill, working_dir)
     if not files:
         return JSONResponse({"error": "SKILL.md not found"}, status_code=404)
     candidate = files[0]
     try:
-        _, content, _ = read_document(candidate.parent.parent, f"{task.skill}/SKILL.md")
+        _, content, _ = read_document(candidate.parent.parent, f"{skill}/SKILL.md")
     except (OSError, ValueError):
         return JSONResponse({"error": "SKILL.md could not be previewed; it must be UTF-8 Markdown within its skill root and under 2 MB"}, status_code=400)
-    return JSONResponse({"skill": task.skill, "content": content}, headers={"Cache-Control": "no-store"})
+    return JSONResponse({"skill": skill, "content": content}, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/skills/unscheduled")
+async def api_unscheduled_skills():
+    """Workspace skills that no worker runs yet, so the Workers page can offer to schedule them."""
+    tasks = load_tasks_map().values()
+    skills = await asyncio.to_thread(unscheduled_skills, tasks)
+    return JSONResponse({"skills": skills}, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/skills/{skill}/skill")
+async def api_workspace_skill(skill: str):
+    """Preview one of the workspace's own skills; global and unknown names are refused."""
+    if skill not in await asyncio.to_thread(workspace_skills):
+        return JSONResponse({"error": "Skill not found in this workspace"}, status_code=404)
+    return skill_preview(skill, paths.WORKSPACE)
 
 
 @app.post("/api/tasks/{task_id}/runtime")

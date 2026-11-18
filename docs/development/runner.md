@@ -225,6 +225,13 @@ vault Markdown through `documents`), and wrap the final output in `<task-output>
   resolved-symlink, UTF-8 and 2 MB checks within the selected skill root. The native dialog
   renders sanitised Markdown, including frontmatter as YAML code, and closes with Close or Escape.
 
+- **Unscheduled skills sit below the workers.** `GET /api/skills/unscheduled` lists skills in the
+  selected workspace's own `.agents`, `.claude` and `.cursor` skill roots that no task names, with
+  their descriptions. Global and core-only skills are excluded, as are the dashboard-invoked `actor`
+  and `sender`. `GET /api/skills/{name}/skill` previews only those workspace skills, with the same
+  document checks. **Schedule** opens the hire chat with the request prefilled, never sent. The
+  page reloads the list when the set of scheduled skills changes and every 30s.
+
 ## AI activity feed
 
 `ActivityLog` in `activity_log.py` (the `app.activity` instance) records every scheduled or manual skill run the dashboard spawns:

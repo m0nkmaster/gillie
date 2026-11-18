@@ -736,6 +736,53 @@ def test_worker_skill_preview_uses_runner_lookup_order(monkeypatch, tmp_path):
     assert asyncio.run(appmod.api_task_skill("unknown")).status_code == 404
 
 
+def test_unscheduled_skills_lists_workspace_skills_no_worker_runs(monkeypatch, tmp_path):
+    workspace = tmp_path / "vault"
+    monkeypatch.setattr(appmod.paths, "WORKSPACE", workspace)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    monkeypatch.setattr(appmod.paths, "CORE_SKILLS_DIR", tmp_path / "core")
+    for root, name in [(".agents/skills", "daily-brief"), (".agents/skills", "Skill-Auditor"),
+                       (".claude/skills", "write-a-skill"), (".agents/skills", "actor"),
+                       (".agents/skills", "sender"), (tmp_path / "home/.agents/skills", "global-only"),
+                       (tmp_path / "core", "core-only")]:
+        skill = (workspace / root if isinstance(root, str) else root) / name / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text(f"---\nname: {name}\ndescription: Does {name}.\n---\n")
+    (workspace / ".agents/skills/no-skill-file").mkdir()
+    (workspace / ".agents/skills/.hidden").mkdir()
+    (workspace / ".agents/skills/.hidden/SKILL.md").write_text("---\nname: hidden\n---\n")
+    task = task_config.TaskConfig(id="brief", skill="daily-brief", dir=str(workspace))
+    monkeypatch.setattr(appmod, "load_tasks_map", lambda: {task.id: task})
+
+    response = asyncio.run(appmod.api_unscheduled_skills())
+
+    assert response.headers["cache-control"] == "no-store"
+    assert json.loads(response.body) == {"skills": [
+        {"skill": "Skill-Auditor", "description": "Does Skill-Auditor."},
+        {"skill": "write-a-skill", "description": "Does write-a-skill."},
+    ]}
+    preview = asyncio.run(appmod.api_workspace_skill("write-a-skill"))
+    assert preview.status_code == 200
+    assert json.loads(preview.body)["content"].startswith("---\nname: write-a-skill")
+    for refused in ("global-only", "core-only", "no-skill-file", "../vault", ".hidden"):
+        assert asyncio.run(appmod.api_workspace_skill(refused)).status_code == 404
+
+
+def test_workspace_skill_preview_rejects_symlinks_outside_the_skill_root(monkeypatch, tmp_path):
+    monkeypatch.setattr(appmod.paths, "WORKSPACE", tmp_path)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    outside = tmp_path / "private.md"
+    outside.write_text("must not be exposed")
+    skill = tmp_path / ".agents/skills/leaky/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.symlink_to(outside)
+
+    response = asyncio.run(appmod.api_workspace_skill("leaky"))
+
+    assert response.status_code == 400
+    assert "content" not in json.loads(response.body)
+
+
 @pytest.mark.parametrize("problem", ["symlink", "large", "encoding", "traversal"])
 def test_worker_skill_preview_rejects_unsafe_documents(monkeypatch, tmp_path, problem):
     task = task_config.TaskConfig(id="worker", skill="preview-test", dir=str(tmp_path))

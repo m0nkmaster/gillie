@@ -274,6 +274,13 @@
         }
         .empty-state { color: var(--console-tertiary); text-align: center; padding: 2rem; font-size: .8rem; }
         .refresh-note { color: var(--console-tertiary); font-size: .75rem; margin-top: .6rem; }
+        /* Workspace skills no worker runs: visible beside the workers, one click from a schedule. */
+        .unscheduled-panel { margin-top: 1.5rem; }
+        .unscheduled-row { display: flex; align-items: center; gap: .9rem; }
+        .unscheduled-text { min-width: 0; flex: 1; }
+        .unscheduled-text .task-skill-name { color: var(--console-text); }
+        .unscheduled-text .task-skill-name::before { content: none; }
+        .unscheduled-desc { color: var(--console-tertiary); font-size: .75rem; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
         /* --- activity rail: one window onto every AI spawn --- */
         .activity {
@@ -420,6 +427,16 @@
         </div>
         </section>
         <div class="refresh-note">Auto-refreshes every 5s &middot; click a row for detail</div>
+
+        <section class="card runner-panel unscheduled-panel" id="unscheduled" aria-labelledby="unscheduled-title" hidden>
+            <div class="card-header">
+                <div class="head-left">
+                    <h2 class="card-title" id="unscheduled-title">Not on a schedule</h2>
+                    <div class="run-summary" id="unscheduled-summary"></div>
+                </div>
+            </div>
+            <div class="list-group list-group-flush" id="unscheduled-list"></div>
+        </section>
     </main>
 
     <aside class="activity card" id="activity">
@@ -931,7 +948,11 @@
             // Don't wipe a settings form mid-edit; it re-renders on save or reset.
             if (!dirtySettings.size && !document.querySelector('.task-settings:focus-within')) renderTasks(latestTasks);
             renderRunningNow();
+            // Hiring or firing a worker changes which skills are unscheduled.
+            const scheduled = Array.isArray(latestTasks) ? latestTasks.map(t => t.skill).sort().join('\n') : '';
+            if (scheduled !== scheduledSkills) { scheduledSkills = scheduled; loadUnscheduled(); }
         }
+        let scheduledSkills = null;
 
         async function loadRuntimeOptions() {
             try {
@@ -986,17 +1007,21 @@
             refresh();
         }
 
-        async function viewSkill(id) {
+        function viewSkill(id) {
+            const task = latestTasks.find(t => t.id === id);
+            return previewSkill(`/api/tasks/${encodeURIComponent(id)}/skill`, task?.skill);
+        }
+
+        async function previewSkill(url, name) {
             const preview = document.getElementById('skill-preview');
             const content = document.createElement('article');
             content.className = 'card-body prose';
             content.textContent = 'Loading skill…';
             document.getElementById('skill-preview-body').replaceChildren(content);
-            const task = latestTasks.find(t => t.id === id);
-            document.getElementById('skill-preview-title').textContent = `${task?.skill || 'Skill'} / SKILL.md`;
+            document.getElementById('skill-preview-title').textContent = `${name || 'Skill'} / SKILL.md`;
             preview.showModal();
             try {
-                const response = await fetch(`/api/tasks/${encodeURIComponent(id)}/skill`);
+                const response = await fetch(url);
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'Skill could not be loaded');
                 // Preserve the complete source while keeping YAML readable as code.
@@ -1006,6 +1031,49 @@
                 content.textContent = error.message || 'Skill could not be loaded';
             }
         }
+
+        // Skills in the workspace that no worker runs. Scheduling one goes through the same
+        // hire chat as New worker, with the request prefilled and never sent.
+        function scheduleSkillHref(skill) {
+            return `/assistant?item=hire&ask=${encodeURIComponent(`Put the ${skill} skill on a schedule as a worker.`)}`;
+        }
+
+        function renderUnscheduled(skills) {
+            const panel = document.getElementById('unscheduled');
+            panel.hidden = !skills.length;
+            document.getElementById('unscheduled-summary').textContent =
+                skills.length ? `${skills.length} skill${skills.length === 1 ? '' : 's'}` : '';
+            document.getElementById('unscheduled-list').innerHTML = skills.map(s => `
+                <div class="list-group-item unscheduled-row">
+                    <div class="unscheduled-text">
+                        <a class="task-skill task-skill-name" href="#skill-preview" data-workspace-skill="${esc(s.skill)}" title="View the ${esc(s.skill)} skill">${esc(s.skill)}</a>
+                        ${s.description ? `<div class="unscheduled-desc" title="${esc(s.description)}">${esc(s.description)}</div>` : ''}
+                    </div>
+                    <a class="btn btn-sm" href="${esc(scheduleSkillHref(s.skill))}"
+                        title="Ask the Assistant to put ${esc(s.skill)} on a schedule; the request is prefilled, not sent">Schedule</a>
+                </div>`).join('');
+        }
+
+        let unscheduledSignature = '';
+        async function loadUnscheduled() {
+            try {
+                const response = await fetch('/api/skills/unscheduled');
+                if (!response.ok) return;
+                const skills = (await response.json()).skills || [];
+                const signature = JSON.stringify(skills);
+                if (signature !== unscheduledSignature) { unscheduledSignature = signature; renderUnscheduled(skills); }
+            } catch (e) {
+                console.error('Failed to load unscheduled skills:', e);
+            }
+        }
+
+        document.getElementById('unscheduled-list').addEventListener('click', (event) => {
+            const skill = event.target.closest('[data-workspace-skill]');
+            if (!skill) return;
+            event.preventDefault();
+            const name = skill.dataset.workspaceSkill;
+            previewSkill(`/api/skills/${encodeURIComponent(name)}/skill`, name);
+        });
 
         const taskList = document.getElementById('tasks');
         taskList.addEventListener('click', (event) => {
@@ -1094,6 +1162,7 @@
 
         Promise.all([loadRuntimeOptions(), refresh()]).then(() => renderTasks(latestTasks, true));
         setInterval(refresh, 5000);
+        setInterval(loadUnscheduled, 30000);  // new skills appear without a worker change
 
         // --- AI activity feed (SSE) ---
         const acts = new Map();  // id -> entry; updates land on the same row

@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.6.0 - 2026-11-18
+
+- The Workers page lists your workspace’s skills that no worker runs yet, under **Not on a schedule**. Click a skill’s name to read its SKILL.md, or **Schedule** to ask the Assistant to make it a worker; the request is filled in for you to edit before sending.
+
 ## 0.5.0 - 2026-11-18
 
 - Workers using named connections can edit Roosta’s source when its checkout is the selected workspace. Connection credentials and managed runtime directories remain protected.

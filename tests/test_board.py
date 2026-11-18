@@ -2355,7 +2355,7 @@ def test_worker_skill_preview_loads_in_page():
     node = shutil.which("node")
     if not node:
         pytest.skip("node not available")
-    function = re.search(r"async function viewSkill\(id\) \{.*?\n        \}", html, re.S).group(0)
+    function = re.search(r"function viewSkill\(id\) \{.*?async function previewSkill\(url, name\) \{.*?\n        \}", html, re.S).group(0)
     subprocess.run([node, "-e", function + r'''
 const assert = require('node:assert/strict');
 const elements = {
@@ -2382,6 +2382,34 @@ const fetch = async url => {
     await viewSkill('daily brief');
     assert.equal(elements['skill-preview-body'].child.textContent, 'SKILL.md not found');
 })().catch(error => { console.error(error); process.exitCode = 1; });
+'''], check=True, capture_output=True, text=True)
+
+
+def test_unscheduled_skills_render_with_preview_and_schedule_link():
+    html = (STATIC / "index.html").read_text()
+    assert '<section class="card runner-panel unscheduled-panel" id="unscheduled"' in html
+    assert "setInterval(loadUnscheduled, 30000)" in html
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not available")
+    helpers = re.search(r"function scheduleSkillHref\(skill\) \{.*?\n        function renderUnscheduled\(skills\) \{.*?\n        \}", html, re.S).group(0)
+    escape = re.search(r"function esc\(s\) \{.*?\n        \}", html, re.S).group(0)
+    subprocess.run([node, "-e", escape + helpers + r'''
+const assert = require('node:assert/strict');
+const elements = {unscheduled: {hidden: true}, 'unscheduled-summary': {}, 'unscheduled-list': {}};
+const document = {getElementById: id => elements[id]};
+renderUnscheduled([{skill: 'skill-auditor', description: 'Audits <skills>'}, {skill: 'write-a-skill', description: ''}]);
+assert.equal(elements.unscheduled.hidden, false);
+assert.equal(elements['unscheduled-summary'].textContent, '2 skills');
+const list = elements['unscheduled-list'].innerHTML;
+assert.match(list, /data-workspace-skill="skill-auditor"/);
+assert.match(list, /Audits &lt;skills&gt;/);
+assert.doesNotMatch(list, /<skills>/);
+assert.match(list, /href="\/assistant\?item=hire&amp;ask=Put%20the%20skill-auditor%20skill%20on%20a%20schedule%20as%20a%20worker\."/);
+assert.equal((list.match(/unscheduled-desc/g) || []).length, 1);
+renderUnscheduled([]);
+assert.equal(elements.unscheduled.hidden, true);
+assert.equal(elements['unscheduled-list'].innerHTML, '');
 '''], check=True, capture_output=True, text=True)
 
 
