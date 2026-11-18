@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from roosta import scheduler
 from roosta import ai_settings
 from roosta import task_config
 from roosta import app as appmod
@@ -86,7 +87,7 @@ def make_runner(
     on_check=None,
     prechecker=None,
 ):
-    return appmod.TaskRunner(
+    return scheduler.TaskRunner(
         task_loader=task_loader or (lambda: tasks),
         auth_checker=auth_checker,
         task_executor=executor,
@@ -185,13 +186,13 @@ def test_missed_weekly_slot_finds_the_latest_scheduled_day():
     tz = timezone.utc
     monday = datetime(2026, 11, 2, 17, 0, tzinfo=tz)
     friday_run = "2026-10-23T09:25:00+00:00"  # ran the Friday before last
-    assert appmod.missed_weekly_slot(["friday"], "10:00", friday_run, monday) is True
-    assert appmod.missed_weekly_slot(["friday"], "10:00", "2026-10-30T10:01:00+00:00", monday) is False
-    assert appmod.missed_weekly_slot(["friday"], "10:00", "", monday) is False  # never ran
+    assert scheduler.missed_weekly_slot(["friday"], "10:00", friday_run, monday) is True
+    assert scheduler.missed_weekly_slot(["friday"], "10:00", "2026-10-30T10:01:00+00:00", monday) is False
+    assert scheduler.missed_weekly_slot(["friday"], "10:00", "", monday) is False  # never ran
     # Monday 08:00, task due Monday 09:00: last week's slot is the latest, and it ran.
     early = datetime(2026, 11, 2, 8, 0, tzinfo=tz)
-    assert appmod.missed_weekly_slot(["monday"], "09:00", "2026-10-26T09:00:30+00:00", early) is False
-    assert appmod.missed_weekly_slot(["monday"], "09:00", "2026-10-19T09:00:30+00:00", early) is True
+    assert scheduler.missed_weekly_slot(["monday"], "09:00", "2026-10-26T09:00:30+00:00", early) is False
+    assert scheduler.missed_weekly_slot(["monday"], "09:00", "2026-10-19T09:00:30+00:00", early) is True
 
 
 def test_weekly_task_missed_on_its_day_catches_up_on_an_off_day(tmp_path):
@@ -918,11 +919,11 @@ def test_cursor_harness_runs_cursor_even_when_the_engine_is_claude(tmp_path, mon
     monkeypatch.setattr(appmod.ai_backend, "current", lambda path=None: "claude")
     monkeypatch.setattr(appmod.ai_backend, "create_session", no_session)
     monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
-    asyncio.run(appmod.run_task(
+    asyncio.run(scheduler.run_task(
         task_config.TaskConfig(id="x", skill="skill", harness="cursor", model="auto", dir=str(tmp_path)),
         idle_timeout=1,
     ))
-    assert captured["cmd"][0] == appmod.CURSOR_AGENT
+    assert captured["cmd"][0] == scheduler.CURSOR_AGENT
     assert task_config.task_engine(task_config.TaskConfig(id="x", skill="s", harness="cursor")) == "cursor"
 
 
@@ -931,7 +932,7 @@ def test_unknown_harness_fails_without_spawning(tmp_path, monkeypatch):
         raise AssertionError("must not spawn")
 
     monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
-    status, _, error, _ = asyncio.run(appmod.run_task(
+    status, _, error, _ = asyncio.run(scheduler.run_task(
         task_config.TaskConfig(id="x", skill="skill", harness="copilot", dir=str(tmp_path)),
         idle_timeout=1,
     ))
@@ -1126,9 +1127,9 @@ def test_run_task_closes_stdin_and_parses_task_output(tmp_path, monkeypatch):
             env_calls.append(kwargs)
             return {"CURSOR_API_KEY": object()}
 
-        monkeypatch.setattr(appmod, "cursor_env", fake_cursor_env)
+        monkeypatch.setattr(scheduler, "cursor_env", fake_cursor_env)
 
-        status, output, error, session_id = await appmod.run_task(
+        status, output, error, session_id = await scheduler.run_task(
             task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
@@ -1182,9 +1183,9 @@ def test_agent_task_retries_transient_failure_before_any_output(tmp_path, monkey
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
         monkeypatch.setattr(appmod.asyncio, "sleep", fake_sleep)
-        monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
+        monkeypatch.setattr(scheduler, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
-        status, output, error, _ = await appmod.run_task(
+        status, output, error, _ = await scheduler.run_task(
             task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
@@ -1238,9 +1239,9 @@ def test_agent_task_retries_transient_failure_after_protocol_preamble(tmp_path, 
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
         monkeypatch.setattr(appmod.asyncio, "sleep", fake_sleep)
-        monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
+        monkeypatch.setattr(scheduler, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
-        status, output, error, _ = await appmod.run_task(
+        status, output, error, _ = await scheduler.run_task(
             task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
@@ -1281,9 +1282,9 @@ def test_agent_task_does_not_retry_transient_failure_after_model_progress(tmp_pa
             return Proc()
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
-        monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
+        monkeypatch.setattr(scheduler, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
-        status, _, error, _ = await appmod.run_task(
+        status, _, error, _ = await scheduler.run_task(
             task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
@@ -1316,9 +1317,9 @@ def test_agent_run_without_completed_task_output_is_an_error(tmp_path, monkeypat
             return Proc()
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
-        monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
+        monkeypatch.setattr(scheduler, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
-        status, output, error, _ = await appmod.run_task(
+        status, output, error, _ = await scheduler.run_task(
             task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
@@ -1351,9 +1352,9 @@ def test_malformed_task_output_is_an_error(tmp_path, monkeypatch):
             return Proc()
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
-        monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
+        monkeypatch.setattr(scheduler, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
-        status, output, error, _ = await appmod.run_task(
+        status, output, error, _ = await scheduler.run_task(
             task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
@@ -1391,9 +1392,9 @@ def test_task_output_status_synonyms_are_normalised(tmp_path, monkeypatch, given
             return Proc()
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
-        monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
+        monkeypatch.setattr(scheduler, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
-        status, output, error, _ = await appmod.run_task(
+        status, output, error, _ = await scheduler.run_task(
             task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
@@ -1431,12 +1432,12 @@ def test_run_task_uses_ollama_wrapper_with_selected_opencode_model(tmp_path, mon
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
         monkeypatch.setattr(
-            appmod,
+            scheduler,
             "opencode_ollama_env",
             lambda **_kwargs: {"OPENCODE_CONFIG_DIR": "/safe/opencode-runner"},
         )
 
-        status, output, error, session_id = await appmod.run_task(
+        status, output, error, session_id = await scheduler.run_task(
             task_config.TaskConfig(
                 id="local",
                 skill="skill",
@@ -1488,12 +1489,12 @@ def test_opencode_plain_text_tool_call_is_an_error(tmp_path, monkeypatch):
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
         monkeypatch.setattr(
-            appmod,
+            scheduler,
             "opencode_ollama_env",
             lambda **_kwargs: {"OPENCODE_CONFIG_DIR": "/safe/opencode-runner"},
         )
 
-        status, output, error, _ = await appmod.run_task(
+        status, output, error, _ = await scheduler.run_task(
             task_config.TaskConfig(
                 id="local",
                 skill="key-person-tracker",
@@ -1512,7 +1513,7 @@ def test_opencode_plain_text_tool_call_is_an_error(tmp_path, monkeypatch):
 
 
 def test_opencode_git_push_task_is_rejected_before_launch(tmp_path):
-    status, output, error, session_id = asyncio.run(appmod.run_task(
+    status, output, error, session_id = asyncio.run(scheduler.run_task(
         task_config.TaskConfig(
             id="refresh",
             skill="refresh",
@@ -1535,8 +1536,8 @@ def test_git_push_task_prompt_distinguishes_manual_run_now():
         skill="okr-dashboard-refresh",
         allow_git_push=True,
     )
-    scheduled = appmod.task_prompt(task, run_source="scheduled")
-    manual = appmod.task_prompt(task, run_source="manual")
+    scheduled = scheduler.task_prompt(task, run_source="scheduled")
+    manual = scheduler.task_prompt(task, run_source="manual")
     assert "timer-driven" in scheduled
     assert "Sam triggered Run now" in manual
     assert "Skip the skill's scheduled-run section" in manual
@@ -1548,15 +1549,15 @@ def test_git_push_prompts_are_not_specific_to_the_okr_refresh():
         id="shared-vault-gardener", skill="shared-vault-gardener",
         allow_git_push=True, push_on_schedule=True,
     )
-    manual = appmod.task_prompt(gardener, run_source="manual")
-    scheduled = appmod.task_prompt(gardener, run_source="scheduled")
+    manual = scheduler.task_prompt(gardener, run_source="manual")
+    scheduled = scheduler.task_prompt(gardener, run_source="scheduled")
     for prompt in (manual, scheduled):
         assert "OKR" not in prompt and "snapshots" not in prompt
         assert "'shared-vault-gardener'" in prompt
     assert "Do not commit or push" not in scheduled
     assert "git push origin main" in scheduled
     okr = task_config.TaskConfig(id="okr", skill="okr-dashboard-refresh", allow_git_push=True)
-    assert "Do not commit or push" in appmod.task_prompt(okr, run_source="scheduled")
+    assert "Do not commit or push" in scheduler.task_prompt(okr, run_source="scheduled")
 
 
 def test_run_task_uses_scoped_push_profile_only_for_authorised_task(tmp_path, monkeypatch):
@@ -1583,9 +1584,9 @@ def test_run_task_uses_scoped_push_profile_only_for_authorised_task(tmp_path, mo
             return {"CURSOR_API_KEY": object()}
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
-        monkeypatch.setattr(appmod, "cursor_env", fake_cursor_env)
+        monkeypatch.setattr(scheduler, "cursor_env", fake_cursor_env)
 
-        status, _, error, _ = await appmod.run_task(
+        status, _, error, _ = await scheduler.run_task(
             task_config.TaskConfig(
                 id="refresh",
                 skill="okr-dashboard-refresh",
@@ -1617,11 +1618,11 @@ def test_opencode_uses_longer_default_idle_timeout():
     )
     agent_task = task_config.TaskConfig(id="agent", skill="skill")
 
-    assert appmod.task_idle_timeout(local_task) == 1800
-    assert appmod.task_idle_timeout(agent_task) == 300
-    assert appmod.task_idle_timeout(local_task, 45) == 45
+    assert scheduler.task_idle_timeout(local_task) == 1800
+    assert scheduler.task_idle_timeout(agent_task) == 300
+    assert scheduler.task_idle_timeout(local_task, 45) == 45
     local_task.idle_timeout = 90
-    assert appmod.task_idle_timeout(local_task) == 90
+    assert scheduler.task_idle_timeout(local_task) == 90
 
 
 def test_run_task_kills_hung_child(tmp_path, monkeypatch):
@@ -1647,7 +1648,7 @@ def test_run_task_kills_hung_child(tmp_path, monkeypatch):
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
 
-        status, output, error, _ = await appmod.run_task(
+        status, output, error, _ = await scheduler.run_task(
             task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="33333333-3333-4333-8333-333333333333",
             idle_timeout=0.01,
@@ -1683,9 +1684,9 @@ def test_run_task_survives_system_sleep(tmp_path, monkeypatch):
             return Proc()
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
-        monkeypatch.setattr(appmod, "time", types.SimpleNamespace(monotonic=lambda: 0.0))
+        monkeypatch.setattr(scheduler, "time", types.SimpleNamespace(monotonic=lambda: 0.0))
 
-        status, output, error, _ = await appmod.run_task(
+        status, output, error, _ = await scheduler.run_task(
             task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="55555555-5555-4555-8555-555555555555",
             idle_timeout=0.01,
@@ -1726,7 +1727,7 @@ def test_run_task_busy_child_is_not_killed(tmp_path, monkeypatch):
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
 
-        status, output, error, _ = await appmod.run_task(
+        status, output, error, _ = await scheduler.run_task(
             task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="44444444-4444-4444-8444-444444444444",
             idle_timeout=0.05,
@@ -1886,7 +1887,7 @@ def test_activity_records_session_id_from_task_run(tmp_path):
             return "success", {"summary": "ran", "status": "success"}, "", "abcd-efgh"
 
         activity = FakeActivity()
-        runner = appmod.TaskRunner(
+        runner = scheduler.TaskRunner(
             task_loader=lambda: [task_config.TaskConfig(id="scheduled", skill="skill", interval=3600)],
             auth_checker=always_authed,
             task_executor=executor,
@@ -2062,15 +2063,15 @@ def test_task_output_with_a_missing_or_extra_closing_brace_still_parses():
     # Shapes from real runs (27 Oct incident-tracker, 14 Oct support watch) that were recorded as errors.
     missing = '<task-output>{"summary":"No incident changes.","status":"success","details":{"notes":"a {b} c"}</task-output>'
     extra = '<task-output>{"summary":"No new activity.","status":"success","details":{"auth":"ok"}}}</task-output>'
-    assert appmod.parse_task_output(missing)["status"] == "success"
-    assert appmod.parse_task_output(missing)["details"] == {"notes": "a {b} c"}
-    assert appmod.parse_task_output(extra)["summary"] == "No new activity."
-    assert appmod.parse_task_output("<task-output>not json</task-output>")["status"] == "unknown"
+    assert scheduler.parse_task_output(missing)["status"] == "success"
+    assert scheduler.parse_task_output(missing)["details"] == {"notes": "a {b} c"}
+    assert scheduler.parse_task_output(extra)["summary"] == "No new activity."
+    assert scheduler.parse_task_output("<task-output>not json</task-output>")["status"] == "unknown"
 
 
 def test_task_output_quoted_in_prose_does_not_hide_the_real_block():
     text = 'It said "invalid <task-output> result". <task-output>{"summary": "ok", "status": "success"}</task-output>'
-    assert appmod.parse_task_output(text) == {"summary": "ok", "status": "success"}
+    assert scheduler.parse_task_output(text) == {"summary": "ok", "status": "success"}
 
 
 def test_partial_pass_reports_its_own_summary_not_an_invalid_result(tmp_path, monkeypatch):
@@ -2094,9 +2095,9 @@ def test_partial_pass_reports_its_own_summary_not_an_invalid_result(tmp_path, mo
             return Proc()
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
-        monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
+        monkeypatch.setattr(scheduler, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
-        status, output, error, _ = await appmod.run_task(
+        status, output, error, _ = await scheduler.run_task(
             task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
@@ -2145,10 +2146,10 @@ def test_daily_run_lost_to_the_network_retries_soon_but_real_errors_wait(tmp_pat
 
 
 def test_offline_failure_matches_observed_messages_only():
-    assert appmod.is_offline_failure("API Error: Your computer went to sleep mid-response.")
-    assert appmod.is_offline_failure("\x1b[31m✗ Failed to reach the Cursor API.")
-    assert appmod.is_offline_failure("Error: [aborted] read ECONNRESET")
-    assert not appmod.is_offline_failure("Teams not connected - run `msteams login`.")
+    assert scheduler.is_offline_failure("API Error: Your computer went to sleep mid-response.")
+    assert scheduler.is_offline_failure("\x1b[31m✗ Failed to reach the Cursor API.")
+    assert scheduler.is_offline_failure("Error: [aborted] read ECONNRESET")
+    assert not scheduler.is_offline_failure("Teams not connected - run `msteams login`.")
 
 
 def test_a_task_added_to_tasks_yaml_starts_even_without_file_events(tmp_path):
@@ -2161,7 +2162,7 @@ def test_a_task_added_to_tasks_yaml_starts_even_without_file_events(tmp_path):
             started.append(task.id)
             return "success", {"summary": "ran", "status": "success"}, "", ""
 
-        runner = appmod.TaskRunner(
+        runner = scheduler.TaskRunner(
             task_loader=lambda: list(tasks), auth_checker=always_authed, task_executor=executor,
             connector_registry=FakeConnectors(), activity_log=FakeActivity(),
             cache_dir=tmp_path / "cache", tasks_file=tmp_path / "tasks.yaml", startup_delay=0,

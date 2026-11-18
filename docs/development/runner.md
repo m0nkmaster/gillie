@@ -1,8 +1,8 @@
 # Runner, workers and connectors
 
 [Agent guide](../../AGENTS.md). Read before changing scheduling, task configuration, connector checks or activity.
-Code lives in `src/roosta/app.py` (scheduling), `task_config.py` (the task model and
-`tasks.yaml` loading and edits) and `connectors.py`; runtime paths such as `cache/`
+Code lives in `src/roosta/scheduler.py` (the runner loop and harness runs), `task_config.py` (the task model and
+`tasks.yaml` loading and edits), `connectors.py` and `app.py` (routes); runtime paths such as `cache/`
 are relative to the workspace's `.roosta/state/`. See [harnesses](harnesses.md) for CLI details.
 
 ## Scheduling and execution
@@ -192,7 +192,7 @@ loop re-reads its own config every cycle. Code changes to the runner do need a r
 
 ## Prompt template
 
-`PROMPT_TEMPLATE` in `app.py` is the source of truth. In short: run the named skill unattended,
+`PROMPT_TEMPLATE` in `scheduler.py` is the source of truth. In short: run the named skill unattended,
 ask no questions, never create or modify external content (messages, tickets, wiki pages,
 email, GitHub, deployments, jobs), return findings as Assistant board items (optionally linking
 vault Markdown through `documents`), and wrap the final output in `<task-output>` JSON with

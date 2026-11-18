@@ -2,6 +2,7 @@ import asyncio, json, os, re, shutil, subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import pytest
+from roosta import scheduler
 from roosta import workspace
 from roosta import chat_items
 from roosta import board
@@ -1745,16 +1746,16 @@ def test_roosta_engineer_no_change_does_not_create_noise():
 
 
 def test_scheduled_prompt_forbids_external_writes():
-    assert "Never create or modify external content or state" in appmod.PROMPT_TEMPLATE
-    assert "chat messages, tickets, wiki pages, email, GitHub, deployments or jobs" in appmod.PROMPT_TEMPLATE
-    assert "Assistant board items" in appmod.PROMPT_TEMPLATE
-    assert "'documents':" in appmod.PROMPT_TEMPLATE
-    assert "'path': 'drafts/example.md'" in appmod.PROMPT_TEMPLATE
-    scheduled = appmod.GIT_PUSH_SCHEDULED_PROMPT_TEMPLATE
-    manual = appmod.GIT_PUSH_MANUAL_PROMPT_TEMPLATE
+    assert "Never create or modify external content or state" in scheduler.PROMPT_TEMPLATE
+    assert "chat messages, tickets, wiki pages, email, GitHub, deployments or jobs" in scheduler.PROMPT_TEMPLATE
+    assert "Assistant board items" in scheduler.PROMPT_TEMPLATE
+    assert "'documents':" in scheduler.PROMPT_TEMPLATE
+    assert "'path': 'drafts/example.md'" in scheduler.PROMPT_TEMPLATE
+    scheduled = scheduler.GIT_PUSH_SCHEDULED_PROMPT_TEMPLATE
+    manual = scheduler.GIT_PUSH_MANUAL_PROMPT_TEMPLATE
     assert "Do not commit or push" in scheduled
     assert "git push origin main" in manual
-    for template in (scheduled, manual, appmod.GIT_PUSH_SCHEDULED_PUSH_PROMPT_TEMPLATE):
+    for template in (scheduled, manual, scheduler.GIT_PUSH_SCHEDULED_PUSH_PROMPT_TEMPLATE):
         assert "Never push another repository" in template
         assert "Assistant board item" in template
 
@@ -2402,20 +2403,20 @@ def test_dashboard_uses_one_status_vocabulary():
     static = Path(__file__).resolve().parent.parent / "src" / "roosta" / "static"
     runner = (static / "index.html").read_text()
     pulse = (static / "pulse.html").read_text()
-    app_py = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "app.py").read_text()
+    scheduler_py = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "scheduler.py").read_text()
     pulse_py = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "pulse.py").read_text()
 
     # a finished run is `success`, never `done`
     feed = ActivityLog()
     feed.finish(eid := feed.start("skill", "assistant", "manual"))
     assert feed.get(eid)["status"] == "success"
-    assert '"error" if status == "error" else "success"' in app_py
+    assert '"error" if status == "error" else "success"' in scheduler_py
     assert '"today_success": sum(1 for entry in today if entry.get("status") == "success")' in pulse_py
     assert ".act-state.success" in runner
     assert ".act-state.done" not in runner
 
     # `kind` describes the spawn, so it must not borrow a verdict word
-    assert '"skill", task.skill, source' in app_py
+    assert '"skill", task.skill, source' in scheduler_py
     assert ".act-skill {" in runner and ".act-pass" not in runner
 
     assert "pass:" not in runner and "'done'" not in runner
@@ -2539,7 +2540,7 @@ def test_board_health_surfaces_failed_automations_without_changing_sensor_verdic
 
 def test_board_health_names_an_expired_claude_signin_once():
     failed = [
-        {**_sensor(sid, status="error"), "last_error": appmod.CLAUDE_SIGNIN_MESSAGE}
+        {**_sensor(sid, status="error"), "last_error": board.CLAUDE_SIGNIN_MESSAGE}
         for sid in ("workspace-gardener", "teams-archive", "assistant")
     ]
     h = board.board_health(failed, now=_NOW)

@@ -12,6 +12,7 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
+from roosta import scheduler
 from roosta import ai_settings
 from roosta import board
 from roosta import task_config
@@ -300,7 +301,7 @@ def test_worker_dispatch_uses_connection_and_retains_legacy_model(accounts, tmp_
         yield json.dumps({'type':'message_end','message':{'role':'assistant','content':[{'type':'text','text':'<task-output>{"status":"success","summary":"Checked"}</task-output>'}]}})
     monkeypatch.setattr(ai_backend,'stream',stream)
     task = task_config.TaskConfig(id='sample', skill='actor', dir=str(tmp_path), connection=c['id'], harness='cursor', model='legacy-model')
-    status, output, error, session = asyncio.run(app.run_task(task))
+    status, output, error, session = asyncio.run(scheduler.run_task(task))
     assert status == 'success' and output['summary'] == 'Checked' and not error
     assert seen[0].connection['id'] == c['id'] and seen[0].backend == 'pi'
     assert session == seen[0].session_id and task.model == 'legacy-model'
@@ -802,7 +803,7 @@ def test_connection_workers_pick_a_valid_model(accounts, tmp_path, monkeypatch):
     for task in (task_config.TaskConfig(id='a', skill='actor', dir=str(tmp_path), connection=claude['id'], claude_model='haiku', model='cursor-model'),
                  task_config.TaskConfig(id='b', skill='actor', dir=str(tmp_path), connection=pi['id'], model='gpt-5-mini', claude_model='haiku'),
                  task_config.TaskConfig(id='c', skill='actor', dir=str(tmp_path), connection=pi['id'], model='composer-2-fast')):
-        asyncio.run(app.run_task(task))
+        asyncio.run(scheduler.run_task(task))
     assert seen == ['haiku', 'gpt-5-mini', 'gpt-5.4']
 
 
