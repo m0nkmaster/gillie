@@ -1227,9 +1227,13 @@
             const url = new URL(location.href);
             selectedName ? url.searchParams.set('focus', selectedName) : url.searchParams.delete('focus');
             history.replaceState(null, '', url);
-            const full = document.getElementById('full-toggle');
-            full.href = FULL ? `/pulse${selectedName ? `?focus=${encodeURIComponent(selectedName)}` : ''}` : `/constellation${selectedName ? `?focus=${encodeURIComponent(selectedName)}` : ''}`;
+            document.getElementById('full-toggle').href = fullToggleHref(FULL, selectedName);
             renderDetail();
+        }
+
+        // Full screen links back to Pulse, and Pulse links to full screen, carrying the focus.
+        function fullToggleHref(full, name) {
+            return `${full ? '/pulse' : '/constellation'}${name ? `?focus=${encodeURIComponent(name)}` : ''}`;
         }
 
         function startReview() {
@@ -1497,6 +1501,7 @@
             const full = document.getElementById('full-toggle');
             full.textContent = 'Back to Pulse';
             full.title = 'Back to Pulse (f)';
+            full.href = fullToggleHref(true, pendingFocus);
         }
         refresh();
         resizeCanvas();

@@ -407,6 +407,21 @@ def test_review_queue_orders_board_then_drift_then_unverified():
     assert reasons[5] == "verification expired"
 
 
+def test_full_screen_toggle_links_back_to_pulse_before_any_selection():
+    import json, re, shutil, subprocess
+    html = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "static" / "pulse.html").read_text()
+    full_block = re.search(r"        if \(FULL\) \{\n(.*?)\n        \}\n", html, re.S).group(1)
+    assert "full.href = fullToggleHref(true, pendingFocus);" in full_block
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not available")
+    js = (_pulse_functions("fullToggleHref")
+          + "process.stdout.write(JSON.stringify([fullToggleHref(true, null), fullToggleHref(true, 'a b'),"
+          " fullToggleHref(false, null), fullToggleHref(false, 'x')]));")
+    out = json.loads(subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout)
+    assert out == ["/pulse", "/pulse?focus=a%20b", "/constellation", "/constellation?focus=x"]
+
+
 def test_vault_links_route_relative_markdown_to_document_viewer():
     import json, shutil, subprocess
     node = shutil.which("node")

@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.3.1 - 2026-11-18
+
+- **Back to Pulse** on the full-screen constellation now returns to the Pulse page straight away, instead of doing nothing until you had selected a project.
+
 ## 0.3.0 - 2026-11-18
 
 - Grant a named worker standing approval to comment on open ready issues and add the in review label in one GitHub repository.
