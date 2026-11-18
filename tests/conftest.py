@@ -23,10 +23,10 @@ def pinned_backend(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def isolated_activity_log(tmp_path, monkeypatch):
     """Test runs must not append fake runs to the live activity feed."""
-    from roosta import app
+    from roosta import activity_log
 
     path = tmp_path / "activity.jsonl"
-    monkeypatch.setattr(app, "ACTIVITY_FILE", path)
+    monkeypatch.setattr(activity_log, "ACTIVITY_FILE", path)
     return path
 
 

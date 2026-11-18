@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from roosta import app as appmod
+from roosta.activity_log import ActivityLog
 from roosta import opencode_ollama
 
 
@@ -1954,7 +1955,7 @@ def test_activity_hydrates_history_and_retires_stranded_running(tmp_path):
         ]) + "\n"
     )
 
-    log_obj = appmod.ActivityLog()
+    log_obj = ActivityLog()
     log_obj.hydrate(log)
     entries = {entry["id"]: entry for entry in log_obj.recent(50)}
 
@@ -1966,7 +1967,7 @@ def test_activity_hydrates_history_and_retires_stranded_running(tmp_path):
 
 def test_activity_log_is_trimmed_to_its_newest_whole_lines_on_startup(tmp_path, monkeypatch):
     """The append-only log must not grow forever; the newest runs survive intact."""
-    monkeypatch.setattr(appmod.ActivityLog, "KEEP_BYTES", 2000)
+    monkeypatch.setattr(ActivityLog, "KEEP_BYTES", 2000)
     log = tmp_path / "activity.jsonl"
     rows = [
         json.dumps({"id": f"r{i:04d}", "kind": "skill", "label": "assistant",
@@ -1975,10 +1976,10 @@ def test_activity_log_is_trimmed_to_its_newest_whole_lines_on_startup(tmp_path, 
         for i in range(200)
     ]
     log.write_text("\n".join(rows) + "\n")
-    appmod.ActivityLog().hydrate(log)
+    ActivityLog().hydrate(log)
     assert log.stat().st_size > 2000  # importing app (hydrate) must never rewrite the log
 
-    log_obj = appmod.ActivityLog()
+    log_obj = ActivityLog()
     log_obj.compact(log)
     log_obj.hydrate(log)
 
@@ -1990,7 +1991,7 @@ def test_activity_log_is_trimmed_to_its_newest_whole_lines_on_startup(tmp_path, 
 
 
 def test_activity_hydrate_survives_a_missing_log(tmp_path):
-    log_obj = appmod.ActivityLog()
+    log_obj = ActivityLog()
     log_obj.hydrate(tmp_path / "nope.jsonl")
     assert log_obj.recent(10) == []
 

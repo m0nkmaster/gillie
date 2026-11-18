@@ -226,7 +226,7 @@ vault Markdown through `documents`), and wrap the final output in `<task-output>
 
 ## AI activity feed
 
-`ActivityLog` (`activity`) records every scheduled or manual skill run the dashboard spawns:
+`ActivityLog` in `activity_log.py` (the `app.activity` instance) records every scheduled or manual skill run the dashboard spawns:
 `start("skill", skill, source, task_id=, backend=)`, then
 `set_session(id, session_id)` and `finish(id, status, summary)`. Board chat turns are not logged
 here.

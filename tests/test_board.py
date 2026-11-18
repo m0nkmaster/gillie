@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import pytest
 from roosta import cursor_agent as camod
+from roosta.activity_log import ActivityLog
 
 
 def test_cursor_result_text_prefers_completed_stream_over_stale_result():
@@ -2402,7 +2403,9 @@ def test_dashboard_uses_one_status_vocabulary():
     pulse_py = (Path(__file__).resolve().parent.parent / "src" / "roosta" / "pulse.py").read_text()
 
     # a finished run is `success`, never `done`
-    assert 'finish(self, eid: str, status: str = "success", summary: str = "")' in app_py
+    feed = ActivityLog()
+    feed.finish(eid := feed.start("skill", "assistant", "manual"))
+    assert feed.get(eid)["status"] == "success"
     assert '"error" if status == "error" else "success"' in app_py
     assert '"today_success": sum(1 for entry in today if entry.get("status") == "success")' in pulse_py
     assert ".act-state.success" in runner
