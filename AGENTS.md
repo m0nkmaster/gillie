@@ -41,8 +41,8 @@ never inside a user's workspace.
 | Office simulation, sprites, casting, visual checks | [Office](docs/development/office.md) |
 | Electron supervision, notifications, deep links | [Desktop notes](docs/development/desktop.md) and [desktop README](desktop/README.md) |
 
-[README.md](README.md) covers installation and use;
-[ROADMAP.md](ROADMAP.md) records selected work. The roosta-engineer's feedback and delivery log
+[README.md](README.md) covers installation and use. Track work in
+[GitHub Issues](https://github.com/m0nkmaster/roosta/issues). The roosta-engineer's feedback and delivery log
 belong in the maintainer's workspace `.roosta/engineer/`, never this repo.
 
 ## Code map
