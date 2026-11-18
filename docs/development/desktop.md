@@ -63,6 +63,16 @@ keep stale nav.
   `assets/roosta-pixel.png`, copied to `static/favicon.png`; the tray stays monochrome for
   macOS template rendering.
 
+## Local delivery from a verified worker branch
+
+The development shell can fast-forward its local `main` to `refs/roosta/verified` and relaunch
+its owned runner and window. Enable this per Mac in `~/.config/roosta/local-delivery.json`
+with the absolute `checkout` and `workspace` paths and the local worker `branch`.
+After verification the worker publishes its local commit with `git update-ref refs/roosta/verified HEAD`.
+The shell checks ancestry against the configured branch and uses a fast-forward merge with
+autostash disabled. Conflicts are reported in the runner log and by notification. The normal
+dashboard poll waits for idle tasks and chats. Packaged builds ignore this setting.
+
 ## Release packaging
 
 `desktop/scripts/build-backend.py` freezes the installed checkout using PyInstaller on the native

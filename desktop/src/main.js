@@ -16,6 +16,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { fileURLToPath } = require("node:url");
 const { NotificationState, routeForNotice, noticeKey, noticeFromKey } = require("./notification-state");
+const { applyVerifiedCommit } = require("./local-delivery");
 const { RunnerSupervisor } = require("./runner-supervisor");
 const { buildSkillLogs, formatSkillLogs } = require("./skill-logs");
 
@@ -51,6 +52,9 @@ let runnerStatus = "starting";
 let activeCount = 0;
 let missedHealthChecks = 0;
 let isQuitting = false;
+let deliveryConfig;
+let checkingDelivery = false;
+let deliveryError = "";
 let shutdownComplete = false;
 let dashboardOpened = false;
 let notificationPrompted = false;
@@ -413,6 +417,35 @@ async function notificationSetup() {
   if (result.response === 0) sendTestNotification();
 }
 
+async function checkLocalDelivery(board, tasks) {
+  if (!deliveryConfig || checkingDelivery || isQuitting || !supervisor.ownsRunner ||
+      board.active_chat_ids?.length !== 0 || tasks.some(t => ["queued", "running"].includes(t.status))) return;
+  checkingDelivery = true;
+  try {
+    const checkout = path.resolve(__dirname, "../..");
+    const sha = await applyVerifiedCommit(checkout, deliveryConfig.branch, settings.lastLocalDelivery);
+    if (!sha) return;
+    // Defer a relaunch while the user is editing a field in the current window.
+    if (await mainWindow.webContents.executeJavaScript(
+      "Boolean(document.activeElement?.matches('textarea, input, [contenteditable=true]') && (document.activeElement.value || document.activeElement.isContentEditable))"
+    )) return;
+    settings.lastLocalDelivery = sha;
+    saveSettings();
+    supervisor.log.append("Applied local worker commit " + sha);
+    isQuitting = true;
+    app.relaunch({ args: [app.getAppPath()] });
+    app.quit();
+  } catch (error) {
+    if (deliveryError !== error.message) {
+      deliveryError = error.message;
+      supervisor.log.append("Local delivery waiting: " + error.message);
+      new Notification({ title: "Roosta update is waiting", body: error.message }).show();
+    }
+  } finally {
+    checkingDelivery = false;
+  }
+}
+
 async function pollDashboard() {
   try {
     const [boardResponse, tasksResponse] = await Promise.all([
@@ -435,6 +468,7 @@ async function pollDashboard() {
     notices.forEach(showNotice);
     saveState();
     updateTray();
+    await checkLocalDelivery(board, tasks);
   } catch {
     missedHealthChecks += 1;
     if (missedHealthChecks < 3) return;
@@ -602,6 +636,11 @@ async function initialise() {
   settingsFile = path.join(app.getPath("userData"), "settings.json");
   notificationState = new NotificationState(readJson(stateFile, {}));
   settings = readJson(settingsFile, {});
+  if (!app.isPackaged) {
+    const config = readJson(path.join(os.homedir(), ".config/roosta/local-delivery.json"), {});
+    if (config.checkout === path.resolve(__dirname, "../..") && config.workspace === WORKSPACE_ROOT &&
+        typeof config.branch === "string" && config.branch) deliveryConfig = config;
+  }
   notificationStatus = settings.notificationLastError
     ? "failed"
     : settings.notificationSetupComplete ? "ready" : "not tested";
