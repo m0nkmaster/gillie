@@ -82,6 +82,22 @@ def test_claude_accounts_have_separate_auth_and_sessions(accounts, tmp_path):
     assert all(r.env['CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST'] == '1' for r in runs)
 
 
+def test_claude_workers_keep_workspace_specific_source_permissions(accounts, tmp_path, monkeypatch):
+    account = accounts[0]('anthropic', auth='cli')
+    checkout = tmp_path / 'checkout'
+    package = checkout / 'src/roosta'
+    monkeypatch.setattr(ai_backend.paths, 'APP_ROOT', package)
+    def settings(workspace):
+        args = ai_backend.prepare(account['id'], str(workspace)).args
+        return Path(args[args.index('--settings') + 1])
+    engineer = settings(checkout)
+    other = settings(tmp_path / 'office')
+    for tool in ('Read', 'Edit', 'Write'):
+        rule = f'{tool}(/{package.resolve()}/**)'
+        assert rule not in json.loads(engineer.read_text())['permissions']['deny']
+        assert rule in json.loads(other.read_text())['permissions']['deny']
+
+
 def test_default_requires_tool_test_and_disconnect_never_falls_back(accounts):
     create, _ = accounts
     a, b = create(tested=False), create()
@@ -172,6 +188,21 @@ try {
 
 '''
     subprocess.run([node,'--input-type=module','-e',script], check=True, cwd=Path(__file__).resolve().parents[1])
+
+
+def test_application_source_is_readable_when_it_belongs_to_the_worker_workspace(tmp_path, monkeypatch):
+    workspace = tmp_path / 'roosta'
+    app_root = workspace / 'src' / 'roosta'
+    monkeypatch.setattr(ai_backend.paths, 'APP_ROOT', app_root)
+    monkeypatch.setattr(ai_backend.ai_runtime, 'RUNTIME_ROOT', workspace / '.roosta/state/cache/runtimes')
+    monkeypatch.setattr(ai_backend.connections, 'CONNECTIONS_DIR', workspace / '.roosta/state/ai-connections')
+
+    protected = ai_backend._protected_roots(str(workspace))
+
+    assert app_root not in protected
+    assert ai_backend.ai_runtime.RUNTIME_ROOT.resolve() in protected
+    assert ai_backend.connections.CONNECTIONS_DIR.resolve() in protected
+    assert app_root in ai_backend._protected_roots(str(tmp_path / 'another-workspace'))
 
 
 def test_settings_reject_remote_and_cross_origin_requests(accounts):

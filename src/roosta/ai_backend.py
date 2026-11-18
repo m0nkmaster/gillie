@@ -26,6 +26,12 @@ DEFAULT_BACKEND = CLAUDE  # setup configures Claude Code; Cursor is opt-in
 BACKEND_FILE = paths.CACHE_DIR / "ai-backend.json"
 
 
+def _protected_roots(workspace: str) -> tuple[Path, ...]:
+    roots = (connections.CONNECTIONS_DIR.resolve(), ai_runtime.RUNTIME_ROOT.resolve())
+    app_root = paths.APP_ROOT.resolve()
+    return roots if app_root.is_relative_to(Path(workspace).resolve()) else roots + (app_root,)
+
+
 def current(path: Path | None = None) -> str:
     try:
         saved = json.loads(Path(path or BACKEND_FILE).read_text()).get("backend")
@@ -356,10 +362,10 @@ def prepare(connection_id: str, workspace: str, *, model: str = "", session_id: 
                                       session_id=sid, partial=True, projects=projects)
         settings_index = args.index("--settings") + 1
         settings = json.loads(Path(args[settings_index]).read_text())
-        for protected in (connections.CONNECTIONS_DIR, ai_runtime.RUNTIME_ROOT, paths.APP_ROOT):
+        for protected in _protected_roots(workspace):
             for tool in ("Read", "Edit", "Write"):
-                settings["permissions"]["deny"].append(f"{tool}(/{protected.resolve()}/**)")
-        settings_path = directory / f"permissions-{profile}.json"
+                settings["permissions"]["deny"].append(f"{tool}(/{protected}/**)")
+        settings_path = directory / f"permissions-{profile}-{workspace_key}.json"
         _private_json(settings_path, settings)
         args[settings_index] = str(settings_path)
         args.extend(["--setting-sources", "", "--strict-mcp-config", "--mcp-config", str(mcp_path)])
@@ -394,7 +400,7 @@ def prepare(connection_id: str, workspace: str, *, model: str = "", session_id: 
         policy = cursor_agent.merged_permissions(json.loads(Path(template).read_text())["permissions"])
         if profile == "unrestricted":
             policy = {"allow": [], "deny": [], "unrestricted": True}
-        policy["protected"] = [str(p.resolve()) for p in (connections.CONNECTIONS_DIR, ai_runtime.RUNTIME_ROOT, paths.APP_ROOT)]
+        policy["protected"] = [str(p) for p in _protected_roots(workspace)]
         env["ROOSTA_PI_POLICY"] = json.dumps(policy)
         args = pi_agent.pi_args(binary, connection, model, pi_dir, sid, workspace)
         if effort:

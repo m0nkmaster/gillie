@@ -197,7 +197,10 @@ backend API and saved selection remain for compatibility; new selections use nam
   external-write CLI commands and write-shaped MCP tools. A task with `allow_git_push: true` uses
   `cursor-permissions-git-push.json`, which permits only `git push origin main`; its prompt must
   confine that standing approval to one named repository. The approved sender path deliberately
-  omits these profiles only after the user confirms the external action.
+  omits these profiles only after the user confirms the external action. Named connections also
+  protect their credential and managed-runtime directories. They protect the installed application
+  package unless it is inside the selected workspace, so a worker can develop Roosta from its own
+  source checkout without gaining access to connection state.
 
 - **Chats have their own model.** `GENERAL_CHAT_MODEL` (process environment, then workspace
   `.env`) sets the model for `chat:` ids; unset, Cursor uses its own default. Item chats, person and document
