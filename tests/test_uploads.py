@@ -186,7 +186,7 @@ class RecordingRouter:
 def chat_env(tmp_path, monkeypatch):
     vault = tmp_path / "vault"
     vault.mkdir()
-    monkeypatch.setattr(appmod, "VAULT_ROOT", vault)
+    monkeypatch.setattr(appmod.paths, "WORKSPACE", vault)
     monkeypatch.setattr(appmod, "UPLOADS_DIR", vault / "uploads")
     router = RecordingRouter()
     monkeypatch.setattr(appmod, "chat_router", router)
@@ -212,7 +212,7 @@ def test_chat_passes_uploaded_files_to_the_turn(chat_env):
     assert turn_id == item_id and message == ""
     (upload_info,) = item["uploaded_files"]
     assert upload_info["name"] == "shot.png" and upload_info["image"] is True
-    assert (appmod.VAULT_ROOT / upload_info["path"]).read_bytes() == PNG
+    assert (appmod.paths.WORKSPACE / upload_info["path"]).read_bytes() == PNG
     assert not Path(upload_info["path"]).is_absolute()
     assert appmod.GENERAL_CHAT_ITEM == before and "uploaded_files" not in appmod.GENERAL_CHAT_ITEM
 

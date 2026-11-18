@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from roosta import task_config
 from roosta import app as appmod
 from roosta.activity_log import ActivityLog
 from roosta import opencode_ollama
@@ -76,7 +77,7 @@ class FakeConnectors:
 
 def make_runner(
     tmp_path: Path,
-    tasks: list[appmod.TaskConfig],
+    tasks: list[task_config.TaskConfig],
     executor,
     auth_checker=always_authed,
     teams_auth_status=None,
@@ -106,11 +107,11 @@ def test_interval_task_runs_automatically_when_due(tmp_path):
     async def scenario():
         started: list[str] = []
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             started.append(task.id)
             return "success", {"summary": "ran", "status": "success"}, "", ""
 
-        runner = make_runner(tmp_path, [appmod.TaskConfig(id="scheduled", skill="skill", interval=3600)], executor)
+        runner = make_runner(tmp_path, [task_config.TaskConfig(id="scheduled", skill="skill", interval=3600)], executor)
         runner.start()
         try:
             await wait_until(lambda: started == ["scheduled"])
@@ -129,11 +130,11 @@ def test_manual_trigger_bypasses_interval_gate(tmp_path):
         cached_state(cache_dir, "manual")
         started: list[str] = []
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             started.append(task.id)
             return "success", {"summary": "manual ran", "status": "success"}, "", ""
 
-        runner = make_runner(tmp_path, [appmod.TaskConfig(id="manual", skill="skill", interval=3600)], executor)
+        runner = make_runner(tmp_path, [task_config.TaskConfig(id="manual", skill="skill", interval=3600)], executor)
         runner.start()
         try:
             await asyncio.sleep(0.05)
@@ -153,13 +154,13 @@ def test_days_of_week_gate_blocks_scheduled_run_but_not_manual_run(tmp_path):
     async def scenario():
         started: list[str] = []
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             started.append(task.id)
             return "success", {"summary": "ran", "status": "success"}, "", ""
 
         current_day = datetime.now().astimezone().strftime("%A").lower()
         blocked_day = "monday" if current_day != "monday" else "tuesday"
-        task = appmod.TaskConfig(
+        task = task_config.TaskConfig(
             id="weekly",
             skill="skill",
             run_at="00:00",
@@ -196,7 +197,7 @@ def test_weekly_task_missed_on_its_day_catches_up_on_an_off_day(tmp_path):
     async def scenario():
         started: list[str] = []
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             started.append(task.id)
             return "success", {"summary": "ran", "status": "success"}, "", ""
 
@@ -209,7 +210,7 @@ def test_weekly_task_missed_on_its_day_catches_up_on_an_off_day(tmp_path):
             "last_run": (now_local - timedelta(days=8)).isoformat(),
             "last_output": {}, "run_count": 1, "last_error": "",
         }))
-        runner = make_runner(tmp_path, [appmod.TaskConfig(
+        runner = make_runner(tmp_path, [task_config.TaskConfig(
             id="weekly", skill="skill", run_at="00:00", days_of_week=[yesterday],
         )], executor)
         runner.start()
@@ -228,14 +229,14 @@ def test_non_writer_tasks_run_in_parallel(tmp_path):
         started: dict[str, float] = {}
         release = asyncio.Event()
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             started[task.id] = asyncio.get_running_loop().time()
             await release.wait()
             return "success", {"summary": f"{task.id} ran", "status": "success"}, "", ""
 
         tasks = [
-            appmod.TaskConfig(id="reader-a", skill="a", interval=3600),
-            appmod.TaskConfig(id="reader-b", skill="b", interval=3600),
+            task_config.TaskConfig(id="reader-a", skill="a", interval=3600),
+            task_config.TaskConfig(id="reader-b", skill="b", interval=3600),
         ]
         runner = make_runner(tmp_path, tasks, executor)
         runner.start()
@@ -257,7 +258,7 @@ def test_writer_tasks_serialise_but_reader_runs_alongside_writer(tmp_path):
         first_writer_release = asyncio.Event()
         second_writer_started = asyncio.Event()
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             if task.writer:
                 writer_started.append(task.id)
                 if len(writer_started) == 1:
@@ -270,9 +271,9 @@ def test_writer_tasks_serialise_but_reader_runs_alongside_writer(tmp_path):
             return "success", {"summary": f"{task.id} ran", "status": "success"}, "", ""
 
         tasks = [
-            appmod.TaskConfig(id="writer-a", skill="wa", interval=3600, writer=True),
-            appmod.TaskConfig(id="writer-b", skill="wb", interval=3600, writer=True),
-            appmod.TaskConfig(id="reader", skill="r", interval=3600),
+            task_config.TaskConfig(id="writer-a", skill="wa", interval=3600, writer=True),
+            task_config.TaskConfig(id="writer-b", skill="wb", interval=3600, writer=True),
+            task_config.TaskConfig(id="reader", skill="r", interval=3600),
         ]
         runner = make_runner(tmp_path, tasks, executor)
         runner.start()
@@ -300,7 +301,7 @@ def test_writer_waiting_on_lock_names_the_holder_not_a_stale_teams_block(tmp_pat
         release = asyncio.Event()
         started: list[str] = []
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             started.append(task.id)
             if task.id == "office-director":
                 holder_started.set()
@@ -308,8 +309,8 @@ def test_writer_waiting_on_lock_names_the_holder_not_a_stale_teams_block(tmp_pat
             return "success", {"summary": "ran", "status": "success"}, "", ""
 
         tasks = [
-            appmod.TaskConfig(id="office-director", skill="od", interval=3600, writer=True),
-            appmod.TaskConfig(id="incident-tracker", skill="it", interval=3600, writer=True, requires=["teams"]),
+            task_config.TaskConfig(id="office-director", skill="od", interval=3600, writer=True),
+            task_config.TaskConfig(id="incident-tracker", skill="it", interval=3600, writer=True, requires=["teams"]),
         ]
         runner = make_runner(tmp_path, tasks, executor, teams_auth_status=lambda: teams_status)
         runner.start()
@@ -340,7 +341,7 @@ def test_auth_failure_clears_manual_trigger_instead_of_staying_queued(tmp_path):
         cache_dir = tmp_path / "cache"
         cached_state(cache_dir, "manual")
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             pytest.fail("task executor should not run when auth fails")
 
         async def auth_checker(_task) -> bool:
@@ -348,7 +349,7 @@ def test_auth_failure_clears_manual_trigger_instead_of_staying_queued(tmp_path):
 
         runner = make_runner(
             tmp_path,
-            [appmod.TaskConfig(id="manual", skill="skill", interval=3600)],
+            [task_config.TaskConfig(id="manual", skill="skill", interval=3600)],
             executor,
             auth_checker=auth_checker,
         )
@@ -368,14 +369,14 @@ def test_teams_dependent_task_waits_for_auth_recovery_without_spawning_agent(tmp
         started: list[str] = []
         teams_status = "auth-failed"
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             started.append(task.id)
             return "success", {"summary": "ran", "status": "success"}, "", ""
 
         runner = make_runner(
             tmp_path,
             [
-                appmod.TaskConfig(
+                task_config.TaskConfig(
                     id="support",
                     skill="support-watch",
                     interval=3600,
@@ -418,7 +419,7 @@ def test_teams_blocked_manual_trigger_clears_instead_of_spinning(tmp_path):
             nonlocal loads
             loads += 1
             return [
-                appmod.TaskConfig(
+                task_config.TaskConfig(
                     id="support",
                     skill="support-watch",
                     interval=3600,
@@ -426,7 +427,7 @@ def test_teams_blocked_manual_trigger_clears_instead_of_spinning(tmp_path):
                 )
             ]
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             pytest.fail("task executor should not run while Teams auth is failed")
 
         runner = make_runner(
@@ -488,12 +489,12 @@ def test_unchanged_precheck_skips_agent_and_preserves_board_items(tmp_path):
         async def unchanged(_task):
             return True
 
-        async def executor(_task: appmod.TaskConfig, **_):
+        async def executor(_task: task_config.TaskConfig, **_):
             pytest.fail("an unchanged pre-check should not start an agent")
 
         runner = make_runner(
             tmp_path,
-            [appmod.TaskConfig(
+            [task_config.TaskConfig(
                 id="self-chat-commands",
                 skill="self-chat-commands",
                 interval=600,
@@ -533,11 +534,11 @@ def test_poll_loop_survives_a_crashing_precheck_and_still_serves_manual_runs(tmp
                 raise ProcessLookupError()
             return True
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             started.append(task.id)
             return "success", {"summary": "ran", "status": "success"}, "", ""
 
-        task = appmod.TaskConfig(id="self-chat-commands", skill="self-chat-commands", interval=0,
+        task = task_config.TaskConfig(id="self-chat-commands", skill="self-chat-commands", interval=0,
                                  precheck="check-inbox")
         runner = make_runner(tmp_path, [task], executor, prechecker=flaky_probe)
         runner.start()
@@ -560,13 +561,13 @@ def test_manual_run_bypasses_unchanged_precheck(tmp_path):
         async def unchanged(_task):
             return True
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             started.append(task.id)
             return "success", {"summary": "forced run", "status": "success"}, "", ""
 
         runner = make_runner(
             tmp_path,
-            [appmod.TaskConfig(
+            [task_config.TaskConfig(
                 id="self-chat-commands",
                 skill="self-chat-commands",
                 interval=600,
@@ -594,11 +595,11 @@ def test_http_manual_run_endpoint_starts_task(tmp_path, monkeypatch):
         cached_state(cache_dir, "manual")
         started = asyncio.Event()
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             started.set()
             return "success", {"summary": "started from API", "status": "success"}, "", ""
 
-        runner = make_runner(tmp_path, [appmod.TaskConfig(id="manual", skill="skill", interval=3600)], executor)
+        runner = make_runner(tmp_path, [task_config.TaskConfig(id="manual", skill="skill", interval=3600)], executor)
         monkeypatch.setattr(appmod, "runner", runner)
         runner.start()
         try:
@@ -632,10 +633,10 @@ def test_load_tasks_defaults_to_the_engine_and_allows_runtime_override(tmp_path,
         "    requires: [jira]\n"
         "    precheck: check-inbox --quiet\n"
     )
-    monkeypatch.setattr(appmod, "TASKS_FILE", tasks_file)
+    monkeypatch.setattr(appmod.paths, "TASKS_FILE", tasks_file)
     monkeypatch.setattr(appmod.ai_backend, "current", lambda path=None: "cursor")
 
-    tasks = appmod.load_tasks()
+    tasks = task_config.load_tasks()
 
     assert tasks[0].model == ""
     assert tasks[0].harness == "cursor"
@@ -661,9 +662,9 @@ def test_load_tasks_flags_fail_closed_on_non_boolean_values(tmp_path, monkeypatc
         "    skill: second\n"
         "    unrestricted: true\n"
     )
-    monkeypatch.setattr(appmod, "TASKS_FILE", tasks_file)
+    monkeypatch.setattr(appmod.paths, "TASKS_FILE", tasks_file)
 
-    typo, real = appmod.load_tasks()
+    typo, real = task_config.load_tasks()
 
     assert typo.unrestricted is False
     assert typo.writer is False
@@ -693,10 +694,10 @@ def test_skill_description_reads_and_compacts_local_frontmatter(tmp_path):
         "# Daily brief\n"
     )
 
-    assert appmod.skill_description("daily-brief", tmp_path) == (
+    assert task_config.skill_description("daily-brief", tmp_path) == (
         "Summarises the latest activity without adding noise."
     )
-    assert appmod.skill_description("../daily-brief", tmp_path) == ""
+    assert task_config.skill_description("../daily-brief", tmp_path) == ""
 
     (skill_dir / "SKILL.md").write_text(
         "---\n"
@@ -704,15 +705,15 @@ def test_skill_description_reads_and_compacts_local_frontmatter(tmp_path):
         "description: Summarises activity: briefly and clearly.\n"
         "---\n"
     )
-    assert appmod.skill_description("daily-brief", tmp_path) == (
+    assert task_config.skill_description("daily-brief", tmp_path) == (
         "Summarises activity: briefly and clearly."
     )
 
 
 def test_worker_skill_preview_uses_runner_lookup_order(monkeypatch, tmp_path):
-    task = appmod.TaskConfig(id="brief-worker", skill="daily-brief", dir=str(tmp_path / "work"))
+    task = task_config.TaskConfig(id="brief-worker", skill="daily-brief", dir=str(tmp_path / "work"))
     monkeypatch.setattr(appmod, "load_tasks_map", lambda: {task.id: task})
-    monkeypatch.setattr(appmod, "VAULT_ROOT", tmp_path / "vault")
+    monkeypatch.setattr(appmod.paths, "WORKSPACE", tmp_path / "vault")
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     monkeypatch.setattr(appmod.paths, "CORE_SKILLS_DIR", tmp_path / "core")
     roots = [Path(task.dir) / ".agents/skills", tmp_path / "home/.agents/skills", tmp_path / "core"]
@@ -734,9 +735,9 @@ def test_worker_skill_preview_uses_runner_lookup_order(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("problem", ["symlink", "large", "encoding", "traversal"])
 def test_worker_skill_preview_rejects_unsafe_documents(monkeypatch, tmp_path, problem):
-    task = appmod.TaskConfig(id="worker", skill="preview-test", dir=str(tmp_path))
+    task = task_config.TaskConfig(id="worker", skill="preview-test", dir=str(tmp_path))
     monkeypatch.setattr(appmod, "load_tasks_map", lambda: {task.id: task})
-    monkeypatch.setattr(appmod, "VAULT_ROOT", tmp_path)
+    monkeypatch.setattr(appmod.paths, "WORKSPACE", tmp_path)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setattr(appmod.paths, "CORE_SKILLS_DIR", tmp_path / "core")
     skill = tmp_path / ".agents/skills" / task.skill / "SKILL.md"
@@ -774,9 +775,9 @@ def test_runtime_model_list_parsers():
         {"id": "gpt-5.6-sol-high", "label": "GPT-5.6 Sol 1M High"},
     ]
     assert [model["id"] for model in ollama] == ["qwen3.5:latest", "qwen3.5:9b-mlx"]
-    assert not appmod.valid_runtime("opencode-ollama", "qwen2.5-coder:3b")
-    assert appmod.valid_runtime("opencode-ollama", "qwen3.5:latest")
-    incompatible = appmod.TaskConfig(
+    assert not task_config.valid_runtime("opencode-ollama", "qwen2.5-coder:3b")
+    assert task_config.valid_runtime("opencode-ollama", "qwen3.5:latest")
+    incompatible = task_config.TaskConfig(
         id="local",
         skill="skill",
         harness="opencode-ollama",
@@ -842,7 +843,7 @@ def test_runtime_selection_updates_tasks_yaml_without_losing_comments(tmp_path):
         "    skill: skill  # keep this comment\n"
         "    interval: 3600  # and this one\n"
     )
-    task = appmod.TaskConfig(id="local", skill="skill", interval=3600)
+    task = task_config.TaskConfig(id="local", skill="skill", interval=3600)
     runner = make_runner(tmp_path, [task], lambda _task: None)
     runner._tasks = runner._load_tasks()
     runner._states[task.id] = runner._load_state(task)
@@ -874,13 +875,13 @@ def test_claude_harness_keeps_its_own_task_model(tmp_path, monkeypatch):
         "    harness: agent\n"
         "    model: gpt-5.6-sol-high\n"
     )
-    task = appmod.TaskConfig(id="local", skill="skill", interval=3600)
+    task = task_config.TaskConfig(id="local", skill="skill", interval=3600)
     runner = make_runner(tmp_path, [task], lambda _task: None)
     runner._tasks = runner._load_tasks()
     runner._states[task.id] = runner._load_state(task)
     runner._triggers[task.id] = asyncio.Event()
-    assert not appmod.valid_runtime("claude", "bad model;")
-    assert not appmod.valid_runtime("agent", "opus")
+    assert not task_config.valid_runtime("claude", "bad model;")
+    assert not task_config.valid_runtime("agent", "opus")
     state = runner.set_runtime("local", "claude", "opus")
 
     assert state["claude_model"] == "opus"
@@ -888,8 +889,8 @@ def test_claude_harness_keeps_its_own_task_model(tmp_path, monkeypatch):
     assert "    harness: claude\n" in updated
     assert "    model: gpt-5.6-sol-high\n" in updated
     assert "    claude_model: opus\n" in updated
-    monkeypatch.setattr(appmod, "TASKS_FILE", tasks_file)
-    loaded = next(t for t in appmod.load_tasks() if t.id == "local")
+    monkeypatch.setattr(appmod.paths, "TASKS_FILE", tasks_file)
+    loaded = next(t for t in task_config.load_tasks() if t.id == "local")
     assert (loaded.harness, loaded.model, loaded.claude_model) == ("claude", "gpt-5.6-sol-high", "opus")
 
 
@@ -900,7 +901,7 @@ def test_claude_harness_keeps_its_own_task_model(tmp_path, monkeypatch):
 ])
 def test_task_harness_is_explicit_or_follows_the_engine(monkeypatch, raw, engine, expected):
     monkeypatch.setattr(appmod.ai_backend, "current", lambda path=None: engine)
-    assert appmod.resolve_harness(raw) == expected
+    assert task_config.resolve_harness(raw) == expected
 
 
 def test_cursor_harness_runs_cursor_even_when_the_engine_is_claude(tmp_path, monkeypatch):
@@ -917,11 +918,11 @@ def test_cursor_harness_runs_cursor_even_when_the_engine_is_claude(tmp_path, mon
     monkeypatch.setattr(appmod.ai_backend, "create_session", no_session)
     monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
     asyncio.run(appmod.run_task(
-        appmod.TaskConfig(id="x", skill="skill", harness="cursor", model="auto", dir=str(tmp_path)),
+        task_config.TaskConfig(id="x", skill="skill", harness="cursor", model="auto", dir=str(tmp_path)),
         idle_timeout=1,
     ))
     assert captured["cmd"][0] == appmod.CURSOR_AGENT
-    assert appmod.task_engine(appmod.TaskConfig(id="x", skill="s", harness="cursor")) == "cursor"
+    assert task_config.task_engine(task_config.TaskConfig(id="x", skill="s", harness="cursor")) == "cursor"
 
 
 def test_unknown_harness_fails_without_spawning(tmp_path, monkeypatch):
@@ -930,7 +931,7 @@ def test_unknown_harness_fails_without_spawning(tmp_path, monkeypatch):
 
     monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
     status, _, error, _ = asyncio.run(appmod.run_task(
-        appmod.TaskConfig(id="x", skill="skill", harness="copilot", dir=str(tmp_path)),
+        task_config.TaskConfig(id="x", skill="skill", harness="copilot", dir=str(tmp_path)),
         idle_timeout=1,
     ))
     assert status == "error" and "Unknown harness" in error
@@ -949,7 +950,7 @@ def test_settings_edit_identity_and_schedule_in_tasks_yaml(tmp_path, monkeypatch
         "  - id: other\n"
         "    skill: skill\n"
     )
-    task = appmod.TaskConfig(id="local", skill="skill", interval=3600, weekdays_only=True)
+    task = task_config.TaskConfig(id="local", skill="skill", interval=3600, weekdays_only=True)
     runner = make_runner(tmp_path, [task], lambda _task: None)
     runner._tasks = runner._load_tasks()
     runner._states[task.id] = runner._load_state(task)
@@ -971,13 +972,13 @@ def test_settings_edit_identity_and_schedule_in_tasks_yaml(tmp_path, monkeypatch
     assert "skill: skill  # keep this comment" in updated
     assert "writer: true  # and this one" in updated
     assert "weekdays_only" not in updated
-    monkeypatch.setattr(appmod, "TASKS_FILE", tasks_file)
-    loaded = appmod.load_tasks_map()
+    monkeypatch.setattr(appmod.paths, "TASKS_FILE", tasks_file)
+    loaded = task_config.load_tasks_map()
     assert loaded["local"].nickname == "Dwight"
     assert loaded["local"].description == "Does a thing: carefully # really"
     assert loaded["local"].days_of_week == ["monday", "friday"]
     assert loaded["local"].run_at == "08:30"
-    assert appmod._yaml_scalar("10:00") == '"10:00"'  # bare 10:00 is YAML base-60 600
+    assert task_config._yaml_scalar("10:00") == '"10:00"'  # bare 10:00 is YAML base-60 600
     assert loaded["other"].nickname == ""
 
     runner.set_settings("local", {"nickname": "", "description": "",
@@ -992,7 +993,7 @@ def test_settings_edit_identity_and_schedule_in_tasks_yaml(tmp_path, monkeypatch
 def test_settings_toggle_writer(tmp_path, monkeypatch):
     tasks_file = tmp_path / "tasks.yaml"
     tasks_file.write_text("tasks:\n  - id: local\n    skill: skill\n    writer: true  # serialise\n")
-    task = appmod.TaskConfig(id="local", skill="skill", writer=True)
+    task = task_config.TaskConfig(id="local", skill="skill", writer=True)
     runner = make_runner(tmp_path, [task], lambda _task: None)
     runner._states[task.id] = runner._load_state(task)
     runner._triggers[task.id] = asyncio.Event()
@@ -1002,14 +1003,14 @@ def test_settings_toggle_writer(tmp_path, monkeypatch):
 
     assert state["writer"] is False
     assert tasks_file.read_text() == "tasks:\n  - id: local\n    skill: skill\n"
-    monkeypatch.setattr(appmod, "TASKS_FILE", tasks_file)
-    assert appmod.load_tasks_map()["local"].writer is False
+    monkeypatch.setattr(appmod.paths, "TASKS_FILE", tasks_file)
+    assert task_config.load_tasks_map()["local"].writer is False
 
 
 def test_settings_reject_bad_input(tmp_path):
     tasks_file = tmp_path / "tasks.yaml"
     tasks_file.write_text("tasks:\n  - id: local\n    skill: skill\n")
-    task = appmod.TaskConfig(id="local", skill="skill")
+    task = task_config.TaskConfig(id="local", skill="skill")
     runner = make_runner(tmp_path, [task], lambda _task: None)
     runner._states[task.id] = runner._load_state(task)
     runner._triggers[task.id] = asyncio.Event()
@@ -1054,7 +1055,7 @@ def test_http_runtime_endpoint_updates_future_task_runs(tmp_path, monkeypatch):
 
         runner = make_runner(
             tmp_path,
-            [appmod.TaskConfig(id="manual", skill="skill", interval=3600)],
+            [task_config.TaskConfig(id="manual", skill="skill", interval=3600)],
             executor,
         )
         (tmp_path / "tasks.yaml").write_text(
@@ -1127,7 +1128,7 @@ def test_run_task_closes_stdin_and_parses_task_output(tmp_path, monkeypatch):
         monkeypatch.setattr(appmod, "cursor_env", fake_cursor_env)
 
         status, output, error, session_id = await appmod.run_task(
-            appmod.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
+            task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
         )
@@ -1183,7 +1184,7 @@ def test_agent_task_retries_transient_failure_before_any_output(tmp_path, monkey
         monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
         status, output, error, _ = await appmod.run_task(
-            appmod.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
+            task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
         )
@@ -1239,7 +1240,7 @@ def test_agent_task_retries_transient_failure_after_protocol_preamble(tmp_path, 
         monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
         status, output, error, _ = await appmod.run_task(
-            appmod.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
+            task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
         )
@@ -1282,7 +1283,7 @@ def test_agent_task_does_not_retry_transient_failure_after_model_progress(tmp_pa
         monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
         status, _, error, _ = await appmod.run_task(
-            appmod.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
+            task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
         )
@@ -1317,7 +1318,7 @@ def test_agent_run_without_completed_task_output_is_an_error(tmp_path, monkeypat
         monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
         status, output, error, _ = await appmod.run_task(
-            appmod.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
+            task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
         )
@@ -1352,7 +1353,7 @@ def test_malformed_task_output_is_an_error(tmp_path, monkeypatch):
         monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
         status, output, error, _ = await appmod.run_task(
-            appmod.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
+            task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
         )
@@ -1392,7 +1393,7 @@ def test_task_output_status_synonyms_are_normalised(tmp_path, monkeypatch, given
         monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
         status, output, error, _ = await appmod.run_task(
-            appmod.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
+            task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
         )
@@ -1435,7 +1436,7 @@ def test_run_task_uses_ollama_wrapper_with_selected_opencode_model(tmp_path, mon
         )
 
         status, output, error, session_id = await appmod.run_task(
-            appmod.TaskConfig(
+            task_config.TaskConfig(
                 id="local",
                 skill="skill",
                 dir=str(tmp_path),
@@ -1492,7 +1493,7 @@ def test_opencode_plain_text_tool_call_is_an_error(tmp_path, monkeypatch):
         )
 
         status, output, error, _ = await appmod.run_task(
-            appmod.TaskConfig(
+            task_config.TaskConfig(
                 id="local",
                 skill="key-person-tracker",
                 dir=str(tmp_path),
@@ -1511,7 +1512,7 @@ def test_opencode_plain_text_tool_call_is_an_error(tmp_path, monkeypatch):
 
 def test_opencode_git_push_task_is_rejected_before_launch(tmp_path):
     status, output, error, session_id = asyncio.run(appmod.run_task(
-        appmod.TaskConfig(
+        task_config.TaskConfig(
             id="refresh",
             skill="refresh",
             dir=str(tmp_path),
@@ -1528,7 +1529,7 @@ def test_opencode_git_push_task_is_rejected_before_launch(tmp_path):
 
 
 def test_git_push_task_prompt_distinguishes_manual_run_now():
-    task = appmod.TaskConfig(
+    task = task_config.TaskConfig(
         id="okr-dashboard-refresh",
         skill="okr-dashboard-refresh",
         allow_git_push=True,
@@ -1542,7 +1543,7 @@ def test_git_push_task_prompt_distinguishes_manual_run_now():
 
 def test_git_push_prompts_are_not_specific_to_the_okr_refresh():
     """Run now on the vault gardener was told to refresh OKR metric snapshots (16 Oct)."""
-    gardener = appmod.TaskConfig(
+    gardener = task_config.TaskConfig(
         id="shared-vault-gardener", skill="shared-vault-gardener",
         allow_git_push=True, push_on_schedule=True,
     )
@@ -1553,7 +1554,7 @@ def test_git_push_prompts_are_not_specific_to_the_okr_refresh():
         assert "'shared-vault-gardener'" in prompt
     assert "Do not commit or push" not in scheduled
     assert "git push origin main" in scheduled
-    okr = appmod.TaskConfig(id="okr", skill="okr-dashboard-refresh", allow_git_push=True)
+    okr = task_config.TaskConfig(id="okr", skill="okr-dashboard-refresh", allow_git_push=True)
     assert "Do not commit or push" in appmod.task_prompt(okr, run_source="scheduled")
 
 
@@ -1584,7 +1585,7 @@ def test_run_task_uses_scoped_push_profile_only_for_authorised_task(tmp_path, mo
         monkeypatch.setattr(appmod, "cursor_env", fake_cursor_env)
 
         status, _, error, _ = await appmod.run_task(
-            appmod.TaskConfig(
+            task_config.TaskConfig(
                 id="refresh",
                 skill="okr-dashboard-refresh",
                 dir=str(tmp_path),
@@ -1607,13 +1608,13 @@ def test_run_task_uses_scoped_push_profile_only_for_authorised_task(tmp_path, mo
 
 
 def test_opencode_uses_longer_default_idle_timeout():
-    local_task = appmod.TaskConfig(
+    local_task = task_config.TaskConfig(
         id="local",
         skill="skill",
         harness="opencode-ollama",
         model="qwen3.5:latest",
     )
-    agent_task = appmod.TaskConfig(id="agent", skill="skill")
+    agent_task = task_config.TaskConfig(id="agent", skill="skill")
 
     assert appmod.task_idle_timeout(local_task) == 1800
     assert appmod.task_idle_timeout(agent_task) == 300
@@ -1646,7 +1647,7 @@ def test_run_task_kills_hung_child(tmp_path, monkeypatch):
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
 
         status, output, error, _ = await appmod.run_task(
-            appmod.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
+            task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="33333333-3333-4333-8333-333333333333",
             idle_timeout=0.01,
             max_timeout=10,
@@ -1684,7 +1685,7 @@ def test_run_task_survives_system_sleep(tmp_path, monkeypatch):
         monkeypatch.setattr(appmod, "time", types.SimpleNamespace(monotonic=lambda: 0.0))
 
         status, output, error, _ = await appmod.run_task(
-            appmod.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
+            task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="55555555-5555-4555-8555-555555555555",
             idle_timeout=0.01,
             max_timeout=10,
@@ -1725,7 +1726,7 @@ def test_run_task_busy_child_is_not_killed(tmp_path, monkeypatch):
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
 
         status, output, error, _ = await appmod.run_task(
-            appmod.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
+            task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="44444444-4444-4444-8444-444444444444",
             idle_timeout=0.05,
             max_timeout=10,
@@ -1746,14 +1747,14 @@ def test_get_states_exposes_run_at_and_days(tmp_path):
             return "success", {"summary": "ok", "status": "success"}, "", ""
 
         runner = make_runner(tmp_path, [
-            appmod.TaskConfig(
+            task_config.TaskConfig(
                 id="timed",
                 skill="s",
                 run_at="09:00",
                 weekdays_only=True,
                 days_of_week=["monday"],
             ),
-            appmod.TaskConfig(id="polled", skill="s", interval=3600),
+            task_config.TaskConfig(id="polled", skill="s", interval=3600),
         ], executor)
         runner.start()
         try:
@@ -1777,7 +1778,7 @@ def test_cancel_queued_clears_manual_trigger(tmp_path):
         first_started = asyncio.Event()
         release_first = asyncio.Event()
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             if task.id == "writer-a":
                 first_started.set()
                 await release_first.wait()
@@ -1786,8 +1787,8 @@ def test_cancel_queued_clears_manual_trigger(tmp_path):
         runner = make_runner(
             tmp_path,
             [
-                appmod.TaskConfig(id="writer-a", skill="skill", interval=3600, writer=True),
-                appmod.TaskConfig(id="writer-b", skill="skill", interval=3600, writer=True),
+                task_config.TaskConfig(id="writer-a", skill="skill", interval=3600, writer=True),
+                task_config.TaskConfig(id="writer-b", skill="skill", interval=3600, writer=True),
             ],
             executor,
         )
@@ -1813,13 +1814,13 @@ def test_cancel_queued_rejects_running_task(tmp_path):
     async def scenario():
         release = asyncio.Event()
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             release.set()
             await asyncio.Event().wait()
 
         runner = make_runner(
             tmp_path,
-            [appmod.TaskConfig(id="writer", skill="skill", interval=3600, writer=True)],
+            [task_config.TaskConfig(id="writer", skill="skill", interval=3600, writer=True)],
             executor,
         )
         runner.start()
@@ -1841,7 +1842,7 @@ def test_http_cancel_endpoint_drops_queued_run(tmp_path, monkeypatch):
         first_started = asyncio.Event()
         release_first = asyncio.Event()
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             if task.id == "writer-a":
                 first_started.set()
                 await release_first.wait()
@@ -1850,8 +1851,8 @@ def test_http_cancel_endpoint_drops_queued_run(tmp_path, monkeypatch):
         runner = make_runner(
             tmp_path,
             [
-                appmod.TaskConfig(id="writer-a", skill="skill", interval=3600, writer=True),
-                appmod.TaskConfig(id="manual", skill="skill", interval=3600, writer=True),
+                task_config.TaskConfig(id="writer-a", skill="skill", interval=3600, writer=True),
+                task_config.TaskConfig(id="manual", skill="skill", interval=3600, writer=True),
             ],
             executor,
         )
@@ -1880,12 +1881,12 @@ def test_http_cancel_endpoint_drops_queued_run(tmp_path, monkeypatch):
 
 def test_activity_records_session_id_from_task_run(tmp_path):
     async def scenario():
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             return "success", {"summary": "ran", "status": "success"}, "", "abcd-efgh"
 
         activity = FakeActivity()
         runner = appmod.TaskRunner(
-            task_loader=lambda: [appmod.TaskConfig(id="scheduled", skill="skill", interval=3600)],
+            task_loader=lambda: [task_config.TaskConfig(id="scheduled", skill="skill", interval=3600)],
             auth_checker=always_authed,
             task_executor=executor,
             activity_log=activity,
@@ -1919,11 +1920,11 @@ def test_roosta_engineer_run_never_commits_the_workspace(tmp_path, monkeypatch):
             spawned.append(args)
             raise OSError("no subprocesses in this test")
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             return "success", {"summary": "ran", "status": "success"}, "", ""
 
         monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", no_subprocess)
-        task = appmod.TaskConfig(id="roosta-engineer", skill="roosta-engineer", interval=3600, writer=True)
+        task = task_config.TaskConfig(id="roosta-engineer", skill="roosta-engineer", interval=3600, writer=True)
         runner = make_runner(tmp_path, [task], executor)
         status, *_ = await runner._run_task(task)
         assert status == "success" and spawned == []
@@ -2039,8 +2040,8 @@ def test_only_tasks_that_require_a_connector_check_it_before_running(tmp_path):
         runner = make_runner(
             tmp_path,
             [
-                appmod.TaskConfig(id="watch", skill="watch", interval=3600, requires=["teams"]),
-                appmod.TaskConfig(id="other", skill="assistant", interval=3600),
+                task_config.TaskConfig(id="watch", skill="watch", interval=3600, requires=["teams"]),
+                task_config.TaskConfig(id="other", skill="assistant", interval=3600),
             ],
             executor,
             on_check=lambda: checks.append(1),
@@ -2095,7 +2096,7 @@ def test_partial_pass_reports_its_own_summary_not_an_invalid_result(tmp_path, mo
         monkeypatch.setattr(appmod, "cursor_env", lambda **_kwargs: {"CURSOR_API_KEY": object()})
 
         status, output, error, _ = await appmod.run_task(
-            appmod.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
+            task_config.TaskConfig(id="x", skill="skill", dir=str(tmp_path)),
             session_id="11111111-1111-4111-8111-111111111111",
             idle_timeout=1,
         )
@@ -2112,7 +2113,7 @@ def test_daily_run_lost_to_the_network_retries_soon_but_real_errors_wait(tmp_pat
     async def scenario():
         calls: list[str] = []
 
-        async def executor(task: appmod.TaskConfig, **_):
+        async def executor(task: task_config.TaskConfig, **_):
             calls.append(task.id)
             if calls.count(task.id) == 1:
                 reason = ("API Error: Can't reach the API server — check your internet"
@@ -2121,8 +2122,8 @@ def test_daily_run_lost_to_the_network_retries_soon_but_real_errors_wait(tmp_pat
             return "success", {"summary": "ran", "status": "success"}, "", ""
 
         tasks = [
-            appmod.TaskConfig(id="offline", skill="s", interval=86400, run_at="00:00"),
-            appmod.TaskConfig(id="broken", skill="s", interval=86400, run_at="00:00"),
+            task_config.TaskConfig(id="offline", skill="s", interval=86400, run_at="00:00"),
+            task_config.TaskConfig(id="broken", skill="s", interval=86400, run_at="00:00"),
         ]
         runner = make_runner(tmp_path, tasks, executor)
         runner._offline_retry = 0.1
@@ -2168,7 +2169,7 @@ def test_a_task_added_to_tasks_yaml_starts_even_without_file_events(tmp_path):
         )
         runner.start()
         try:
-            tasks.append(appmod.TaskConfig(id="gardener", skill="workspace-gardener", interval=3600))
+            tasks.append(task_config.TaskConfig(id="gardener", skill="workspace-gardener", interval=3600))
             await wait_until(lambda: started == ["gardener"])
             assert runner.get_state("gardener") is not None
         finally:
@@ -2183,7 +2184,7 @@ def test_firing_a_worker_removes_it_and_its_rubbish(tmp_path, monkeypatch):
     monkeypatch.setattr(appmod.paths, "STATE_DIR", tmp_path / "state")
     (tmp_path / "state" / "local").mkdir(parents=True)
     (tmp_path / "state" / "local.json").write_text("{}")
-    task = appmod.TaskConfig(id="local", skill="skill", interval=3600)
+    task = task_config.TaskConfig(id="local", skill="skill", interval=3600)
     runner = make_runner(tmp_path, [task], lambda _task: None)
     runner._states[task.id] = runner._load_state(task)
     runner._save_state(runner._states[task.id])

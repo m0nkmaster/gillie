@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from roosta import task_config
 from roosta import ai_backend
 from roosta import app as appmod
 from roosta import chat as cmod
@@ -183,7 +184,7 @@ def test_run_task_uses_claude_harness(claude, monkeypatch, flags, profile):
 
     monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
     status, output, error, session_id = asyncio.run(appmod.run_task(
-        appmod.TaskConfig(id="x", skill="skill", harness="claude", dir=str(claude), **flags),
+        task_config.TaskConfig(id="x", skill="skill", harness="claude", dir=str(claude), **flags),
         idle_timeout=1,
     ))
     assert (status, error) == ("success", "")
@@ -204,7 +205,7 @@ def test_claude_task_bash_cap_follows_the_run_ceiling(claude, monkeypatch):
 
     monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
     asyncio.run(appmod.run_task(
-        appmod.TaskConfig(id="x", skill="skill", harness="claude", dir=str(claude), max_timeout=2700),
+        task_config.TaskConfig(id="x", skill="skill", harness="claude", dir=str(claude), max_timeout=2700),
         idle_timeout=1,
     ))
     # Long scripts (teams-archive) outlived Claude's default 10-minute foreground cap.
@@ -290,7 +291,7 @@ def test_failed_claude_task_reports_readable_error_not_stream_json(claude, monke
 
     monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
     status, _, error, _ = asyncio.run(appmod.run_task(
-        appmod.TaskConfig(id="x", skill="skill", harness="claude", dir=str(claude)), idle_timeout=1,
+        task_config.TaskConfig(id="x", skill="skill", harness="claude", dir=str(claude)), idle_timeout=1,
     ))
     assert status == "error"
     assert error == "Teams session expired."
@@ -324,7 +325,7 @@ def test_expired_claude_signin_reports_login_instruction(claude, monkeypatch):
 
     monkeypatch.setattr(appmod.asyncio, "create_subprocess_exec", fake_create)
     status, _, error, _ = asyncio.run(appmod.run_task(
-        appmod.TaskConfig(id="x", skill="skill", harness="claude", dir=str(claude)), idle_timeout=1,
+        task_config.TaskConfig(id="x", skill="skill", harness="claude", dir=str(claude)), idle_timeout=1,
     ))
     assert status == "error"
     assert error == claude_code.CLAUDE_SIGNIN_MESSAGE

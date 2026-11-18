@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from roosta import task_config
 from roosta import github_issues as issues
 
 
@@ -103,7 +104,7 @@ def test_connection_run_applies_only_a_current_grant(monkeypatch, tmp_path, revo
 
     monkeypatch.setattr(app.ai_backend, "stream", stream)
     monkeypatch.setattr(issues, "apply_update", apply)
-    task = app.TaskConfig(id="ada", skill="engineer", description="", connection=conn)
+    task = task_config.TaskConfig(id="ada", skill="engineer", description="", connection=conn)
     status, output, error, _ = asyncio.run(app.run_task(task))
     if revoked:
         assert status == "error" and "No current standing approval" in error

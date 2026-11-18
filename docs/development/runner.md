@@ -1,7 +1,8 @@
 # Runner, workers and connectors
 
 [Agent guide](../../AGENTS.md). Read before changing scheduling, task configuration, connector checks or activity.
-Code lives in `src/roosta/app.py` and `connectors.py`; runtime paths such as `cache/`
+Code lives in `src/roosta/app.py` (scheduling), `task_config.py` (the task model and
+`tasks.yaml` loading and edits) and `connectors.py`; runtime paths such as `cache/`
 are relative to the workspace's `.roosta/state/`. See [harnesses](harnesses.md) for CLI details.
 
 ## Scheduling and execution

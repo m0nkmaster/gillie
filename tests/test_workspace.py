@@ -77,7 +77,7 @@ def test_context_limits_and_deleted_files(tmp_path):
 
 def test_catalogue_api_does_not_cache_contents(tmp_path, monkeypatch):
     put(tmp_path, 'notes/test.md', '# Local document\nSearch me.')
-    monkeypatch.setattr(appmod, 'VAULT_ROOT', tmp_path)
+    monkeypatch.setattr(appmod.paths, 'WORKSPACE', tmp_path)
     response = asyncio.run(appmod.api_workspace())
     assert response.headers['cache-control'] == 'no-store'
     assert json.loads(response.body)['files'][0]['path'] == 'notes/test.md'
@@ -92,7 +92,7 @@ def test_chat_receives_full_context_and_rejects_invalid_files(tmp_path, monkeypa
         seen.append((item_id, item, message))
         return SimpleNamespace(queued=True, position=1)
 
-    monkeypatch.setattr(appmod, 'VAULT_ROOT', tmp_path)
+    monkeypatch.setattr(appmod.paths, 'WORKSPACE', tmp_path)
     monkeypatch.setattr(appmod, 'chat_router', SimpleNamespace(start_turn=start_turn))
     request = {'item_id': 'chat:0123456789ab', 'message': 'Compare this', 'context_paths': ['notes/context.md']}
     response = asyncio.run(appmod.api_board_chat(request))

@@ -18,9 +18,9 @@ import sys
 import time
 import urllib.error
 import uuid
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, nullcontext, redirect_stdout
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, replace
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
@@ -48,7 +48,6 @@ from roosta.claude_code import (
     claude_result_text,
     claude_stream_has_progress,
     is_claude_auth_failure,
-    is_claude_model,
     is_transient_claude_failure,
     read_claude_transcript,
     session_exists as claude_session_exists,
@@ -77,6 +76,28 @@ from roosta.opencode_ollama import (
     parse_cursor_models,
     parse_ollama_models,
 )
+from roosta.task_config import (
+    CLAUDE_HARNESS,
+    CURSOR_HARNESS,
+    HARNESS_LABELS,
+    OPENCODE_OLLAMA_HARNESS,
+    TASK_SETTING_FLAGS,
+    VALID_HARNESSES,
+    TaskConfig,
+    TaskState,
+    connection_task_model,
+    load_tasks,
+    load_tasks_map,
+    remove_task,
+    runtime_model_key,
+    skill_description,
+    skill_files,
+    task_engine,
+    task_settings_changes,
+    update_task_fields,
+    update_task_runtime,
+    valid_runtime,
+)
 from roosta.pulse import build_pulse, markdown_title, project_brief, review_project
 from roosta.usage import UsageStore
 from roosta.workspace import build_catalogue, context_documents, read_document
@@ -87,9 +108,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger(__name__)
 
 DASHBOARD_ROOT = paths.APP_ROOT
-VAULT_ROOT = paths.WORKSPACE
 CACHE_DIR = paths.CACHE_DIR
-TASKS_FILE = paths.TASKS_FILE
 PRODUCT_USAGE_FILE = CACHE_DIR / "product-usage.jsonl"
 # Skill runs are killed on *inactivity*, not total elapsed time: a busy pass that
 # keeps streaming JSON events is left alone, only a silent (presumed hung) one is
@@ -171,493 +190,12 @@ GIT_PUSH_MANUAL_PROMPT_TEMPLATE = (
     "preconditions pass. An automatic deployment caused by the approved push is expected. "
     "Return blockers as Assistant board items instead. "
 )
-CURSOR_HARNESS = "cursor"
-CLAUDE_HARNESS = "claude"
-OPENCODE_OLLAMA_HARNESS = "opencode-ollama"
-VALID_HARNESSES = {CURSOR_HARNESS, CLAUDE_HARNESS, OPENCODE_OLLAMA_HARNESS}
-HARNESS_LABELS = {
-    CLAUDE_HARNESS: "Claude Code",
-    CURSOR_HARNESS: "Cursor",
-    OPENCODE_OLLAMA_HARNESS: "Ollama (OpenCode)",
-}
-def resolve_harness(value) -> str:
-    """A task's concrete harness. Unset follows the Chats tab's Engine picker."""
-    harness = str(value or "").strip()
-    if not harness:
-        if ai_backend.default_connection():
-            return "connection"
-        return CLAUDE_HARNESS if ai_backend.current() == ai_backend.CLAUDE else CURSOR_HARNESS
-    return harness
-
-
-# --- Data model ---
-
-
-@dataclass
-class TaskConfig:
-    id: str
-    skill: str
-    description: str = ""   # effective: custom_description, else the skill's own
-    name: str = ""          # display name in the Skill runner; empty means the id
-    nickname: str = ""      # what the Office calls this worker; empty means the id
-    custom_description: str = ""  # tasks.yaml `description:` override
-    interval: int = 1800
-    dir: str = str(paths.WORKSPACE)
-    harness: str = CURSOR_HARNESS  # cursor, claude or opencode-ollama; see resolve_harness
-    model: str = ""  # Cursor or Ollama model; empty means CURSOR_MODEL, else the harness's own default
-    connection: str = ""    # stable named connection id; empty retains legacy selection
-    claude_model: str = ""    # Claude Code model; empty means CLAUDE_MODEL
-    run_at: str = ""          # HH:MM local time; run once per day at this time
-    weekdays_only: bool = False  # skip Saturday and Sunday when True
-    days_of_week: list[str] = field(default_factory=list)  # lowercase day names; empty means every day
-    writer: bool = False      # rewrites vault docs / auto-commits; serialised against other writers
-    sensor: bool = False      # feeds the board; board health warns when it fails or goes stale
-    allow_git_push: bool = False  # narrowly privileged scheduled repository refresh
-    push_on_schedule: bool = False  # timer runs may push too; otherwise only Run now pushes
-    unrestricted: bool = False  # no local tool deny rules; prompt still forbids external writes
-    requires: list[str] = field(default_factory=list)  # connector ids that must be signed in
-    precheck: str = ""  # cheap command; exit 1 means nothing changed, so skip the model run
-    idle_timeout: float = 0   # override TASK_IDLE_TIMEOUT for this task (0 = default)
-    max_timeout: float = 0    # override TASK_MAX_TIMEOUT for this task (0 = default)
-
-
-@dataclass
-class TaskState:
-    id: str
-    skill: str
-    interval: int
-    description: str = ""
-    name: str = ""
-    nickname: str = ""
-    custom_description: str = ""
-    harness: str = CURSOR_HARNESS
-    model: str = ""
-    connection: str = ""    # stable named connection id; empty retains legacy selection
-    claude_model: str = ""
-    run_at: str = ""
-    weekdays_only: bool = False
-    days_of_week: list[str] = field(default_factory=list)
-    writer: bool = False
-    sensor: bool = False
-    requires: list[str] = field(default_factory=list)
-    status: str = "idle"  # idle, running, success, error, auth-failed, blocked
-    last_run: str = ""
-    last_duration: float = 0.0
-    last_output: dict = field(default_factory=dict)
-    run_count: int = 0
-    last_error: str = ""
-    retry_at: str = ""  # ISO time a run lost to the network/sleep is retried
-
-
-# --- Config loading ---
-
-
-def skill_files(skill: str, working_dir: str | Path) -> list[Path]:
-    """Existing SKILL.md files for a skill, in the order the runner prefers them."""
-    if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", skill) or skill in {".", ".."}:
-        return []
-    # SECURITY-REVIEW: working_dir is trusted local task configuration; the
-    # allowlisted skill name prevents path traversal outside known skill roots.
-    work_root = Path(working_dir).expanduser()
-    # The workspace wins over the user's global skills, which win over the core skills
-    # Roosta ships.
-    roots = [
-        work_root / ".agents" / "skills",
-        work_root / ".claude" / "skills",
-        work_root / ".cursor" / "skills",
-        VAULT_ROOT / ".agents" / "skills",
-        VAULT_ROOT / ".claude" / "skills",
-        Path.home() / ".agents" / "skills",
-        Path.home() / ".cursor" / "skills",
-        Path.home() / ".claude" / "skills",
-        paths.CORE_SKILLS_DIR,
-    ]
-    files: list[Path] = []
-    for root in roots:
-        candidate = root / skill / "SKILL.md"
-        if candidate not in files and candidate.is_file():
-            files.append(candidate)
-    return files
-
-
-def skill_description(skill: str, working_dir: str | Path) -> str:
-    """Read a skill's description from the first matching SKILL.md."""
-    for candidate in skill_files(skill, working_dir):
-        try:
-            text = candidate.read_text()
-        except (FileNotFoundError, OSError):
-            continue
-        frontmatter = re.match(r"\A---\s*\n(.*?)\n---(?:\s*\n|$)", text, re.DOTALL)
-        if not frontmatter:
-            continue
-        raw_metadata = frontmatter.group(1)
-        try:
-            metadata = yaml.safe_load(raw_metadata)
-        except yaml.YAMLError:
-            metadata = None
-        description = metadata.get("description") if isinstance(metadata, dict) else None
-        if isinstance(description, str):
-            return " ".join(description.split())
-        # Some existing skills have an unquoted colon in a one-line description,
-        # which strict YAML rejects even though skill loaders accept it.
-        fallback = re.search(r"^description:\s*(.+)$", raw_metadata, re.MULTILINE)
-        if fallback and fallback.group(1).strip() not in {"|", ">", "|-", ">-"}:
-            return " ".join(fallback.group(1).split())
-    return ""
-
-
-def runtime_model_key(harness: str) -> str:
-    """The tasks.yaml field holding the model for this harness.
-
-    Cursor and Claude Code model names are disjoint, so Claude keeps its own
-    field and switching a task between them never loses the other's pick.
-    """
-    return "claude_model" if harness == CLAUDE_HARNESS else "model"
-
-
-def connection_task_model(task: TaskConfig, connection: dict) -> str:
-    """The model a connection-backed worker runs: its own field when valid for the provider, else the default."""
-    provider = connection["provider"]
-    candidate = task.claude_model if provider == "anthropic" else task.model
-    try:
-        ai_connections.runtime(provider, candidate)
-        # `model` is shared with Cursor/Ollama workers, so Pi providers need the harness's own list.
-        if provider in {"openai", "openrouter"} and candidate not in ai_runtime.model_catalog(provider):
-            raise ValueError("Not offered by this provider")
-        return candidate
-    except (ValueError, OSError):
-        return ai_connections.default_model(provider)
-
-
-def task_engine(task: TaskConfig) -> str:
-    """Which engine runs this task: the session store its transcript lands in."""
-    if task.connection or task.harness == "connection":
-        try:
-            connection = ai_connections.get(task.connection)
-            return ai_connections.engine(connection["provider"])
-        except ValueError:
-            return "connection"
-    if task.harness == OPENCODE_OLLAMA_HARNESS:
-        return "opencode"
-    return ai_backend.CLAUDE if task.harness == CLAUDE_HARNESS else ai_backend.CURSOR
 
 
 def outcome_summary(output: dict, error: str) -> str:
     """One brief outcome line for the activity feed."""
     summary = output.get("summary") if isinstance(output, dict) else ""
     return str(summary or error or "")
-
-
-def valid_runtime(harness: str, model: str) -> bool:
-    """Validate persisted runtime selectors before they reach a subprocess."""
-    if harness == CLAUDE_HARNESS:
-        return is_claude_model(model)
-    if harness == CURSOR_HARNESS:
-        return bool(re.fullmatch(r"[A-Za-z0-9._-]{1,100}", model))
-    if harness == OPENCODE_OLLAMA_HARNESS:
-        return (
-            bool(re.fullmatch(r"[A-Za-z0-9._:/-]{1,120}", model))
-            and opencode_model_compatible(model)
-        )
-    return False
-
-
-def update_task_runtime(
-    path: Path, task_id: str, harness: str, model: str, model_key: str = "model",
-) -> None:
-    """Update one task's runtime fields without discarding YAML comments."""
-    if model_key != runtime_model_key(harness):
-        raise ValueError("invalid model field")
-    if not valid_runtime(harness, model):
-        raise ValueError("invalid harness or model")
-    update_task_fields(path, task_id, {"harness": harness, model_key: model})
-
-
-EDITABLE_TASK_FIELDS = {
-    "name", "nickname", "description", "harness", "model", "claude_model", "connection",
-    "interval", "run_at", "weekdays_only", "days_of_week",
-    "writer",
-}
-TASK_SETTING_FLAGS = ("writer",)
-DAY_NAMES = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-TASK_NAME_MAX = 60
-TASK_NICKNAME_MAX = 24
-TASK_DESCRIPTION_MAX = 500
-TASK_INTERVAL_MIN = 60
-TASK_INTERVAL_MAX = 30 * 86400
-
-
-def _yaml_scalar(value) -> str:
-    """One-line YAML for a tasks.yaml value; strings are quoted only when YAML
-    would otherwise read them differently ("08:00" is a base-60 int unquoted)."""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, list):
-        return "[" + ", ".join(_yaml_scalar(item) for item in value) + "]"
-    text = str(value)
-    if re.fullmatch(r"\d{1,2}:\d{2}", text):
-        return json.dumps(text)  # house style: times always quoted, as YAML may read them as numbers
-    try:
-        bare_ok = (
-            text == text.strip() and "#" not in text and "\n" not in text
-            and yaml.safe_load(f"k: {text}") == {"k": text}
-        )
-    except yaml.YAMLError:
-        bare_ok = False
-    return text if bare_ok else json.dumps(text, ensure_ascii=False)
-
-
-_TASK_LINE = re.compile(r"^(\s*)-\s+id:\s*([A-Za-z0-9._-]+)(?:\s+#.*)?\s*$")
-
-
-def _task_block(lines: list[str], task_id: str) -> tuple[int, int, str]:
-    """(start, end, indent) of one task's lines in tasks.yaml; end is the next task's line."""
-    start = next(
-        (index for index, line in enumerate(lines)
-         if (match := _TASK_LINE.match(line.rstrip("\r\n"))) and match.group(2) == task_id),
-        None,
-    )
-    if start is None:
-        raise ValueError("task not found in tasks.yaml")
-    indent = _TASK_LINE.match(lines[start].rstrip("\r\n")).group(1)
-    end = next(
-        (index for index in range(start + 1, len(lines))
-         if (match := _TASK_LINE.match(lines[index].rstrip("\r\n")))
-         and match.group(1) == indent),
-        len(lines),
-    )
-    # Leave comment lines that sit directly above the next task with that task.
-    while end > start + 1 and end < len(lines) and lines[end - 1].lstrip().startswith("#"):
-        end -= 1
-    return start, end, indent
-
-
-def remove_task(path: Path, task_id: str) -> None:
-    """Delete one task's block from tasks.yaml, keeping every other line and comment."""
-    destination = Path(path)
-    lines = destination.read_text().splitlines(keepends=True)
-    start, end, _ = _task_block(lines, task_id)
-    del lines[start:end]
-    updated = "".join(lines)
-    parsed = yaml.safe_load(updated) or {}
-    if any(item.get("id") == task_id for item in parsed.get("tasks") or []):
-        raise ValueError("updated tasks.yaml did not validate")
-    temporary = destination.with_suffix(f".{os.getpid()}.tmp")
-    temporary.write_text(updated)
-    temporary.replace(destination)
-
-
-def update_task_fields(
-    path: Path, task_id: str, values: dict, remove: Iterable[str] = (),
-) -> None:
-    """Set or remove top-level fields of one task, keeping every other line and comment.
-
-    A field's trailing comment survives only while its value is unchanged, so an
-    edited `interval: 3600  # 1 hour` does not keep a now-wrong note.
-    """
-    remove = set(remove) - set(values)
-    unknown = (set(values) | remove) - EDITABLE_TASK_FIELDS
-    if unknown:
-        raise ValueError(f"field not editable: {', '.join(sorted(unknown))}")
-    destination = Path(path)
-    lines = destination.read_text().splitlines(keepends=True)
-    start, end, indent = _task_block(lines, task_id)
-    field_indent = indent + "  "
-    keys = "|".join(re.escape(key) for key in sorted(set(values) | remove))
-    field_pattern = re.compile(
-        rf"^{re.escape(field_indent)}({keys}):[ \t]*(.*?)(\r?\n)?$"
-    )
-    found: set[str] = set()
-    index = start + 1
-    while index < end:
-        match = field_pattern.match(lines[index])
-        if not match:
-            index += 1
-            continue
-        key, raw, newline = match.group(1), match.group(2), match.group(3) or "\n"
-        # Swallow a block scalar's continuation lines along with the key.
-        stop = index + 1
-        while stop < end and lines[stop].strip() and (
-            len(lines[stop]) - len(lines[stop].lstrip()) > len(field_indent)
-        ):
-            stop += 1
-        if key in remove:
-            del lines[index:stop]
-            end -= stop - index
-            continue
-        value_part, _, comment_part = raw.partition(" #")
-        rendered = _yaml_scalar(values[key])
-        comment = f"  #{comment_part}" if comment_part and value_part.strip() == rendered else ""
-        lines[index:stop] = [f"{field_indent}{key}: {rendered}{comment}{newline}"]
-        end -= stop - index - 1
-        found.add(key)
-        index += 1
-
-    missing = [key for key in values if key not in found]
-    if missing:
-        insert_at = next(
-            (index + 1 for index in range(start + 1, end)
-             if re.match(rf"^{re.escape(field_indent)}skill:", lines[index])),
-            start + 1,
-        )
-        additions = [f"{field_indent}{key}: {_yaml_scalar(values[key])}\n" for key in missing]
-        lines[insert_at:insert_at] = additions
-
-    updated = "".join(lines)
-    parsed = yaml.safe_load(updated)
-    task = next(
-        (item for item in parsed.get("tasks", []) if item.get("id") == task_id),
-        None,
-    )
-    if (
-        not isinstance(task, dict)
-        or any(task.get(key) != value for key, value in values.items())
-        or any(key in task for key in remove)
-    ):
-        raise ValueError("updated tasks.yaml did not validate")
-    temporary = destination.with_suffix(f".{os.getpid()}.tmp")
-    temporary.write_text(updated)
-    temporary.replace(destination)
-
-
-def _one_line(value, limit: int, label: str) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{label} must be text")
-    text = " ".join(value.split())
-    if len(text) > limit:
-        raise ValueError(f"{label} must be {limit} characters or fewer")
-    return text
-
-
-def task_settings_changes(body: dict) -> tuple[dict, set[str]]:
-    """Validate a Skill runner settings form into tasks.yaml edits.
-
-    Only keys present in the body change. Empty name, nickname or description
-    remove the field, so the task falls back to its id or skill description.
-    Harness and model are handled separately because they need the live engine.
-    """
-    values: dict = {}
-    remove: set[str] = set()
-    for key, limit in (("name", TASK_NAME_MAX), ("nickname", TASK_NICKNAME_MAX),
-                       ("description", TASK_DESCRIPTION_MAX)):
-        if key in body:
-            text = _one_line(body[key] if body[key] is not None else "", limit, key)
-            if text:
-                values[key] = text
-            else:
-                remove.add(key)
-    # Flags are written only when on, so an off flag leaves no line in tasks.yaml.
-    for key in TASK_SETTING_FLAGS:
-        if key in body:
-            if not isinstance(body[key], bool):
-                raise ValueError(f"{key} must be true or false")
-            if body[key]:
-                values[key] = True
-            else:
-                remove.add(key)
-    schedule = body.get("schedule")
-    if schedule is None:
-        return values, remove
-    if not isinstance(schedule, dict):
-        raise ValueError("schedule must be an object")
-    mode = schedule.get("mode")
-    if mode == "interval":
-        interval = schedule.get("interval")
-        if isinstance(interval, bool) or not isinstance(interval, int) or not (
-            TASK_INTERVAL_MIN <= interval <= TASK_INTERVAL_MAX
-        ):
-            raise ValueError("interval must be between 1 minute and 30 days")
-        values["interval"] = interval
-        remove.add("run_at")
-    elif mode == "daily":
-        run_at = str(schedule.get("run_at", ""))
-        if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", run_at):
-            raise ValueError("time must be HH:MM")
-        values["run_at"] = run_at
-    else:
-        raise ValueError("schedule mode must be interval or daily")
-    days = schedule.get("days", "every")
-    if days == "every":
-        remove |= {"weekdays_only", "days_of_week"}
-    elif days == "weekdays":
-        values["weekdays_only"] = True
-        remove.add("days_of_week")
-    elif days == "specific":
-        picked = schedule.get("days_of_week")
-        if not isinstance(picked, list) or not picked or any(day not in DAY_NAMES for day in picked):
-            raise ValueError("choose at least one day")
-        values["days_of_week"] = [day for day in DAY_NAMES if day in picked]
-        remove.add("weekdays_only")
-    else:
-        raise ValueError("days must be every, weekdays or specific")
-    return values, remove
-
-
-def _task_flag(task: dict, key: str) -> bool:
-    """Only a real YAML boolean switches a task flag on. A typo such as `true.` or
-    a quoted "false" is truthy to bool(), which would silently grant privilege
-    flags like `unrestricted`, so anything else fails closed with a warning."""
-    value = task.get(key, False)
-    if isinstance(value, bool):
-        return value
-    log.warning("Task %s: %s must be true or false, got %r - treating as false",
-                task.get("id"), key, value)
-    return False
-
-
-def load_tasks() -> list[TaskConfig]:
-    if not TASKS_FILE.is_file():
-        log.warning("No tasks.yaml found at %s", TASKS_FILE)
-        return []
-    with open(TASKS_FILE) as f:
-        data = yaml.safe_load(f)
-    tasks = []
-    for t in data.get("tasks", []):
-        if t.get("script"):
-            log.warning("Task %s has a 'script:' key; script tasks are no longer supported", t.get("id"))
-            continue
-        working_dir = t.get("dir", str(VAULT_ROOT))
-        custom_description = str(t.get("description", "") or "").strip()
-        tasks.append(TaskConfig(
-            id=t["id"],
-            skill=t["skill"],
-            description=custom_description or skill_description(t["skill"], working_dir),
-            name=str(t.get("name", "") or "").strip(),
-            nickname=str(t.get("nickname", "") or "").strip(),
-            custom_description=custom_description,
-            interval=t.get("interval", 1800),
-            dir=working_dir,
-            harness="connection" if t.get("connection") else resolve_harness(t.get("harness")),
-            connection=(str(t.get("connection") or "") or
-                        ("default" if not t.get("harness") and ai_backend.default_connection() else "")),
-            model=str(t.get("model", "") or ""),
-            claude_model=str(t.get("claude_model", "") or ""),
-            run_at=t.get("run_at", ""),
-            weekdays_only=_task_flag(t, "weekdays_only"),
-            days_of_week=[str(day).lower() for day in t.get("days_of_week", [])],
-            writer=_task_flag(t, "writer"),
-            sensor=_task_flag(t, "sensor"),
-            allow_git_push=_task_flag(t, "allow_git_push"),
-            push_on_schedule=_task_flag(t, "push_on_schedule"),
-            unrestricted=_task_flag(t, "unrestricted"),
-            requires=_task_requires(t),
-            precheck=str(t.get("precheck", "") or "").strip(),
-            idle_timeout=float(t.get("idle_timeout", 0) or 0),
-            max_timeout=float(t.get("max_timeout", 0) or 0),
-        ))
-    return tasks
-
-
-def _task_requires(t: dict) -> list[str]:
-    """Connector ids a task needs."""
-    raw = t.get("requires") or []
-    return [str(c).strip().lower() for c in (raw if isinstance(raw, list) else [raw]) if str(c).strip()]
-
-
-def load_tasks_map() -> dict[str, TaskConfig]:
-    return {t.id: t for t in load_tasks()}
 
 
 async def check_task_runtime(task: TaskConfig) -> bool:
@@ -882,7 +420,7 @@ def resolve_vault_markdown(raw_path: str, root: Path | None = None) -> Path:
     document = _normalise_documents([{"path": raw_path}])
     if not document:
         raise ValueError("invalid document path")
-    vault = (root or VAULT_ROOT).resolve()
+    vault = (root or paths.WORKSPACE).resolve()
     # SECURITY-REVIEW: the path comes from a query parameter. It is constrained
     # to a relative Markdown path, resolved, and checked against the vault root.
     target = (vault / document[0]["path"]).resolve()
@@ -925,7 +463,7 @@ def resolve_vault_text(raw_path: str, root: Path | None = None) -> Path:
         return resolve_vault_markdown(raw_path, root)
     if len(str(path)) > 500 or path.is_absolute() or not _viewable_parts(path.parts):
         raise ValueError("invalid document path")
-    vault = (root or VAULT_ROOT).resolve()
+    vault = (root or paths.WORKSPACE).resolve()
     # SECURITY-REVIEW: same containment check as resolve_vault_markdown. Dotfiles stay
     # hidden (.env, .git, .claude) except `.roosta/` config; `.roosta/state/` holds runtime
     # caches and agent configs with tokens, so it is refused, including via a symlink.
@@ -960,7 +498,7 @@ def document_chat_item(item_id: str, root: Path | None = None) -> dict | None:
     raw = str(item_id or "")
     if not raw.startswith(DOCUMENT_CHAT_PREFIX):
         return None
-    vault = (root or VAULT_ROOT).resolve()
+    vault = (root or paths.WORKSPACE).resolve()
     try:
         document = resolve_vault_markdown(raw[len(DOCUMENT_CHAT_PREFIX):], vault)
         content = document.read_text(encoding="utf-8", errors="ignore")
@@ -1038,7 +576,7 @@ def worker_chat_item(
     task = tasks.get(raw[len(WORKER_CHAT_PREFIX):])
     if task is None:
         return None
-    vault = (root or VAULT_ROOT).resolve()
+    vault = (root or paths.WORKSPACE).resolve()
     files = skill_files(task.skill, task.dir)
     skill_path, documents = "not found - ask where it lives", []
     if files:
@@ -2119,7 +1657,7 @@ class TaskRunner:
         prechecker: Callable[[TaskConfig], Awaitable[bool]] | None = None,
         activity_log=None,
         cache_dir: Path = CACHE_DIR,
-        tasks_file: Path = TASKS_FILE,
+        tasks_file: Path = paths.TASKS_FILE,
         startup_delay: float = 2.0,
         poll_interval: float = 30.0,
         auth_retry_interval: float = 60.0,
@@ -2344,7 +1882,7 @@ class TaskRunner:
         if "description" in values or "description" in remove:
             state.custom_description = values.get("description", "")
             state.description = state.custom_description or skill_description(
-                state.skill, next((t.dir for t in self._tasks if t.id == task_id), VAULT_ROOT),
+                state.skill, next((t.dir for t in self._tasks if t.id == task_id), paths.WORKSPACE),
             )
         for key in ("interval", "run_at", "weekdays_only", "days_of_week"):
             if key in values:
@@ -2722,7 +2260,6 @@ activity.hydrate()
 connectors = connectors_mod.Connectors(path=paths.CONNECTORS_FILE)
 
 
-
 # --- FastAPI app ---
 
 
@@ -2749,7 +2286,7 @@ async def _start_chat_router() -> None:
         chat_router = ChatRouter(
             agent,
             SessionMap(SESSIONS_FILE),
-            str(VAULT_ROOT),  # chats run at the workspace root
+            str(paths.WORKSPACE),  # chats run at the workspace root
             HANDLED_FILE,
             SNOOZED_FILE,
             TopicStore(TOPICS_FILE),
@@ -3639,7 +3176,7 @@ async def api_activity_transcript(activity_id: str):
         resume = "Continue this conversation in Roosta using its original connection"
     elif entry.get("backend") == ai_backend.CLAUDE or claude_session_exists(session_id):
         turns = read_claude_transcript(session_id)
-        resume = f"cd {shlex.quote(str(VAULT_ROOT))} && claude --resume {session_id}"
+        resume = f"cd {shlex.quote(str(paths.WORKSPACE))} && claude --resume {session_id}"
     else:
         turns = read_cursor_transcript(session_id)
         resume = (
@@ -3676,7 +3213,7 @@ async def index(request: Request):
 
 def vault_files(pattern: str, root: Path | None = None) -> list[dict]:
     """Workspace Markdown matching a glob, with titles and frontmatter but no bodies."""
-    root = (root or VAULT_ROOT).resolve()
+    root = (root or paths.WORKSPACE).resolve()
     if not pattern or pattern.startswith("/") or ".." in pattern.split("/") or len(pattern) > 200:
         raise ValueError("invalid pattern")
     out = []
@@ -4160,7 +3697,7 @@ async def api_board_chat(body: dict):
 
     if "context_paths" in body:
         try:
-            documents = await asyncio.to_thread(context_documents, VAULT_ROOT, body["context_paths"])
+            documents = await asyncio.to_thread(context_documents, paths.WORKSPACE, body["context_paths"])
         except (OSError, UnicodeError, ValueError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         item = {**item, "context_documents": documents}
@@ -4172,7 +3709,7 @@ async def api_board_chat(body: dict):
         except (OSError, ValueError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         if files:
-            vault = VAULT_ROOT.resolve()
+            vault = paths.WORKSPACE.resolve()
             item = {**item, "uploaded_files": [
                 {**{key: file[key] for key in ("id", "name", "size", "image")},
                  "path": Path(file["path"]).relative_to(vault).as_posix()
@@ -4273,7 +3810,7 @@ async def api_vault_document(path: str = ""):
         content = document.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return JSONResponse({"error": "document is not UTF-8"}, status_code=415)
-    relative = document.relative_to(VAULT_ROOT.resolve()).as_posix()
+    relative = document.relative_to(paths.WORKSPACE.resolve()).as_posix()
     if document.suffix.lower() in VAULT_SOURCE_SUFFIXES:
         return JSONResponse({
             "path": relative, "title": document.name,
@@ -4372,7 +3909,7 @@ async def workspace_page():
 
 @app.get("/api/workspace")
 async def api_workspace():
-    return JSONResponse(await asyncio.to_thread(build_catalogue, VAULT_ROOT),
+    return JSONResponse(await asyncio.to_thread(build_catalogue, paths.WORKSPACE),
                         headers={"Cache-Control": "no-store"})
 
 
@@ -4437,7 +3974,7 @@ async def api_pulse():
             known = chat_router.known_item(item_id)
             chat_items.append(known or {"id": item_id, "title": "Conversation"})
     return JSONResponse(build_pulse(
-        VAULT_ROOT,
+        paths.WORKSPACE,
         activity.recent(200),
         handled,
         len(active_items),
@@ -4457,7 +3994,7 @@ async def api_pulse():
 async def api_constellation_project(slug: str):
     """Briefing for one project star: README excerpts, provenance, links, recent files."""
     try:
-        return JSONResponse(await asyncio.to_thread(project_brief, VAULT_ROOT, slug),
+        return JSONResponse(await asyncio.to_thread(project_brief, paths.WORKSPACE, slug),
                             headers={"Cache-Control": "no-store"})
     except ValueError:
         return JSONResponse({"error": "invalid project"}, status_code=400)
@@ -4476,7 +4013,7 @@ async def api_constellation_review(slug: str, body: dict):
         return JSONResponse({"error": "invalid request"}, status_code=400)
     try:
         brief = await asyncio.to_thread(
-            review_project, VAULT_ROOT, slug,
+            review_project, paths.WORKSPACE, slug,
             str(body.get("action", "")), str(body.get("status", "")),
             reviewer=profile.load().reviewer,
         )

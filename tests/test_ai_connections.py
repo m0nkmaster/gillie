@@ -12,6 +12,7 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
+from roosta import task_config
 from roosta import ai_backend, ai_connections as connections, ai_runtime, app, chat, pi_agent
 
 
@@ -242,11 +243,11 @@ def test_task_default_and_explicit_connections_preserve_legacy_fields(accounts, 
     c=create(); connections.update(c['id'],tested=True); connections.set_default(c['id'])
     tasks=tmp_path/'tasks.yaml'
     tasks.write_text('tasks:\n  - id: new\n    skill: actor\n  - id: old\n    skill: actor\n    harness: cursor\n    model: old-model\n')
-    monkeypatch.setattr(app,'TASKS_FILE',tasks)
-    loaded=app.load_tasks()
+    monkeypatch.setattr(app.paths,'TASKS_FILE',tasks)
+    loaded=task_config.load_tasks()
     assert loaded[0].connection=='default' and loaded[0].harness=='connection'
     assert loaded[1].connection=='' and loaded[1].harness=='cursor'
-    app.update_task_fields(tasks,'old',{'connection':c['id']})
+    task_config.update_task_fields(tasks,'old',{'connection':c['id']})
     assert 'harness: cursor' in tasks.read_text() and 'model: old-model' in tasks.read_text()
 
 
@@ -296,7 +297,7 @@ def test_worker_dispatch_uses_connection_and_retains_legacy_model(accounts, tmp_
         seen.append(run)
         yield json.dumps({'type':'message_end','message':{'role':'assistant','content':[{'type':'text','text':'<task-output>{"status":"success","summary":"Checked"}</task-output>'}]}})
     monkeypatch.setattr(ai_backend,'stream',stream)
-    task = app.TaskConfig(id='sample', skill='actor', dir=str(tmp_path), connection=c['id'], harness='cursor', model='legacy-model')
+    task = task_config.TaskConfig(id='sample', skill='actor', dir=str(tmp_path), connection=c['id'], harness='cursor', model='legacy-model')
     status, output, error, session = asyncio.run(app.run_task(task))
     assert status == 'success' and output['summary'] == 'Checked' and not error
     assert seen[0].connection['id'] == c['id'] and seen[0].backend == 'pi'
@@ -796,9 +797,9 @@ def test_connection_workers_pick_a_valid_model(accounts, tmp_path, monkeypatch):
         seen.append(run.model)
         yield json.dumps({'type':'message_end','message':{'role':'assistant','content':[{'type':'text','text':'<task-output>{"status":"success","summary":"ok"}</task-output>'}]}}) + '\n'
     monkeypatch.setattr(ai_backend, 'stream', stream)
-    for task in (app.TaskConfig(id='a', skill='actor', dir=str(tmp_path), connection=claude['id'], claude_model='haiku', model='cursor-model'),
-                 app.TaskConfig(id='b', skill='actor', dir=str(tmp_path), connection=pi['id'], model='gpt-5-mini', claude_model='haiku'),
-                 app.TaskConfig(id='c', skill='actor', dir=str(tmp_path), connection=pi['id'], model='composer-2-fast')):
+    for task in (task_config.TaskConfig(id='a', skill='actor', dir=str(tmp_path), connection=claude['id'], claude_model='haiku', model='cursor-model'),
+                 task_config.TaskConfig(id='b', skill='actor', dir=str(tmp_path), connection=pi['id'], model='gpt-5-mini', claude_model='haiku'),
+                 task_config.TaskConfig(id='c', skill='actor', dir=str(tmp_path), connection=pi['id'], model='composer-2-fast')):
         asyncio.run(app.run_task(task))
     assert seen == ['haiku', 'gpt-5-mini', 'gpt-5.4']
 
@@ -809,7 +810,7 @@ def test_worker_settings_write_the_connection_model_field(accounts, tmp_path, mo
     claude, pi = create('anthropic', auth='system'), create('openai')
     tasks_file = tmp_path / 'tasks.yaml'
     tasks_file.write_text('tasks:\n  - id: local\n    skill: skill\n')
-    task = app.TaskConfig(id='local', skill='skill')
+    task = task_config.TaskConfig(id='local', skill='skill')
     runner = make_runner(tmp_path, [task], lambda _task: None)
     runner._tasks = runner._load_tasks()
     runner._states[task.id] = runner._load_state(task)
@@ -1071,7 +1072,7 @@ def test_first_run_requires_connection_check_before_workspace_setup(accounts, tm
     create, _ = accounts
     monkeypatch.setattr(app.profile, 'load', lambda: app.profile.Profile())
     monkeypatch.setattr(app.paths, 'WORKSPACE', tmp_path)
-    monkeypatch.setattr(app, 'TASKS_FILE', tmp_path / 'tasks.yaml')
+    monkeypatch.setattr(app.paths, 'TASKS_FILE', tmp_path / 'tasks.yaml')
     router = chat.ChatRouter(None, chat.SessionMap(tmp_path/'sessions.json'), str(tmp_path))
     monkeypatch.setattr(app, 'chat_router', router)
     c = create('anthropic', auth='system', tested=False) if existing_claude else None

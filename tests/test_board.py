@@ -2,6 +2,7 @@ import asyncio, json, os, re, shutil, subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import pytest
+from roosta import task_config
 from roosta import cursor_agent as camod
 from roosta.activity_log import ActivityLog
 
@@ -1502,7 +1503,7 @@ def test_vault_document_endpoint_returns_markdown(monkeypatch, tmp_path):
     drafts = tmp_path / "drafts"
     drafts.mkdir()
     (drafts / "weekly.md").write_text("# Weekly update\n\n* Ready")
-    monkeypatch.setattr(appmod, "VAULT_ROOT", tmp_path)
+    monkeypatch.setattr(appmod.paths, "WORKSPACE", tmp_path)
 
     response = asyncio.run(appmod.api_vault_document("drafts/weekly.md"))
     body = json.loads(response.body)
@@ -1528,7 +1529,7 @@ def test_vault_document_endpoint_shows_linked_text_files_as_source(monkeypatch, 
     (tmp_path / ".roosta" / "state").mkdir(parents=True)
     (tmp_path / ".roosta" / "state" / "x.json").write_text("{}")
     (project / "run.sh").write_text("echo")
-    monkeypatch.setattr(appmod, "VAULT_ROOT", tmp_path)
+    monkeypatch.setattr(appmod.paths, "WORKSPACE", tmp_path)
 
     body = json.loads(asyncio.run(appmod.api_vault_document(
         "projects/ai-office-hours/confluence-page.storage.html")).body)
@@ -1549,7 +1550,7 @@ def test_vault_document_endpoint_splits_front_matter_into_properties(monkeypatch
     (project / "README.md").write_text(
         "---\ntitle: Team OKRs\nstatus: active\ntags: [okr, planning]\nextra:\n  nested: x\n---\n\n# Heading\n\nBody"
     )
-    monkeypatch.setattr(appmod, "VAULT_ROOT", tmp_path)
+    monkeypatch.setattr(appmod.paths, "WORKSPACE", tmp_path)
 
     body = json.loads(asyncio.run(appmod.api_vault_document("projects/okrs/README.md")).body)
 
@@ -2910,7 +2911,7 @@ def test_board_chat_starts_a_document_thread_off_the_rail(monkeypatch, tmp_path)
     (tmp_path / "notes" / "plan.md").write_text("# Plan\n", encoding="utf-8")
     router = _StandingChatRouter()
     monkeypatch.setattr(appmod, "chat_router", router)
-    monkeypatch.setattr(appmod, "VAULT_ROOT", tmp_path)
+    monkeypatch.setattr(appmod.paths, "WORKSPACE", tmp_path)
 
     async def call():
         response = await appmod.api_board_chat(
@@ -2931,7 +2932,7 @@ def _worker_vault(tmp_path):
     skill = tmp_path / ".claude" / "skills" / "team-wins-watch" / "SKILL.md"
     skill.parent.mkdir(parents=True, exist_ok=True)
     skill.write_text("---\nname: team-wins-watch\ndescription: Spot wins.\n---\n", encoding="utf-8")
-    task = appmod.TaskConfig(id="team-wins-watch", skill="team-wins-watch", interval=0,
+    task = task_config.TaskConfig(id="team-wins-watch", skill="team-wins-watch", interval=0,
                              dir=str(tmp_path), run_at="09:00", weekdays_only=True)
     return {task.id: task}
 
@@ -2967,7 +2968,7 @@ def test_worker_chat_item_rejects_unknown_and_foreign_ids(tmp_path):
 def test_board_chat_starts_a_worker_one_to_one(monkeypatch, tmp_path):
     router = _StandingChatRouter()
     monkeypatch.setattr(appmod, "chat_router", router)
-    monkeypatch.setattr(appmod, "VAULT_ROOT", tmp_path)
+    monkeypatch.setattr(appmod.paths, "WORKSPACE", tmp_path)
     monkeypatch.setattr(appmod, "load_tasks_map", lambda: _worker_vault(tmp_path))
     monkeypatch.setattr(appmod.runner, "get_state", lambda _task_id: None)
 
@@ -3511,7 +3512,7 @@ def test_chats_run_at_the_workspace_root_not_the_state_folder(monkeypatch, tmp_p
 
     monkeypatch.setattr(appmod, "chat_router", None)
     monkeypatch.setattr(appmod.agent, "start", ready)
-    monkeypatch.setattr(appmod, "VAULT_ROOT", tmp_path)
+    monkeypatch.setattr(appmod.paths, "WORKSPACE", tmp_path)
     asyncio.run(appmod._start_chat_router())
     assert appmod.chat_router._vault == str(tmp_path)
 
@@ -3705,9 +3706,9 @@ def test_remove_task_drops_only_that_block(tmp_path):
         "# schedule\ntasks:\n  - id: a\n    skill: a\n    interval: 60\n"
         "  # b runs hourly\n  - id: b\n    skill: b\n  - id: c\n    skill: c\n"
     )
-    appmod.remove_task(path, "a")
+    task_config.remove_task(path, "a")
     assert path.read_text() == "# schedule\ntasks:\n  # b runs hourly\n  - id: b\n    skill: b\n  - id: c\n    skill: c\n"
-    appmod.remove_task(path, "c")
+    task_config.remove_task(path, "c")
     assert [t["id"] for t in appmod.yaml.safe_load(path.read_text())["tasks"]] == ["b"]
     with pytest.raises(ValueError):
-        appmod.remove_task(path, "missing")
+        task_config.remove_task(path, "missing")
