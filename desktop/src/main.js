@@ -1,6 +1,7 @@
 const {
   app,
   BrowserWindow,
+  WebContentsView,
   Menu,
   Notification,
   Tray,
@@ -24,6 +25,8 @@ const {
 } = require("./notification-state");
 const { RunnerSupervisor } = require("./runner-supervisor");
 const { buildSkillLogs, formatSkillLogs } = require("./skill-logs");
+
+const { showFind } = require("./find");
 
 const BASE_URL = "http://127.0.0.1:7667"; // R-O-O-S on a phone keypad
 const NO_CACHE_HEADERS = "Cache-Control: no-cache, no-store, must-revalidate\nPragma: no-cache\n";
@@ -220,6 +223,16 @@ function createApplicationMenu() {
       ],
     },
     { role: "editMenu" },
+    {
+      label: "View",
+      submenu: [{
+        label: "Find in Page…",
+        accelerator: "CommandOrControl+F",
+        click: (_item, window) => {
+          if (window && (window === mainWindow || window === logsWindow)) showFind(window, WebContentsView);
+        },
+      }],
+    },
     { role: "windowMenu" },
   ]));
 }

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+  <title>Find in page</title>
+  <style>
+    :root { color-scheme: light dark; font: 14px system-ui, sans-serif; }
+    body { margin: 0; }
+    div { display: flex; align-items: center; gap: 4px; height: 48px; padding: 0 8px; box-sizing: border-box; background: Canvas; color: CanvasText; border: 1px solid GrayText; }
+    input { flex: 1; min-width: 0; }
+    input, button { font: inherit; padding: 4px; }
+    output { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div role="search" aria-label="Find in page">
+    <input id="query" aria-label="Find in page" placeholder="Find in page" autocomplete="off" spellcheck="false">
+    <output id="count" aria-live="polite"></output>
+    <button id="previous" title="Previous match (Shift+Enter)" aria-label="Previous match" disabled>↑</button>
+    <button id="next" title="Next match (Enter)" aria-label="Next match" disabled>↓</button>
+    <button id="close" title="Close (Escape)" aria-label="Close Find">×</button>
+  </div>
+</body>
+</html>

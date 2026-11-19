@@ -14,6 +14,11 @@ keep stale nav.
 
 - The window opens on `/assistant`; closing it leaves the app and runner in the menu bar. Explicit
   Quit stops a runner the app owns.
+- **View → Find in Page** targets the focused dashboard, recovery or logs window. `find.js`
+  searches its WebContents and accepts commands only from the separate local find bar.
+  Keep the controls outside the searched document and keep Find IPC out of the dashboard preload.
+  Closing the bar clears highlights and returns focus to the page. Navigation, hiding or closing
+  the window discards its search.
 - Both the macOS application menu and menu-bar icon expose Restart Roosta.
 - View Logs leads with each task's latest skill output plus recent run history. Raw Python/uvicorn
   output is secondary under a collapsed Runner diagnostics section.

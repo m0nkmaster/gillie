@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.8.0 - 2026-11-19
+
+- Press Command+F (Ctrl+F on Windows or Linux) to find text in the current desktop window, including chats, inbox items and runner logs. Enter and Shift+Enter move between matches, and Escape closes Find.
+
 ## 0.7.1 - 2026-11-19
 
 - An expanded worker on the Workers page is easier to read. It opens with what the worker does and what its last run reported, including when it ran and how long it took, with the run's details folded away. Its settings now sit under a closed **Settings** section, grouped into Schedule, AI and Name. The details the row already shows are no longer repeated.
