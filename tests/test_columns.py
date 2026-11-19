@@ -1,12 +1,12 @@
 """Resizable page columns: shared divider wiring and real-CSS behaviour in Chrome."""
-import html
 import json
 from pathlib import Path
 import re
 import shutil
-import subprocess
 
 import pytest
+
+from chrome_probe import run_probe
 
 
 STATIC = Path(__file__).parents[1] / 'src/roosta/static'
@@ -51,15 +51,7 @@ def render(tmp_path, name, seed, probe, width=1600, height=900):
     )
     page = tmp_path / 'page.html'
     page.write_text(source.replace('</body>', script + '</body>'))
-    rendered = subprocess.run([
-        chrome, '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-background-networking',
-        '--no-first-run', '--no-default-browser-check', '--allow-file-access-from-files',
-        f'--user-data-dir={tmp_path / "browser"}', f'--window-size={width},{height}',
-        '--dump-dom', page.as_uri(),
-    ], capture_output=True, text=True, check=True, timeout=120)
-    match = re.search(r'<pre id="column-result">(.*?)</pre>', rendered.stdout, re.S)
-    assert match, rendered.stderr[-2000:]
-    return json.loads(html.unescape(match[1]))
+    return run_probe(chrome, page, width, height, "column-result")
 
 
 HELPERS = """

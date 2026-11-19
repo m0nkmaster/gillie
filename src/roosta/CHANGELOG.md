@@ -2,6 +2,12 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.10.1 - 2026-11-19
+
+- Make macOS release checks tolerate Chrome hanging after a complete layout-test result, while retaining all layout assertions and rejecting incomplete or failed output.
+- Includes the latest chat improvements: Start fresh, editable summary handoffs, Undo and restore for closed chats, and desktop Find in Page.
+- Also includes notification controls, resizable page columns, clearer worker settings and unscheduled skills, and workspace and named-connection improvements.
+
 ## 0.10.0 - 2026-11-19
 
 - Use the Chat menu to start fresh or review and edit a summary before continuing. Earlier messages stay in the same chat behind a dated Previous conversation divider. The chat also shows when its model context refreshes automatically.

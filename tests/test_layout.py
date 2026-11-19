@@ -1,12 +1,11 @@
 """Render real page CSS without the live runner, polling or external scripts."""
-import html
-import json
 from pathlib import Path
 import re
 import shutil
-import subprocess
 
 import pytest
+
+from chrome_probe import run_probe
 
 
 STATIC = Path(__file__).parents[1] / 'src/roosta/static'
@@ -53,15 +52,7 @@ document.body.appendChild(output);
     source = source.replace('</body>', '<script>' + probe + '</script></body>')
     page = tmp_path / 'page.html'
     page.write_text(source)
-    rendered = subprocess.run([
-        chrome, '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-background-networking',
-        '--no-first-run', '--no-default-browser-check', '--allow-file-access-from-files',
-        f'--user-data-dir={tmp_path / "browser"}', f'--window-size={width},{height}',
-        '--dump-dom', page.as_uri(),
-    ], capture_output=True, text=True, check=True, timeout=120)
-    match = re.search(r'<pre id="layout-result">(.*?)</pre>', rendered.stdout, re.S)
-    assert match, rendered.stderr[-2000:]
-    result = json.loads(html.unescape(match[1]))
+    result = run_probe(chrome, page, width, height, "layout-result")
     if name == 'settings':
         assert result['mainWidth'] == pytest.approx(result['width'], abs=1), result
         assert result['mainBottom'] <= result['height'] + 1, result
