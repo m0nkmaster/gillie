@@ -239,8 +239,9 @@ def test_settings_page_has_the_workspace_card_and_escapes_server_text():
     assert 'aria-labelledby="workspace-title"' in page and 'Workspace and runner' in page
     assert page.count('<script src="/static/ai-settings.js" defer>') == 1
     assert '<script src="/static/workspace-settings.js" defer></script>' in page
-    assert 'manage your workspace and adjust your appearance' in page
-    assert page.index('id="account-setup"') < page.index('id="workspace-title"') < page.index('>Appearance<')
+    assert 'manage your workspace and notifications, and adjust your appearance' in page
+    assert (page.index('id="account-setup"') < page.index('id="workspace-title"')
+            < page.index('id="notifications-title"') < page.index('>Appearance<'))
     script = (STATIC / 'workspace-settings.js').read_text()
     assert re.search(r'const esc = value =>', script)
     assert '${s.workspace}' not in script and '${code(s.workspace)}' in script
@@ -339,3 +340,42 @@ def test_open_folder_reveals_only_the_active_workspace_and_only_locally(env, mon
     assert len(opened) == 1
     html = (STATIC / 'workspace.html').read_text()
     assert 'id="reveal-workspace"' in html and '/api/workspace/reveal' in (STATIC / 'workspace.js').read_text()
+
+
+def test_notifications_default_on_and_save_to_the_desktop_config(env, client, monkeypatch):
+    data = client.get('/api/settings/notifications').json()
+    assert data == {'enabled': True, 'managed_by': 'terminal'}
+    cli.remember_workspace(env.workspace)
+    response = client.post('/api/settings/notifications', json={'enabled': False})
+    assert response.status_code == 200 and response.json()['enabled'] is False
+    assert saved() == {'workspace': str(env.workspace), 'notifications': False}
+    assert cli.notifications_enabled() is False
+    monkeypatch.setenv('ASSISTANT_DESKTOP', '1')
+    assert client.get('/api/settings/notifications').json() == {'enabled': False, 'managed_by': 'desktop'}
+    assert client.post('/api/settings/notifications', json={'enabled': True}).json()['enabled'] is True
+    assert saved()['notifications'] is True and cli.notifications_enabled() is True
+
+
+def test_notifications_reject_non_boolean_choices(env, client):
+    for body in ({}, {'enabled': 'false'}, {'enabled': 0}, {'enabled': None}):
+        assert client.post('/api/settings/notifications', json=body).status_code == 400
+    assert not cli.CONFIG_FILE.exists()
+
+
+def test_notifications_setting_is_local_only(env):
+    with TestClient(app.app, base_url='http://localhost', client=('192.0.2.10', 1234)) as remote:
+        assert remote.get('/api/settings/notifications').status_code == 403
+        assert remote.post('/api/settings/notifications', json={'enabled': False}).status_code == 403
+    with TestClient(app.app, base_url='http://localhost', client=('127.0.0.1', 1234)) as local:
+        assert local.post('/api/settings/notifications', json={'enabled': False},
+                          headers={'Origin': 'https://attacker.invalid'}).status_code == 403
+    assert not cli.CONFIG_FILE.exists()
+
+
+def test_settings_page_has_the_notifications_switch_and_macos_link():
+    page = (STATIC / 'settings.html').read_text()
+    assert 'id="notifications-enabled"' in page and 'role="switch"' in page
+    assert "fetch('/api/settings/notifications'" in page
+    assert 'href="x-apple.systempreferences:com.apple.preference.notifications"' in page
+    desktop = (Path(__file__).resolve().parents[1] / 'desktop' / 'src' / 'main.js').read_text()
+    assert '"x-apple.systempreferences:com.apple.preference.notifications"' in desktop

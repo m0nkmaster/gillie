@@ -29,6 +29,11 @@ function noticeFromKey(key) {
   return { kind, id };
 }
 
+// Settings writes `"notifications": false` to ~/.config/roosta/config.json; anything else is on.
+function notificationsEnabled(config) {
+  return !(config && config.notifications === false);
+}
+
 class NotificationState {
   constructor(saved = {}) {
     const confirmedState = saved.version === 2 ? saved : {};
@@ -140,4 +145,4 @@ class NotificationState {
   }
 }
 
-module.exports = { NotificationState, routeForNotice, noticeKey, noticeFromKey };
+module.exports = { NotificationState, notificationsEnabled, routeForNotice, noticeKey, noticeFromKey };

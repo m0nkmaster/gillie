@@ -110,6 +110,16 @@ def remember_address(host: str, port: int, config: Path | None = None) -> None:
     write_config({"host": host, "port": port}, config)
 
 
+def notifications_enabled(config: Path | None = None) -> bool:
+    """Whether Roosta.app shows native notifications. On unless turned off in Settings."""
+    return read_config(config).get("notifications") is not False
+
+
+def remember_notifications(enabled: bool, config: Path | None = None) -> None:
+    """Record the Settings choice; Roosta.app reads it before each notification."""
+    write_config({"notifications": enabled}, config)
+
+
 def default_workspace() -> str:
     return read_config().get("workspace") or "."
 

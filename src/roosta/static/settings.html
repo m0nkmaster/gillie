@@ -38,7 +38,7 @@
 <header class="workspace-header navbar" aria-label="Workspace"></header>
 <main class="settings-shell">
   <div class="page-header dashboard-page-header"><div><div class="page-pretitle">Roosta</div><h1 class="page-title">Settings</h1>
-    <p class="page-subtitle">Choose the AI Roosta uses, manage your workspace and adjust your appearance.</p></div></div>
+    <p class="page-subtitle">Choose the AI Roosta uses, manage your workspace and notifications, and adjust your appearance.</p></div></div>
   <div class="alert alert-info mb-3" id="setup-notice" role="status" hidden>
     <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
       <div><div class="alert-title">Finish setting up your workspace</div>
@@ -108,6 +108,17 @@
     <div class="card-header"><h2 class="card-title" id="workspace-title">Workspace and runner</h2></div>
     <div class="list-group list-group-flush" id="ws-rows"><div class="list-group-item text-secondary">Loading…</div></div>
   </section>
+  <section class="card mb-3" aria-labelledby="notifications-title" id="notifications-card">
+    <div class="card-header"><h2 class="card-title" id="notifications-title">Notifications</h2></div>
+    <div class="card-body">
+      <label class="setting" for="notifications-enabled">
+        <span class="setting-copy"><strong id="notifications-label">Desktop notifications</strong><span id="notifications-help">The Roosta app tells you about new board items and sign-ins workers are waiting for. Turning this off keeps everything on the board.</span></span>
+        <span class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="notifications-enabled" aria-labelledby="notifications-label" aria-describedby="notifications-help" disabled></span>
+      </label>
+      <p class="text-secondary small mt-3 mb-0" id="notifications-os" hidden>Banners, sounds and Focus are set in <a href="x-apple.systempreferences:com.apple.preference.notifications">macOS notification settings</a>.</p>
+      <div id="notifications-message" class="small mt-2" role="status" aria-live="polite"></div>
+    </div>
+  </section>
   <section class="card">
     <div class="card-header"><h2 class="card-title">Appearance</h2></div>
     <div class="card-body">
@@ -132,6 +143,36 @@
   sync();
   schemes.addEventListener('change', () => window.roostaTheme.set(schemes.value));
   window.addEventListener('roosta-theme', sync);
+})();
+(() => {
+  const toggle = document.getElementById('notifications-enabled');
+  const help = document.getElementById('notifications-help');
+  const message = document.getElementById('notifications-message');
+  const say = (text, tone = 'text-secondary') => { message.className = `small mt-2 ${tone}`; message.textContent = text; };
+  document.getElementById('notifications-os').hidden = !navigator.userAgent.includes('Mac');
+  const show = data => {
+    toggle.checked = data.enabled === true;
+    toggle.disabled = false;
+    if (data.managed_by !== 'desktop') help.textContent = 'Only the Roosta Mac app shows notifications. Your choice applies when you use it.';
+  };
+  fetch('/api/settings/notifications').then(r => r.ok ? r.json() : Promise.reject(r)).then(show)
+    .catch(() => say('Restart Roosta to change notifications here.'));
+  toggle.addEventListener('change', async () => {
+    const enabled = toggle.checked;
+    toggle.disabled = true;
+    say('');
+    try {
+      const response = await fetch('/api/settings/notifications', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({enabled})});
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not save that change.');
+      show(data);
+      say(enabled ? 'Notifications are on.' : 'Notifications are off. New items still appear on the board.');
+    } catch (error) {
+      toggle.checked = !enabled;
+      toggle.disabled = false;
+      say(error.message, 'text-danger');
+    }
+  });
 })();
 </script>
 <script src="/static/ai-settings.js" defer></script>

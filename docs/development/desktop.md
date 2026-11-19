@@ -35,6 +35,11 @@ keep stale nav.
   window is focused. An item is recorded as seen only after Electron emits `show`; failed or
   unconfirmed deliveries are released for retry. A sign-in wait notifies once per
   distinct reason and resets once no task is waiting on it. The tray menu reports notification health.
+- Settings → Notifications writes `"notifications": false` to `~/.config/roosta/config.json`
+  (absent means on). `deliverNotices` reads it before every delivery and, while off, confirms notices
+  without showing them so re-enabling does not replay a backlog. The first-run prompt is skipped and
+  the tray says "off in Settings"; **Send Test Notification** still works. `openExternal` allows exactly
+  one non-web URL, the macOS Notifications settings pane, so the Settings link can open it.
 - **Notifications work with the local self-signed identity; notarisation is not required.** If they
   go silently to Notification Centre with no banner/sound, do **not** chase notarisation or
   `terminal-notifier` (Homebrew's bottle isn't notarised anyway). The real causes are: a duplicate

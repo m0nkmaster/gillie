@@ -15,7 +15,13 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { fileURLToPath } = require("node:url");
-const { NotificationState, routeForNotice, noticeKey, noticeFromKey } = require("./notification-state");
+const {
+  NotificationState,
+  notificationsEnabled,
+  routeForNotice,
+  noticeKey,
+  noticeFromKey,
+} = require("./notification-state");
 const { RunnerSupervisor } = require("./runner-supervisor");
 const { buildSkillLogs, formatSkillLogs } = require("./skill-logs");
 
@@ -36,6 +42,8 @@ const WORKSPACE_ROOT = path.resolve(
   process.env.ROOSTA_WORKSPACE || configuredWorkspace() || path.join(os.homedir(), "workspace"),
 );
 const POLL_INTERVAL_MS = 5_000;
+// The only non-web link the dashboard may open: the Notifications pane of System Settings.
+const MAC_NOTIFICATION_SETTINGS = "x-apple.systempreferences:com.apple.preference.notifications";
 
 app.setName("Roosta");
 
@@ -122,6 +130,10 @@ function requireControlPage(event, allowed) {
 }
 
 function openExternal(raw) {
+  if (process.platform === "darwin" && raw === MAC_NOTIFICATION_SETTINGS) {
+    shell.openExternal(MAC_NOTIFICATION_SETTINGS);
+    return;
+  }
   try {
     const url = new URL(raw);
     if (url.protocol === "https:" || url.protocol === "http:") {
@@ -215,7 +227,9 @@ function createApplicationMenu() {
 function updateTray() {
   if (!tray) return;
   const statusLabel = runnerStatus === "ready" ? "Runner ready" : `Runner ${runnerStatus}`;
-  const notificationLabel = `Notifications: ${notificationStatus}`;
+  const notificationLabel = notificationsOn()
+    ? `Notifications: ${notificationStatus}`
+    : "Notifications: off in Settings";
   tray.setToolTip(`Roosta - ${activeCount} need you - ${statusLabel}`);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: activeCount ? `Open Assistant (${activeCount})` : "Open Assistant", click: () => showPage("/assistant") },
@@ -384,6 +398,21 @@ function showNotice(notice) {
   });
 }
 
+function notificationsOn() {
+  return notificationsEnabled(readJson(CONFIG_FILE, {}));
+}
+
+// When Settings has notifications off, mark notices seen without showing them, so turning
+// notifications back on does not replay everything that arrived in between.
+function deliverNotices(notices) {
+  if (!notices.length) return;
+  if (notificationsOn()) {
+    notices.forEach(showNotice);
+    return;
+  }
+  notices.forEach((notice) => notificationState.confirm(notice));
+}
+
 function sendTestNotification() {
   deliverNotification({
     title: "Roosta notifications are ready",
@@ -402,7 +431,7 @@ function sendTestNotification() {
 }
 
 async function notificationSetup() {
-  if (settings.notificationSetupComplete) return;
+  if (settings.notificationSetupComplete || !notificationsOn()) return;
   const result = await dialog.showMessageBox(mainWindow, {
     type: "info",
     title: "Enable Roosta notifications",
@@ -434,7 +463,7 @@ async function pollDashboard() {
       ...notificationState.observeBoard(items),
       ...notificationState.observeTasks(tasks),
     ];
-    notices.forEach(showNotice);
+    deliverNotices(notices);
     saveState();
     updateTray();
   } catch {
@@ -673,8 +702,7 @@ async function initialise() {
   supervisor.on("fatal", ({ message }) => {
     runnerStatus = "stopped";
     lastRunnerFailure = message;
-    const notices = notificationState.beginRunnerFailure(message);
-    notices.forEach(showNotice);
+    deliverNotices(notificationState.beginRunnerFailure(message));
     saveState();
     showRecovery(message, false, mainWindow.isVisible());
   });

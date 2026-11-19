@@ -111,3 +111,13 @@ test("notice keys round-trip so a later process can route a click", () => {
   assert.equal(noticeFromKey("other:abc"), null);
   assert.equal(noticeFromKey(undefined), null);
 });
+
+test("notifications stay on unless Settings turned them off", () => {
+  const { notificationsEnabled } = require("../src/notification-state");
+
+  assert.equal(notificationsEnabled({}), true);
+  assert.equal(notificationsEnabled(null), true);
+  assert.equal(notificationsEnabled({ notifications: true }), true);
+  assert.equal(notificationsEnabled({ notifications: "false" }), true);
+  assert.equal(notificationsEnabled({ notifications: false }), false);
+});

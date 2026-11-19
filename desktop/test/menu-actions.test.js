@@ -100,3 +100,32 @@ test("missing workspace recovery chooses and remembers an existing Roosta worksp
   assert.equal(saved.host, "127.0.0.1");
   assert.equal(saved.workspace, workspace);
 });
+
+test("notifications turned off in Settings are marked seen, not shown", () => {
+  const vm = require("node:vm");
+  const main = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
+  const source = main.slice(main.indexOf("function notificationsOn()"), main.indexOf("function sendTestNotification()"));
+  assert.equal((main.match(/deliverNotices\(/g) || []).length, 3);
+  assert.ok(!main.includes("notices.forEach(showNotice);\n    saveState"));
+  assert.ok(main.includes("if (settings.notificationSetupComplete || !notificationsOn()) return;"));
+  for (const [config, expected] of [[{}, "shown"], [{ notifications: false }, "confirmed"]]) {
+    const calls = [];
+    const deliver = vm.runInNewContext(`${source}; deliverNotices`, {
+      CONFIG_FILE: "config.json",
+      readJson: () => config,
+      notificationsEnabled: require("../src/notification-state").notificationsEnabled,
+      showNotice: (notice) => calls.push(["shown", notice.id]),
+      notificationState: { confirm: (notice) => calls.push(["confirmed", notice.id]) },
+    });
+    deliver([{ kind: "item", id: "a" }, { kind: "item", id: "b" }]);
+    assert.deepEqual(calls, [[expected, "a"], [expected, "b"]]);
+  }
+});
+
+test("only the macOS notification settings link escapes the web allowlist", () => {
+  const main = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
+  const opener = main.slice(main.indexOf("function openExternal(raw)"), main.indexOf("function hardenWindow("));
+
+  assert.ok(opener.includes('process.platform === "darwin" && raw === MAC_NOTIFICATION_SETTINGS'));
+  assert.ok(opener.includes('url.protocol === "https:" || url.protocol === "http:"'));
+});

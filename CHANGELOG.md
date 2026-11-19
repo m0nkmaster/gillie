@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.7.0 - 2026-11-19
+
+- Turn the Roosta app's notifications on or off under **Settings → Notifications**. While they are off, new board items and sign-in waits still appear on the board but no longer pop up, and turning them back on does not replay what arrived in between. On a Mac, a link opens System Settings for banners, sounds and Focus.
+
 ## 0.6.0 - 2026-11-18
 
 - The Workers page lists your workspace’s skills that no worker runs yet, under **Not on a schedule**. Click a skill’s name to read its SKILL.md, or **Schedule** to ask the Assistant to make it a worker; the request is filled in for you to edit before sending.

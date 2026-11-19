@@ -412,6 +412,20 @@ async def api_settings_service():
                                "message": message})
 
 
+@app.get("/api/settings/notifications", dependencies=[Depends(local_ai_settings)])
+async def api_settings_notifications():
+    return ai_settings_result({"enabled": cli.notifications_enabled(), "managed_by": workspace_managed_by()})
+
+
+@app.post("/api/settings/notifications", dependencies=[Depends(local_ai_settings)])
+async def api_settings_notifications_set(body: dict):
+    enabled = body.get("enabled")
+    if not isinstance(enabled, bool):
+        return ai_settings_result({"error": "Choose on or off."}, 400)
+    cli.remember_notifications(enabled)
+    return ai_settings_result({"enabled": enabled, "managed_by": workspace_managed_by()})
+
+
 @app.post("/api/settings/skills-sync", dependencies=[Depends(local_ai_settings)])
 async def api_settings_skills_sync():
     report = await asyncio.to_thread(skills.sync, paths.CORE_SKILLS_DIR, paths.WORKSPACE)
