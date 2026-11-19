@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.10.2 - 2026-11-19
+
+- Chat actions now end with a compact More button for Start fresh and Continue with a summary.
+
 ## 0.10.1 - 2026-11-19
 
 - Make macOS release checks tolerate Chrome hanging after a complete layout-test result, while retaining all layout assertions and rejecting incomplete or failed output.

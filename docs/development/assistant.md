@@ -262,7 +262,7 @@ Chats and paused approvals retain their named AI connection; see [AI harnesses](
 
 ## Starting a new conversation segment
 
-The Chat menu offers **Start fresh** and **Continue with a summary** on inbox items,
+The **More** menu offers **Start fresh** and **Continue with a summary** on inbox items,
 general chats, worker 1:1s and document chats. Both keep the item id, subject, account,
 model and visible transcript. Archive, Restore and inbox handling are independent.
 

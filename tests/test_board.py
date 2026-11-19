@@ -2670,7 +2670,7 @@ def test_assistant_composer_buttons_do_not_stretch_with_textarea():
     assert ".form{display:flex;align-items:flex-end" in html
     assert 'class="btn btn-primary" id="send-message"' in html
     assert 'class="btn" id="close"' in html
-    assert '${itemControls}</div>' in html
+    assert '${itemControls}${contextMenu}</div>' in html
 
 
 def test_attachment_icon_is_visible_without_a_fresh_sprite():

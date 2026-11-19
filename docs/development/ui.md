@@ -184,7 +184,7 @@ connection and polling intervals, so the page never reaches a quiet network stat
 processes and a temporary profile directory behind. Build a throwaway static harness that imports
 the real `shell.css` and the page's own styles, screenshot that, then delete it.
 
-The Assistant Chat menu opens a local handoff preview or a Start fresh confirmation.
+The Assistant **More** menu opens a local handoff preview or a Start fresh confirmation.
 Cancel and Escape dismiss the preview. After acceptance, each previous segment is
 readable through a collapsed, dated **Previous conversation** disclosure. Automatic
 24-turn rotation displays a small context refresh indicator in the conversation header.
