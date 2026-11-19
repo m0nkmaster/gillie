@@ -235,21 +235,23 @@ def is_chat_id(item_id: str) -> bool:
         or item_id.startswith((DOCUMENT_CHAT_PREFIX, WORKER_CHAT_PREFIX)))
 
 
-def standing_thread_ids(raw: str) -> list[str]:
+def standing_thread_ids(raw: str, threads: list[str] | None = None) -> list[str]:
     """Chat ids the board page has open, so their history comes back with the board.
 
     Only the reserved namespaces are accepted, and the list is capped.
     """
     ids = []
-    for part in str(raw or "").split(","):
+    for part in (threads or []) + str(raw or "").split(","):
         item_id = part.strip()
         if is_chat_id(item_id) and item_id not in ids:
             ids.append(item_id)
-    return ids[:20]
+            if len(ids) == 20:
+                break
+    return ids
 
 
-def chat_list(histories: dict, archived: dict[str, str], limit: int = 100) -> list[dict]:
-    """The Chats tab: every chat the user started, newest activity first.
+def chat_list(histories: dict, archived: dict, limit: int = 100, *, closed: bool = False) -> list[dict]:
+    """Return active chats by latest activity/restore, or archived chats by close time.
 
     Archiving hides a chat only until it has newer activity, so reopening and
     asking again brings it back without an unarchive step.
@@ -260,11 +262,32 @@ def chat_list(histories: dict, archived: dict[str, str], limit: int = 100) -> li
         if not (history and is_chat_id(item_id)):
             continue
         at = history[-1].get("at", "")
-        if item_id in archived and archived[item_id] >= at:
+        record = archived.get(item_id, {})
+        if isinstance(record, str):  # Timestamp-only records from before chat retrieval.
+            record = {"closed_at": record}
+        if not isinstance(record, dict):
+            record = {}
+        closed_at = record.get("closed_at")
+        if (isinstance(closed_at, str) and bool(closed_at) and closed_at >= at) != closed:
             continue
         opening = next((t for t in history if t.get("role") == "user"), {})
         first = opening.get("text") or next((a["name"] for a in opening.get("attachments", [])), "")
-        rows.append({"id": item_id, "at": at, "preview": " ".join(first.split())[:140],
-                     "turns": len(history)})
+        preview = " ".join(first.split())[:140]
+        if closed:
+            if item_id.startswith(WORKER_CHAT_PREFIX):
+                fallback = "1:1 with " + item_id.removeprefix(WORKER_CHAT_PREFIX)
+            elif item_id.startswith(DOCUMENT_CHAT_PREFIX):
+                fallback = item_id.removeprefix(DOCUMENT_CHAT_PREFIX)
+            elif is_hire_chat_id(item_id):
+                fallback = "New worker" + (": " + preview if preview else "")
+            else:
+                fallback = preview or "Chat"
+            title = record.get("title")
+            rows.append({"id": item_id, "at": closed_at,
+                         "title": title if isinstance(title, str) and title else fallback})
+        else:
+            restored_at = record.get("restored_at")
+            rows.append({"id": item_id, "at": max(at, restored_at) if isinstance(restored_at, str) else at,
+                         "preview": preview, "turns": len(history)})
     rows.sort(key=lambda r: r["at"], reverse=True)
     return rows[:limit]

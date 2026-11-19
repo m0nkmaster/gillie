@@ -30,14 +30,18 @@ starting `assistant/` are under the workspace's `.roosta/state/`. Also see
   right-hand pane via `/api/vault-document`; hidden under 1100px, ✕ hides it until the next item opens.
 
 - **The rail has two tabs: Inbox and Chats.** Inbox is what the assistant raises; Chats is what the user
-  starts. `/api/board` returns `chats` (`chat_list`): every `chat:`, `person:` and `doc:` thread with
+  starts. `/api/board` returns `chats` (`chat_list`): every `chat:`, `worker:`, `hire:` and `doc:` thread with
   history, newest activity first, capped at 100. Opening a chat switches to its tab. The page names
-  the chats it has opened in `/api/board?threads=` (`standing_thread_ids`, capped at 20) so only
-  their transcripts come back with the board.
+  the chats it has opened in `/api/board?thread=` (`standing_thread_ids`, capped at 20) so only
+  their transcripts come back with the board. The page sends one query parameter per id so document paths containing commas stay intact. The API also accepts legacy comma-separated `threads`.
 
-- **✕ archives a chat, never deletes it.** `POST /api/chats/archive` stamps the id in
-  `assistant/archived-chats.json`; `chat_list` hides it only until it has newer activity, so asking
-  again in an archived document or person thread brings it back without an unarchive step.
+- **✕ archives a chat, never deletes it.** `POST /api/chats/archive` records the close time and displayed
+  title in `assistant/archived-chats.json` for chats with history. The Chats tab offers Undo for
+  ten seconds. Settings lists the latest 50 still-closed chats by close time
+  (`GET /api/chats/archived`), including legacy timestamp-only records. A newer message brings
+  a chat back automatically. Undo and Settings both call `POST /api/chats/restore {item_id}` and
+  open the original thread. Its restore time ranks it among recent chats even if its last message
+  predates the 100-row rail. Closing and restoring leave transcripts and running turns intact.
 
 - **Scheduled sensor feeds.** Every scheduled task may return board-shaped items in
   `details.items`; there is no allowlist. `/api/board` merges each task's latest findings into the

@@ -12,14 +12,16 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Annotated
 
 import yaml
-from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi import FastAPI, Request, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -1059,16 +1061,22 @@ async def runner_page():
     return FileResponse(pages.page_file("index"))
 
 
-def archived_chats() -> dict[str, str]:
+def archived_chats(*, strict: bool = False) -> dict:
     try:
         data = json.loads(ARCHIVED_CHATS_FILE.read_text())
-    except (OSError, json.JSONDecodeError):
+        if not isinstance(data, dict):
+            raise ValueError("Invalid chat archive")
+        return data
+    except FileNotFoundError:
         return {}
-    return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        if strict:  # Never replace an unreadable archive with a partial one.
+            raise
+        return {}
 
 
 @app.get("/api/board")
-async def api_board(threads: str = ""):
+async def api_board(threads: str = "", thread: Annotated[list[str] | None, Query()] = None):
     """Cached conductor output for the rail + done-today, plus agent health.
 
     Handled items (AI-solved or user-closed) are filtered out of the rail
@@ -1101,11 +1109,13 @@ async def api_board(threads: str = ""):
     doc["closed"] = recently_closed(handled, chat_router)
     conversation_ids = [
         item["id"] for item in doc["items"] + doc["later"]
-    ] + standing_thread_ids(threads)
+    ] + standing_thread_ids(threads, thread)
+    histories = (chat_router.conversation_histories() if chat_router else
+                 ConversationHistoryStore(CHAT_HISTORY_FILE).read_all())
     chat_histories = {
         item_id: history
         for item_id in conversation_ids
-        if (history := chat_router.conversation_history(item_id) if chat_router else [])
+        if (history := histories.get(item_id))
     }
     return JSONResponse({
         "status": (state or {}).get("status", "idle"),
@@ -1115,8 +1125,7 @@ async def api_board(threads: str = ""):
         "health": {**board_health(states), "restart_pending": restart_pending()},
         "active_chat_ids": chat_router.active_items() if chat_router else [],
         "chat_histories": chat_histories,
-        "chats": chat_list(chat_router.conversation_histories(), archived_chats())
-        if chat_router else [],
+        "chats": chat_list(histories, archived_chats()),
         "pending_approvals": chat_router.pending_approvals() if chat_router else {},
         "document": doc,
     })
@@ -1411,11 +1420,45 @@ async def api_chats_archive(body: dict):
     item_id = str((body or {}).get("item_id", "")).strip() if isinstance(body, dict) else ""
     if not is_chat_id(item_id):
         return JSONResponse({"error": "need a chat id"}, status_code=400)
-    archived = archived_chats()
-    archived[item_id] = datetime.now(timezone.utc).isoformat()
-    ARCHIVED_CHATS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    ARCHIVED_CHATS_FILE.write_text(json.dumps(archived, indent=2))
+    if not ConversationHistoryStore(CHAT_HISTORY_FILE).read(item_id):
+        return JSONResponse({"archived": False})
+    title = body.get("title")
+    save_chat_state(archived_chats(strict=True), item_id, {
+        "closed_at": datetime.now(timezone.utc).isoformat(),
+        "title": title.strip()[:200] if isinstance(title, str) else "",
+    })
     return JSONResponse({"archived": True})
+
+
+def save_chat_state(archived: dict, item_id: str, record: dict) -> None:
+    archived[item_id] = record
+    ARCHIVED_CHATS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=ARCHIVED_CHATS_FILE.parent, delete=False, mode="w") as temp:
+        try:
+            json.dump(archived, temp, indent=2)
+            temp.close()
+            Path(temp.name).replace(ARCHIVED_CHATS_FILE)
+        finally:
+            Path(temp.name).unlink(missing_ok=True)
+
+
+@app.get("/api/chats/archived")
+async def api_chats_archived():
+    histories = ConversationHistoryStore(CHAT_HISTORY_FILE).read_all()
+    return JSONResponse(chat_list(histories, archived_chats(strict=True), limit=50, closed=True),
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/chats/restore")
+async def api_chats_restore(body: dict):
+    item_id = str(body.get("item_id") or "").strip()
+    if not is_chat_id(item_id):
+        return JSONResponse({"error": "need a chat id"}, status_code=400)
+    archived = archived_chats(strict=True)
+    if item_id not in archived or not ConversationHistoryStore(CHAT_HISTORY_FILE).read(item_id):
+        return JSONResponse({"error": "Chat is unavailable."}, status_code=404)
+    save_chat_state(archived, item_id, {"restored_at": datetime.now(timezone.utc).isoformat()})
+    return JSONResponse({"restored": True})
 
 
 @app.post("/api/board/chat/{run_id}/approve")

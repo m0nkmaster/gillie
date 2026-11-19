@@ -119,6 +119,11 @@
       <div id="notifications-message" class="small mt-2" role="status" aria-live="polite"></div>
     </div>
   </section>
+  <section class="card mb-3" aria-labelledby="closed-chats-title">
+    <div class="card-header"><h2 class="card-title" id="closed-chats-title">Recently closed chats</h2></div>
+    <div class="list-group list-group-flush" id="closed-chats"></div>
+    <div class="card-body text-secondary" id="closed-chats-status" role="status">Loading chats…</div>
+  </section>
   <section class="card">
     <div class="card-header"><h2 class="card-title">Appearance</h2></div>
     <div class="card-body">
@@ -137,6 +142,43 @@
   </section>
 </main>
 <script>
+async function loadClosedChats(){
+  const list=document.getElementById('closed-chats');
+  const status=document.getElementById('closed-chats-status');
+  try{
+    const response=await fetch('/api/chats/archived');
+    if(!response.ok) throw new Error();
+    const chats=await response.json();
+    list.replaceChildren();
+    for(const chat of chats){
+      const row=document.createElement('div');
+      row.className='list-group-item d-flex align-items-center justify-content-between gap-3';
+      const name=document.createElement('span'); name.className='text-break'; name.textContent=chat.title;
+      const button=document.createElement('button');
+      button.type='button'; button.className='btn btn-sm'; button.textContent='Restore';
+      button.setAttribute('aria-label','Restore '+chat.title);
+      button.onclick=async()=>{
+        button.disabled=true;
+        try{
+          const result=await fetch('/api/chats/restore',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({item_id:chat.id})});
+          if(!result.ok) throw new Error();
+          location.assign('/assistant?'+new URLSearchParams({item:chat.id}));
+        }catch{
+          status.hidden=false; status.textContent='Could not restore '+chat.title+'. Try again.';
+          button.disabled=false;
+        }
+      };
+      row.append(name,button); list.appendChild(row);
+    }
+    status.textContent=chats.length?'':'No recently closed chats.';
+    status.hidden=chats.length>0;
+  }catch{
+    status.hidden=false; status.textContent='Could not load recently closed chats. Refresh to try again.';
+  }
+}
+loadClosedChats();
+window.addEventListener('pageshow',event=>{ if(event.persisted) loadClosedChats(); });
 (() => {
   const schemes = document.getElementById('color-scheme');
   const sync = () => { schemes.value = window.roostaTheme.scheme(); };

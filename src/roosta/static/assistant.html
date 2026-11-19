@@ -541,13 +541,24 @@ function setRailTab(tab){
   renderRail();
 }
 async function archiveChat(id){
-  let ok=false;
-  try{ ok=(await fetch('/api/chats/archive',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({item_id:id})})).ok; }catch(e){}
-  if(!ok) return;
+  const title=chatItem(id)?.title||'Chat';
+  let archived;
+  try{
+    const response=await fetch('/api/chats/archive',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({item_id:id,title})});
+    if(!response.ok) throw new Error();
+    archived=(await response.json()).archived;
+  }catch{ showClosedNotice('Try closing the chat again.',{heading:'Could not close chat',error:true}); return; }
   trackUsage('chat_archived',{});
   chats=chats.filter(r=>r.id!==id);
   if(activeId===id) openItem(NEW_CHAT); else renderRail();
+  if(archived) showClosedNotice(title,{heading:'Chat closed',undo:async()=>{
+    const response=await fetch('/api/chats/restore',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({item_id:id})});
+    if(!response.ok) throw new Error();
+    await load();
+    openItem(id);
+  }});
 }
 function itemById(id){
   if(isChatId(id)) return chatItem(id);
@@ -571,19 +582,34 @@ function closedLabel(id,fallback){
   // A board poll can drop the item before its Done event lands; the convo keeps its title.
   return (!isGeneralChatId(id) && ((it && it.title) || (convos[id] && convos[id].title))) || fallback || '';
 }
-function showClosedNotice(title){
-  document.getElementById('closed-notice')?.remove();
+function showClosedNotice(title,{heading='Action closed',undo,error=false}={}){
+  let stack=document.getElementById('closed-notices');
+  if(!stack){
+    stack=document.createElement('div'); stack.id='closed-notices';
+    stack.className='toast-container position-fixed bottom-0 end-0 p-3';
+    document.body.appendChild(stack);
+  }
   const notice=document.createElement('div');
-  notice.id='closed-notice';
-  notice.className='toast-container position-fixed bottom-0 end-0 p-3';
   notice.innerHTML=`<div class="toast show" role="status" aria-live="polite" aria-atomic="true">
-    <div class="toast-header"><span class="status-dot bg-success me-2" aria-hidden="true"></span>
-      <strong class="me-auto">Action closed</strong>
+    <div class="toast-header"><span class="status-dot ${error?'bg-danger':'bg-success'} me-2" aria-hidden="true"></span>
+      <strong class="me-auto">${esc(heading)}</strong>
       <button type="button" class="btn-close" aria-label="Dismiss confirmation"></button></div>
     <div class="toast-body">${esc(title||'One less thing on your list.')}</div></div>`;
   notice.querySelector('.btn-close').onclick=()=>notice.remove();
-  document.body.appendChild(notice);
-  setTimeout(()=>notice.remove(),5000);
+  stack.appendChild(notice);
+  const timer=setTimeout(()=>notice.remove(),undo?10000:5000);
+  if(undo){
+    const button=document.createElement('button');
+    button.type='button'; button.className='btn btn-sm ms-2'; button.textContent='Undo';
+    notice.querySelector('.toast-body').appendChild(button);
+    button.onclick=async()=>{
+      clearTimeout(timer); button.disabled=true;
+      try{ await undo(); }catch{
+        showClosedNotice('Try again in Settings → Recently closed chats.',{heading:'Could not restore chat',error:true});
+      }
+      notice.remove();
+    };
+  }
 }
 let items=[], later=[], closed=[], activeId=null;
 let query='', closedOpen=false;
@@ -838,7 +864,13 @@ function syncConversation(id){
 
 async function load(){
   let d;
-  try{ d=await (await fetch('/api/board?threads='+encodeURIComponent([...openedChats].slice(-20).join(',')))).json(); }catch(e){ return; }
+  const selected=activeId||requestedItem;
+  const threads=new URLSearchParams();
+  if(isChatId(selected)) threads.append('thread',selected);
+  for(const id of [...openedChats].reverse()){
+    if(id!==selected&&threads.size<20) threads.append('thread',id);
+  }
+  try{ d=await (await fetch('/api/board?'+threads)).json(); }catch(e){ return; }
   document.getElementById('status').innerHTML =
     // The engine only earns a mention when chats cannot start.
     (d.document.items.some(it=>it.id==='roosta-ai-setup')?'Connect your AI · ':d.agent_up?'':`<span class="dot-down">●</span> ${esc(d.ai_backend||'Chat engine')} unavailable · `)

@@ -31,6 +31,8 @@ See [Assistant contracts](assistant.md) and [Office rendering](office.md) for pa
   or light mode leaves dark patches. The constellation canvas carries its own `data-bs-theme="dark"`
   because it draws light text; the Office canvas and Ceefax TV are art and stay as they are
 
+- **Recently closed chats** in Settings lists up to 50 named threads. Restore opens the original conversation in Assistant. The Chats rail also offers a ten-second Undo toast. See the [chat archive contract](assistant.md).
+
 - **Folder browsing** (`GET /api/settings/folders`) keeps listing readable folders when a child's
   `.roosta` marker cannot be inspected; that child has no workspace badge. An unreadable selected
   folder still returns an error. The endpoint remains restricted to local Settings requests.

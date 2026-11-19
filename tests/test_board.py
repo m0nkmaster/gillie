@@ -3182,10 +3182,7 @@ def test_board_returns_visible_history_for_open_chats_and_current_items(monkeypa
             return []
 
         def conversation_histories(self):
-            return {}
-
-        def conversation_history(self, item_id):
-            return histories.get(item_id, [])
+            return histories
 
         def active_items(self):
             return ["item-1"]
@@ -3234,6 +3231,9 @@ def test_chat_list_orders_by_activity_and_archive_hides_until_new_activity():
 
 def test_archive_endpoint_accepts_only_chat_ids(monkeypatch, tmp_path):
     monkeypatch.setattr(appmod, "ARCHIVED_CHATS_FILE", tmp_path / "archived.json")
+    history = tmp_path / "history.json"
+    monkeypatch.setattr(appmod, "CHAT_HISTORY_FILE", history)
+    appmod.ConversationHistoryStore(history).append("chat:aaaaaaaaaaaa", "user", "hello")
     ok = asyncio.run(appmod.api_chats_archive({"item_id": "chat:aaaaaaaaaaaa"}))
     assert ok.status_code == 200
     assert "chat:aaaaaaaaaaaa" in appmod.archived_chats()
@@ -3782,3 +3782,125 @@ def test_remove_task_drops_only_that_block(tmp_path):
     assert [t["id"] for t in appmod.yaml.safe_load(path.read_text())["tasks"]] == ["b"]
     with pytest.raises(ValueError):
         task_config.remove_task(path, "missing")
+
+
+def test_chat_retrieval_lifecycle(monkeypatch, tmp_path):
+    monkeypatch.setattr(appmod, "chat_router", None)
+    monkeypatch.setattr(appmod.runner, "get_state", lambda _id: {})
+    monkeypatch.setattr(appmod.runner, "get_states", lambda: [])
+    store = tmp_path / "history.json"
+    archive = tmp_path / "archived.json"
+    monkeypatch.setattr(appmod, "CHAT_HISTORY_FILE", store)
+    monkeypatch.setattr(appmod, "ARCHIVED_CHATS_FILE", archive)
+
+    def turn(text, at):
+        return [{"role": "user", "text": text, "at": at}]
+
+    doc = 'doc:notes/Q&A, "next".md'
+    hire = "hire:aaaaaaaaaaaa"
+    general = "chat:aaaaaaaaaaaa"
+    worker = "worker:writer"
+    active = "worker:busy"
+    unsent = "chat:bbbbbbbbbbbb"
+    histories = {f"chat:{i:012x}": turn(f"Question {i}", "2026-02-01") for i in range(170)}
+    histories.update({doc: turn("Discuss", "2026-01"), hire: turn("Schedule reports", "2026-01"),
+                      general: turn("A question", "2026-01"), worker: turn("How are you?", "2026-01"),
+                      active: turn("Later reply", "2026-04")})
+    store.write_text(json.dumps(histories))
+    original = store.read_bytes()
+    legacy = {f"chat:{i:012x}": "2026-02-02" for i in range(60)}
+    legacy.update({hire: "2026-03-03", general: "2026-03-02", worker: "2026-03-01",
+                   active: "2026-03-01", "item-1": "2026-03-01"})
+    archive.write_text(json.dumps(legacy))
+
+    def recent():
+        return json.loads(asyncio.run(appmod.api_chats_archived()).body)
+
+    close = appmod.api_chats_archive
+    assert json.loads(asyncio.run(close({"item_id": unsent})).body) == {"archived": False}
+    assert unsent not in appmod.archived_chats()
+    asyncio.run(close({"item_id": doc, "title": "Quarterly <review>"}))
+    rows = recent()
+    assert len(rows) == 50
+    assert [(r["id"], r["title"]) for r in rows[:4]] == [
+        (doc, "Quarterly <review>"), (hire, "New worker: Schedule reports"),
+        (general, "A question"), (worker, "1:1 with writer")]
+    assert active not in {r["id"] for r in rows}
+    assert doc not in {r["id"] for r in chat_items.chat_list(histories, {})}
+    restore = appmod.api_chats_restore
+    assert asyncio.run(restore({"item_id": "item-1"})).status_code == 400
+    assert asyncio.run(restore({"item_id": unsent})).status_code == 404
+    assert asyncio.run(restore({"item_id": doc})).status_code == 200
+    assert doc not in {r["id"] for r in recent()}
+    # Fresh readers, as after a restart. Messages and their timestamps are byte-for-byte intact.
+    assert chat_items.chat_list(histories, appmod.archived_chats())[0]["id"] == doc
+    board_response = asyncio.run(appmod.api_board(thread=[doc]))
+    assert json.loads(board_response.body)["chat_histories"][doc] == histories[doc]
+    assert store.read_bytes() == original
+    asyncio.run(close({"item_id": doc}))
+    assert recent()[0]["title"] == doc.removeprefix("doc:")
+    archive.write_text("{broken")
+    with pytest.raises(ValueError):
+        asyncio.run(close({"item_id": doc}))
+    assert archive.read_text() == "{broken"
+
+
+def test_chat_retrieval_controls():
+    html = (STATIC_DIR / "assistant.html").read_text()
+    settings = (STATIC_DIR / "settings.html").read_text()
+    js = (html[html.index("async function archiveChat"):html.index("function itemById")]
+          + html[html.index("function showClosedNotice"):html.index("let items=[]")]
+          + settings[settings.index("async function loadClosedChats"):settings.index("\nloadClosedChats();")])
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not available")
+    subprocess.run([node, "-e", js + r"""
+const assert=require('node:assert/strict');
+class Element {
+  constructor(){ this.children=[]; this.parts={}; }
+  querySelector(s){ return this.parts[s]??=new Element(); }
+  appendChild(e){ this.children.push(e); if(e.id) elements[e.id]=e; return e; }
+  append(...es){ es.forEach(e=>this.appendChild(e)); }
+  replaceChildren(){ this.children=[]; }
+  setAttribute(k,v){ this[k]=v; }
+  remove(){ this.removed=true; }
+}
+const elements={},document={getElementById:id=>elements[id],createElement:()=>new Element(),body:new Element()};
+const id='doc:notes/u & "v",w.md', other='worker:alice', title='<hello>', NEW_CHAT='new';
+let activeId=other,chats=[{id},{id:other}],ok=true,archived=true,destination='';
+const location={assign:url=>destination=url}, trackUsage=()=>{}, renderRail=()=>{}, load=async()=>{};
+const chatItem=()=>({title}),openItem=id=>activeId=id,esc=s=>s.replaceAll('<','&lt;');
+const calls=[],fetch=async(url,options)=>{
+  calls.push([url,options&&JSON.parse(options.body)]);
+  return {ok,json:async()=>url.endsWith('/archived')?[{id,title}]:{archived}};
+};
+const timers=[], setTimeout=(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearTimeout=()=>{};
+const notice=()=>elements['closed-notices'].children.at(-1);
+(async()=>{
+  await archiveChat(id);
+  assert.equal(activeId,other);
+  assert.deepEqual(chats,[{id:other}]);
+  assert.ok(notice().innerHTML.includes('&lt;hello>'));
+  assert.equal(timers.at(-1).ms,10000);
+  timers.at(-1).fn(); assert.ok(notice().removed);
+  await archiveChat(id);
+  await notice().querySelector('.toast-body').children[0].onclick();
+  assert.deepEqual(calls.at(-1),['/api/chats/restore',{item_id:id}]);
+  assert.equal(activeId,id);
+  await archiveChat(id); ok=false;
+  await notice().querySelector('.toast-body').children[0].onclick();
+  assert.equal(activeId,NEW_CHAT);
+  assert.ok(notice().innerHTML.includes('Could not restore'));
+  chats=[{id}]; await archiveChat(id); assert.deepEqual(chats,[{id}]);
+  assert.ok(notice().innerHTML.includes('Could not close'));
+  ok=true; archived=false; const last=notice(); await archiveChat(id); assert.equal(notice(),last);
+  const list=elements['closed-chats']=new Element(),status=elements['closed-chats-status']=new Element();
+  await loadClosedChats();
+  const [name,button]=list.children[0].children;
+  assert.equal(name.textContent,title); assert.equal(button['aria-label'],'Restore '+title);
+  ok=false; await button.onclick(); assert.equal(destination,''); assert.equal(button.disabled,false);
+  assert.match(status.textContent,/Could not restore/);
+  ok=true; await button.onclick(); assert.equal(new URL(destination,'http://localhost').searchParams.get('item'),id);
+  ok=false; await loadClosedChats(); assert.match(status.textContent,/Could not load/);
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""], check=True)

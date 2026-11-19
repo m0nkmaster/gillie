@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.9.0 - 2026-11-19
+
+- Closing a chat now offers Undo for 10 seconds. In Settings → Recently closed chats, restore any of the 50 most recently closed conversations and continue where you left off.
+
 ## 0.8.0 - 2026-11-19
 
 - Press Command+F (Ctrl+F on Windows or Linux) to find text in the current desktop window, including chats, inbox items and runner logs. Enter and Shift+Enter move between matches, and Escape closes Find.
