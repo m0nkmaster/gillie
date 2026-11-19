@@ -1112,6 +1112,7 @@ async def api_board(threads: str = "", thread: Annotated[list[str] | None, Query
     ] + standing_thread_ids(threads, thread)
     histories = (chat_router.conversation_histories() if chat_router else
                  ConversationHistoryStore(CHAT_HISTORY_FILE).read_all())
+    topics = TopicStore(TOPICS_FILE)._read()
     chat_histories = {
         item_id: history
         for item_id in conversation_ids
@@ -1125,6 +1126,11 @@ async def api_board(threads: str = "", thread: Annotated[list[str] | None, Query
         "health": {**board_health(states), "restart_pending": restart_pending()},
         "active_chat_ids": chat_router.active_items() if chat_router else [],
         "chat_histories": chat_histories,
+        "chat_contexts": {
+            key: {"boundaries": record.get("boundaries", []), "refreshed_at": record.get("refreshed_at")}
+            for key in conversation_ids if isinstance(record := topics.get(key), dict)
+            and (record.get("boundaries") or record.get("refreshed_at"))
+        },
         "chats": chat_list(histories, archived_chats()),
         "pending_approvals": chat_router.pending_approvals() if chat_router else {},
         "document": doc,
@@ -1412,6 +1418,30 @@ async def api_board_chat_upload_get(upload_id: str, item_id: str = ""):
         return FileResponse(path, media_type=kind, headers=headers)
     return FileResponse(path, media_type="application/octet-stream",
                         filename=path.name[len(upload_id) + 1:], headers=headers)
+
+
+@app.post("/api/chats/context")
+async def api_chat_context(body: dict):
+    item_id, mode = body.get("item_id"), body.get("mode")
+    revision, handoff = body.get("revision"), body.get("handoff", "")
+    if (not isinstance(item_id, str) or not 0 < len(item_id) <= attachments.MAX_ITEM_ID
+            or item_id.startswith(HIRE_CHAT_PREFIX) or item_id == AI_SETUP_ITEM_ID
+            or mode not in ("preview", "fresh", "summary")
+            or not isinstance(handoff, str) or len(handoff) > 8000
+            or (mode == "summary" and not handoff.strip())
+            or (mode != "preview" and not isinstance(revision, str))):
+        return JSONResponse({"error": "Invalid conversation or handoff."}, status_code=400)
+    if chat_router is None and not await ensure_chat_router():
+        return chat_unavailable()
+    try:
+        result = chat_router.reset_context(item_id, mode, revision, handoff)
+    except LookupError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except (ValueError, OSError):
+        return JSONResponse({"error": "Could not read or save the conversation."}, status_code=500)
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/chats/archive")

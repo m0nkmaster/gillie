@@ -1,7 +1,7 @@
 # roosta/chat.py
 """Per-item AI conversations (Cursor Agent or Claude Code) with a send-approval backstop."""
 from __future__ import annotations
-import asyncio, json, os, re, uuid
+import asyncio, hashlib, json, os, re, uuid
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -410,23 +410,34 @@ class TopicStore:
         self._path = Path(path)
         self._max_session_turns = max_session_turns
 
-    def _read(self) -> dict:
+    def _read(self, *, strict=False) -> dict:
         try:
             data = json.loads(self._path.read_text())
-            return data if isinstance(data, dict) else {}
-        except (OSError, json.JSONDecodeError):
+            if not isinstance(data, dict):
+                raise ValueError("Invalid conversation topics")
+            return data
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError):
+            if strict:
+                raise
             return {}
 
     def _write(self, data: dict) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(data, indent=2))
+        temporary = self._path.with_suffix(f".{uuid.uuid4().hex}.tmp")
+        try:
+            temporary.write_text(json.dumps(data, indent=2))
+            temporary.replace(self._path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
-    def get(self, item_id: str) -> dict:
-        record = self._read().get(item_id, {})
+    def get(self, item_id: str, *, strict=False) -> dict:
+        record = self._read(strict=strict).get(item_id, {})
         return record if isinstance(record, dict) else {}
 
     def begin(self, item_id: str, item: dict, session_id: str) -> dict:
-        data = self._read()
+        data = self._read(strict=True)
         record = data.get(item_id, {})
         if not isinstance(record, dict):
             record = {}
@@ -439,18 +450,19 @@ class TopicStore:
         })
         if item.get("project_ref"):
             record["project_ref"] = str(item["project_ref"])[:200]
-        if not record.get("summary"):
-            record["summary"] = self._fallback_summary(item)
+        record.pop("needs_session", None)
+        record["summary_current"] = False  # Also covers interrupted or failed turns.
         data[item_id] = record
         self._write(data)
         return record
 
     def finish(self, item_id: str, summary: str | None) -> None:
-        data = self._read()
+        data = self._read(strict=True)
         record = data.get(item_id, {})
         if not isinstance(record, dict):
             record = {}
-        clean = " ".join(str(summary or "").split())[:2000]
+        clean = " ".join(summary.split())[:2000] if isinstance(summary, str) else ""
+        record["summary_current"] = bool(clean)
         if clean:
             record["summary"] = clean
         record["turns"] = max(0, int(record.get("turns", 0) or 0)) + 1
@@ -459,34 +471,26 @@ class TopicStore:
         self._write(data)
 
     def should_rotate(self, item_id: str) -> bool:
-        record = self.get(item_id)
-        return bool(record.get("summary")) and int(record.get("turns", 0) or 0) >= self._max_session_turns
+        record = self.get(item_id, strict=True)
+        return int(record.get("turns", 0) or 0) >= self._max_session_turns
 
     def rotated(self, item_id: str, session_id: str) -> None:
-        data = self._read()
+        data = self._read(strict=True)
         record = data.get(item_id, {})
         if not isinstance(record, dict):
             record = {}
         record["session_id"] = session_id
+        record["refreshed_at"] = datetime.now(timezone.utc).isoformat()
         record["turns"] = 0
         data[item_id] = record
         self._write(data)
 
     def delete(self, item_id: str) -> None:
-        data = self._read()
+        data = self._read(strict=True)
         if item_id not in data:
             return
         del data[item_id]
         self._write(data)
-
-    @staticmethod
-    def _fallback_summary(item: dict) -> str:
-        parts = [
-            str(item.get("title", "")).strip(),
-            str(item.get("situation", "")).strip(),
-            f"Current next step: {str(item.get('opening_move', '')).strip()}",
-        ]
-        return " ".join(part for part in parts if part and part != "Current next step:")[:2000]
 
 
 class ConversationHistoryStore:
@@ -542,11 +546,17 @@ class ConversationHistoryStore:
                 })
         return files
 
-    def _read_all(self) -> dict[str, list[dict[str, str]]]:
+    def _read_all(self, *, strict=False) -> dict[str, list[dict[str, str]]]:
         try:
             data = json.loads(self._path.read_text())
-        except (OSError, json.JSONDecodeError):
+        except FileNotFoundError:
             return {}
+        except (OSError, json.JSONDecodeError):
+            if strict:
+                raise
+            return {}
+        if strict and not isinstance(data, dict):
+            raise ValueError("Invalid conversation history")
         if isinstance(data, dict):
             return {
                 str(item_id): history
@@ -862,6 +872,7 @@ class ChatRouter:
         self._topics = topic_store
         self._persistent_history = persistent_history
         self._topic_locks: dict[str, asyncio.Lock] = {}
+        self._sending: dict[asyncio.Task, str] = {}
         self._active_runs: dict[str, asyncio.Task] = {}
         self._message_queues: dict[str, deque[tuple[dict, str]]] = {}
 
@@ -1143,6 +1154,45 @@ class ChatRouter:
                 {**pause.get("action", {}), "run_id": run_id})
         return out
 
+    def reset_context(self, item_id: str, mode: str, revision: str | None, handoff: str) -> dict:
+        # Check and commit synchronously on the same event loop that admits turns/approvals.
+        lock = self._topic_locks.get(item_id)
+        if (item_id in self.active_items() or self._message_queues.get(item_id)
+                or (lock and lock.locked()) or item_id in self._sending.values()
+                or any(p["item_id"] == item_id for p in self._paused.values())):
+            raise RuntimeError("Finish the turn, queued messages and approvals before refreshing context.")
+        topics = self._topics._read(strict=True)
+        record = topics.get(item_id, {})
+        if not isinstance(record, dict):
+            raise ValueError("Invalid conversation topic")
+        history = self._persistent_history._read_all(strict=True).get(item_id, [])
+        if not (record or history or self._sessions.get(item_id)):
+            raise LookupError("There is no conversation to refresh yet.")
+        snapshot = [item_id, record, history, self._sessions.get(item_id),
+                    self._sessions._connections.get(item_id), self._sessions.model(item_id)]
+        current = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
+        boundaries = record.get("boundaries", [])
+        if mode == "preview":
+            seed = record.get("summary", "")
+            if record.get("needs_session") and seed:
+                return {"revision": current, "handoff": seed}
+            if not record.get("summary_current"):
+                start = boundaries[-1]["end"] if boundaries else 0
+                recent = "\n".join(f'{m["role"]}: {m["text"][:400]}' for m in history[start:][-4:])
+                if recent:
+                    seed = f"{seed}\n\nRecent messages\n{recent}".strip()
+            return {"revision": current, "handoff": "Decisions\n\nFacts and context\n"
+                    + seed[:7900] + "\n\nOpen questions\n\nNext steps\n"}
+        if revision != current:
+            raise RuntimeError("This conversation changed. Open a new preview and review it again.")
+        now = datetime.now(timezone.utc).isoformat()
+        topics[item_id] = {**record, "boundaries": [*boundaries, {"end": len(history), "at": now}],
+                           "summary": handoff if mode == "summary" else "", "turns": 0,
+                           "summary_current": mode == "summary", "session_id": "",
+                           "needs_session": True, "refreshed_at": ""}
+        self._topics._write(topics)
+        return {"boundaries": topics[item_id]["boundaries"], "history": history}
+
     def active_items(self) -> list[str]:
         return sorted(
             item_id for item_id, task in self._active_runs.items()
@@ -1212,7 +1262,7 @@ class ChatRouter:
         finally:
             await self._finish_turn(item_id)
 
-    async def _ensure_session(self, item_id: str, item: dict) -> str:
+    async def _ensure_session(self, item_id: str, item: dict, record: dict | None = None) -> str:
         connection = self._sessions.connection(item_id)
         async def create():
             if not connection.startswith("legacy:"):
@@ -1222,16 +1272,15 @@ class ChatRouter:
                 return await self._agent.create_session()
             return await ai_backend.create_session(self._vault, backend)
         sid = self._sessions.get(item_id)
-        if sid and self._topics and self._topics.should_rotate(item_id):
+        if record is None:
+            record = self._topics.get(item_id, strict=True) if self._topics else {}
+        if not sid or record.get("needs_session"):
+            sid = await create()
+            self._sessions.set(item_id, sid)
+        elif self._topics and self._topics.should_rotate(item_id):
             sid = await create()
             self._sessions.set(item_id, sid)
             self._topics.rotated(item_id, sid)
-        if sid:
-            if self._topics:
-                self._topics.begin(item_id, item, sid)
-            return sid
-        sid = await create()
-        self._sessions.set(item_id, sid)
         if self._topics:
             self._topics.begin(item_id, item, sid)
         return sid
@@ -1246,8 +1295,11 @@ class ChatRouter:
                     {key: upload.get(key) for key in ("id", "name", "size", "image")}
                     for upload in uploads])
             run_id = uuid.uuid4().hex[:12]
-            sid = await self._ensure_session(item_id, item)
-            record = self._topics.get(item_id) if self._topics else {}
+            record = self._topics.get(item_id, strict=True) if self._topics else {}
+            summary = record.get("summary") or "No earlier summary."
+            if record.get("summary") and not record.get("summary_current"):
+                summary = "Possibly outdated or incomplete: " + summary
+            sid = await self._ensure_session(item_id, item, record)
             now = datetime.now(timezone.utc)
             me = profile.load()
             prompt = CHAT_PROMPT.format(
@@ -1256,7 +1308,7 @@ class ChatRouter:
                 item=json.dumps(item),
                 message=message or "",
                 now=now.isoformat(),
-                summary=record.get("summary", "No earlier summary."),
+                summary=summary,
             )
             general = is_general_chat_id(item_id)
             connection_id = self._sessions.connection(item_id)
@@ -1415,6 +1467,14 @@ class ChatRouter:
         sender_action = normalise_sender_action(action, edit)
         if sender_action is None:
             return {"ok": False, "reason": "invalid approved action"}
+        # The approved action outlives its HTTP request, just like a chat turn.
+        task = asyncio.create_task(self._send_approved(run_id, paused, sender_action))
+        self._sending[task] = item_id
+        task.add_done_callback(self._sending.pop)
+        return await asyncio.shield(task)
+
+    async def _send_approved(self, run_id: str, paused: dict, sender_action: dict):
+        action, item_id = paused["action"], paused["item_id"]
         connection = paused.get("connection", f"legacy:{ai_backend.current()}")
         if not connection.startswith("legacy:"):
             try:

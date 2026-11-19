@@ -259,3 +259,22 @@ Held cards live in memory (`ChatRouter._paused`), so a runner restart drops them
 `teams`/`teams_message` and `jira`/`jira_ticket` remain accepted aliases for the generic `chat`
 and `ticket` visual categories. Service-specific permalink and content repair stay URL/CLI matched.
 Chats and paused approvals retain their named AI connection; see [AI harnesses](harnesses.md).
+
+## Starting a new conversation segment
+
+The Chat menu offers **Start fresh** and **Continue with a summary** on inbox items,
+general chats, worker 1:1s and document chats. Both keep the item id, subject, account,
+model and visible transcript. Archive, Restore and inbox handling are independent.
+
+`POST /api/chats/context` with `item_id` and `mode: preview` returns a local editable
+handoff and a revision of this item's transcript, topic and session binding. A preview
+does not write or contact a provider. Accept with that revision and mode `fresh` or
+`summary`. Only the latter carries the supplied `handoff`. A changed revision, live or
+queued turn, pending approval, or approved sender in flight returns 409.
+
+Acceptance atomically replaces the topic record with a dated transcript boundary,
+a reset turn count, the chosen summary and a flag requiring a new session. Session
+allocation waits until the next turn owns the item lock. Board responses expose the
+boundaries as message offsets for rendering. Legacy transcripts start at offset zero.
+When a turn omits its summary or fails, any retained summary is labelled potentially
+outdated in subsequent prompts. Legacy summaries have the same uncertain freshness.

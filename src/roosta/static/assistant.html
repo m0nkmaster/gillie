@@ -148,6 +148,8 @@
   .composer-files:empty{display:none}
   .composer-files .tag{max-width:100%;min-width:0;--tblr-tag-close-size:1.5rem}
   .snooze-menu{top:calc(100% + .5rem);bottom:auto;right:0;left:auto;min-width:180px}
+  #context-dialog{width:min(34rem,94vw);background:var(--tblr-bg-surface);color:var(--tblr-body-color);border:1px solid var(--tblr-border-color);border-radius:var(--tblr-border-radius);padding:1.25rem}
+  .previous-conversation{margin:.75rem 0}
   .snooze-menu.open{display:block}
   .attach-wrap{position:relative;flex-shrink:0}
   .attach-menu{top:auto;bottom:calc(100% + .5rem);left:0;right:auto;min-width:200px}
@@ -244,6 +246,14 @@
   <div id="docpane-divider"></div>
   <aside class="docpane" id="docpane" hidden aria-label="Linked document"></aside>
 </div>
+<dialog id="context-dialog" aria-labelledby="context-title">
+  <h2 class="h3" id="context-title"></h2>
+  <p id="context-help"></p>
+  <textarea class="form-control mb-3" rows="12" maxlength="8000" aria-label="Editable handoff" id="context-handoff"></textarea>
+  <p id="context-error" class="text-danger" role="alert"></p>
+  <div class="d-flex justify-content-end gap-2"><button class="btn" id="context-cancel">Cancel</button>
+    <button class="btn btn-primary" id="context-accept"></button></div>
+</dialog>
 <script>
 const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const allowedMarkdownTags=new Set([
@@ -627,7 +637,8 @@ function closedAt(iso){
   const t=new Date(iso); if(isNaN(t)) return '';
   return t.toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit'});
 }
-let chatHistories={};
+let chatHistories={}, chatContexts={};
+let boardRequest=0, appliedBoardRequest=0;
 let pendingApprovals={};
 let activeChats=new Set();
 let requestedItem=new URLSearchParams(location.search).get('item');
@@ -819,8 +830,27 @@ function stamp(log,at){
   }
   return `<span class="ts">${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</span>`;
 }
-function renderHistory(log,id,start=0){
-  (chatHistories[id]||[]).slice(start).forEach(message=>{
+function renderHistory(log,id,start){
+  const history=chatHistories[id]||[];
+  if(start===undefined){
+    start=0;
+    for(const boundary of chatContexts[id]?.boundaries||[]){
+      if(boundary.end>start){
+        const previous=document.createElement('details');
+        previous.className='previous-conversation';
+        const label=document.createElement('summary');
+        label.textContent='Previous conversation · '+new Date(boundary.at).toLocaleDateString();
+        previous.appendChild(label);
+        renderMessages(previous,id,history.slice(start,boundary.end));
+        log.appendChild(previous);
+      }
+      start=boundary.end;
+    }
+  }
+  renderMessages(log,id,history.slice(start));
+}
+function renderMessages(log,id,messages){
+  messages.forEach(message=>{
     const role=message.role==='user'?'you':'ai';
     const who=role==='you'?'You':'Assistant';
     const text=role==='ai'
@@ -832,10 +862,71 @@ function renderHistory(log,id,start=0){
       `<div class="msg ${role}"><div class="who">${who}${stamp(log,message.at)}</div><div class="bubble">${text}${files}</div></div>`);
   });
 }
+async function contextRequest(id,mode,extra={}){
+  const response=await fetch('/api/chats/context',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({item_id:id,mode,...extra})});
+  const result=await response.json();
+  if(!response.ok) throw new Error(result.error||'Could not refresh context.');
+  return result;
+}
+async function openContextDialog(id,mode){
+  const el=name=>document.getElementById('context-'+name);
+  const dialog=el('dialog'), accept=el('accept'), cancel=el('cancel'), handoff=el('handoff');
+  const summary=mode==='summary';
+  const title=summary?'Continue with a summary':'Start fresh';
+  el('title').textContent=title;
+  el('help').textContent=summary
+    ?'Review the handoff before continuing. This local draft may be incomplete or outdated. Only the text you accept carries over.'
+    :'Start a new model session with no earlier conversation context. Previous messages stay available in this chat.';
+  handoff.hidden=!summary; handoff.value=''; handoff.disabled=true;
+  el('error').textContent=''; accept.textContent=title; accept.disabled=true;
+  cancel.disabled=false; cancel.onclick=()=>dialog.close();
+  dialog.oncancel=e=>{ if(cancel.disabled) e.preventDefault(); };
+  dialog.showModal();
+  const previewRequest=contextRequest(id,'preview');
+  dialog._preview=previewRequest;
+  try{
+    const preview=await previewRequest;
+    if(!dialog.open||dialog._preview!==previewRequest) return;
+    handoff.value=preview.handoff; handoff.disabled=false; accept.disabled=false;
+    if(summary) handoff.focus();
+    accept.onclick=async()=>{
+      accept.disabled=true; cancel.disabled=true; handoff.disabled=true;
+      try{
+        const result=await contextRequest(id,mode,{revision:preview.revision,handoff:summary?handoff.value:''});
+        appliedBoardRequest=++boardRequest;
+        chatHistories[id]=result.history;
+        chatContexts[id]={boundaries:result.boundaries};
+        delete pendingApprovals[id];
+        syncConversation(id);
+        dialog.close();
+      }catch(error){
+        el('error').textContent=error.message;
+        accept.disabled=false; cancel.disabled=false; handoff.disabled=false;
+      }
+    };
+  }catch(error){
+    if(dialog.open&&dialog._preview===previewRequest) el('error').textContent=error.message;
+  }
+}
 function syncConversation(id){
   const c=convos[id]; if(!c||!c.seeded||c.busy) return;
   const history=chatHistories[id]||[];
   let changed=false;
+  const context=chatContexts[id], boundary=context?.boundaries?.at(-1)?.at;
+  if(boundary&&boundary!==c.boundary){
+    const brief=c.log.querySelector('.item-brief')?.closest('.msg');
+    c.log.replaceChildren(...(brief?[brief]:[]));
+    delete c.log.dataset.day;
+    renderHistory(c.log,id);
+    c.boundary=boundary;
+    c.historyCount=history.length;
+    changed=true;
+  }
+  if(activeId===id){
+    const indicator=document.getElementById('context-refreshed');
+    if(indicator) indicator.hidden=!context?.refreshed_at;
+  }
   if(history.length>c.historyCount){
     renderHistory(c.log,id,c.historyCount);
     c.historyCount=history.length;
@@ -863,6 +954,7 @@ function syncConversation(id){
 }
 
 async function load(){
+  const request=++boardRequest;
   let d;
   const selected=activeId||requestedItem;
   const threads=new URLSearchParams();
@@ -871,6 +963,8 @@ async function load(){
     if(id!==selected&&threads.size<20) threads.append('thread',id);
   }
   try{ d=await (await fetch('/api/board?'+threads)).json(); }catch(e){ return; }
+  if(request<appliedBoardRequest) return;
+  appliedBoardRequest=request;
   document.getElementById('status').innerHTML =
     // The engine only earns a mention when chats cannot start.
     (d.document.items.some(it=>it.id==='roosta-ai-setup')?'Connect your AI · ':d.agent_up?'':`<span class="dot-down">●</span> ${esc(d.ai_backend||'Chat engine')} unavailable · `)
@@ -883,6 +977,7 @@ async function load(){
   later=d.document.later||[];
   closed=d.document.closed||[];
   chatHistories=d.chat_histories&&typeof d.chat_histories==='object'?d.chat_histories:{};
+  chatContexts=d.chat_contexts||{};
   if(Array.isArray(d.chats)) chats=d.chats;
   pendingApprovals=d.pending_approvals&&typeof d.pending_approvals==='object'?d.pending_approvals:{};
   activeChats=new Set(Array.isArray(d.active_chat_ids)?d.active_chat_ids:[]);
@@ -1097,7 +1192,13 @@ function openItem(id){
           <button class="dropdown-item" data-preset="tomorrow">Tomorrow morning</button>
           <button class="dropdown-item" data-preset="next_monday">Next Monday</button>
         </div></div>`;
-  pane.innerHTML=`<div class="conversation-header card-header"><div class="conversation-heading"><div class="page-pretitle">${persistent?'Conversation':'Needs your attention'}</div><h2 class="card-title">${esc(it.title)}</h2></div>${itemControls}</div>
+  const contextMenu=aiSetup||isHire?'':`<details class="position-relative">
+    <summary class="dropdown-toggle text-secondary">Chat menu</summary>
+    <div class="dropdown-menu show dropdown-menu-end end-0">
+      <button class="dropdown-item" data-context="fresh">Start fresh</button>
+      <button class="dropdown-item" data-context="summary">Continue with a summary</button>
+    </div></details>`;
+  pane.innerHTML=`<div class="conversation-header card-header"><div class="conversation-heading"><div class="page-pretitle">${persistent?'Conversation':'Needs your attention'}</div><h2 class="card-title">${esc(it.title)}</h2><small class="text-secondary" id="context-refreshed" hidden>Context refreshed automatically</small></div><div class="d-flex gap-2">${contextMenu}${itemControls}</div></div>
     <div class="logwrap" id="logwrap"></div>
     <div class="form ${aiSetup?'d-none':''}"><div id="upload-files" class="composer-files" role="group" aria-label="Files to send"></div><div id="context-files" class="composer-files" role="group" aria-label="Selected context files"></div>
       <div class="d-flex align-items-end gap-2 w-100">
@@ -1116,6 +1217,10 @@ function openItem(id){
     requestedFilesUsed=true;
     if(requestedContext||requestedFiles.length) writePreference('assistant-context:'+id,requestedFiles);
   }
+  pane.querySelectorAll('[data-context]').forEach(button=>button.onclick=()=>{
+    button.closest('details').open=false;
+    openContextDialog(id,button.dataset.context);
+  });
   renderContextFiles(id);
   renderUploads(id);
   if(!c.seeded){
@@ -1152,6 +1257,7 @@ function openItem(id){
       renderHistory(c.log,id);
     }
     c.historyCount=(chatHistories[id]||[]).length;
+    c.boundary=chatContexts[id]?.boundaries?.at(-1)?.at;
     c.seeded=true;
   }
   document.getElementById('logwrap').appendChild(c.log);

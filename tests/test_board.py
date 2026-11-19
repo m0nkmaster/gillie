@@ -2062,6 +2062,7 @@ def test_idle_poll_does_not_yank_chat_scroll():
     fn = re.search(r"function syncConversation\(id\)\{.*?\n\}", html, re.S)
     assert fn, "syncConversation not found"
     js = fn.group(0) + """
+const chatContexts={}, activeId=null;
 let scrolls=0, pending=null;
 const scrollLog=()=>scrolls++, renderHistory=()=>{}, clearQueuedNotes=()=>{};
 const log={querySelector:()=>pending, insertAdjacentHTML:()=>{pending={remove(){pending=null;}};}};
@@ -3162,7 +3163,12 @@ def test_mark_handled_preserves_conversation_for_continuation(tmp_path):
     assert cr.known_item("item-1")["id"] == "item-1"
 
 
-def test_board_returns_visible_history_for_open_chats_and_current_items(monkeypatch):
+def test_board_returns_visible_history_for_open_chats_and_current_items(monkeypatch, tmp_path):
+    topics = tmp_path / "topics.json"
+    boundary = {"end": 1, "at": "2026-11-19T12:00:00Z"}
+    topics.write_text(json.dumps({"item-1": {"boundaries": [boundary], "summary": "private"},
+                                 "other": {"boundaries": [boundary]}}))
+    monkeypatch.setattr(appmod, "TOPICS_FILE", topics)
     histories = {
         'chat:0123456789ab': [{"role": "user", "text": "General question"}],
         "item-1": [{"role": "assistant", "text": "Item answer"}],
@@ -3208,6 +3214,7 @@ def test_board_returns_visible_history_for_open_chats_and_current_items(monkeypa
     body = json.loads(response.body)
 
     assert body["chat_histories"] == histories
+    assert body["chat_contexts"] == {"item-1": {"boundaries": [boundary], "refreshed_at": None}}
     assert body["active_chat_ids"] == ["item-1"]
     assert body["pending_approvals"]["item-1"][0]["run_id"] == "run-1"
     assert [item["id"] for item in body["document"]["items"]] == ["item-1", "support-1"]
@@ -3445,6 +3452,7 @@ def test_assistant_restores_approval_cards_missed_by_the_stream():
     assert "div.dataset.run=runId" in html
     fn = re.search(r"function syncConversation\(id\)\{.*?\n\}", html, re.S)
     js = fn.group(0) + """
+const chatContexts={}, activeId=null;
 const shown=new Set(), rendered=[];
 const scrollLog=()=>{}, renderHistory=()=>{}, clearQueuedNotes=()=>{};
 const CSS={escape:s=>s}, document={createElement:()=>({})};

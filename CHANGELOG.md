@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.10.0 - 2026-11-19
+
+- Use the Chat menu to start fresh or review and edit a summary before continuing. Earlier messages stay in the same chat behind a dated Previous conversation divider. The chat also shows when its model context refreshes automatically.
+
 ## 0.9.0 - 2026-11-19
 
 - Closing a chat now offers Undo for 10 seconds. In Settings → Recently closed chats, restore any of the 50 most recently closed conversations and continue where you left off.

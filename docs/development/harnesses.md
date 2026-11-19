@@ -254,3 +254,8 @@ backend API and saved selection remain for compatibility; new selections use nam
 Packaged desktop builds invoke the frozen backend with `--claude-guard` for the Claude hook.
 Development invokes Python and `claude_guard.py`; both commands quote paths and keywords for
 the hook shell, including app paths containing spaces. No system Python is needed in a release.
+
+Manual chat context refresh preserves the account and model binding. The next turn
+allocates a new provider session under the per-item turn lock, even when the old
+session id is still on disk. Only an accepted handoff supplies prior conversation
+context. See the [conversation segment contract](assistant.md#starting-a-new-conversation-segment).
