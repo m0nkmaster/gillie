@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.7.1 - 2026-11-19
+
+- An expanded worker on the Workers page is easier to read. It opens with what the worker does and what its last run reported, including when it ran and how long it took, with the run's details folded away. Its settings now sit under a closed **Settings** section, grouped into Schedule, AI and Name. The details the row already shows are no longer repeated.
+
 ## 0.7.0 - 2026-11-19
 
 - Turn the Roosta app's notifications on or off under **Settings → Notifications**. While they are off, new board items and sign-in waits still appear on the board but no longer pop up, and turning them back on does not replay what arrived in between. On a Mac, a link opens System Settings for banners, sounds and Focus.

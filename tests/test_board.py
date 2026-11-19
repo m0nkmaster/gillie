@@ -2348,9 +2348,45 @@ def test_skill_runner_list_is_dense_and_expandable():
     assert "if (t.queued && t.status !== 'running') return {key: 'queued'" in html
 
 
+def test_worker_drawer_leads_with_the_last_run_and_folds_settings():
+    """Issue #20: the expanded worker reads as a result first, with settings grouped and folded."""
+    html = (STATIC / "index.html").read_text()
+    assert "task-meta" not in html  # the row already shows schedule, last run, runs and skill
+    assert [m for m in re.findall(r"<legend>(\w+)</legend>", html)] == ["Schedule", "AI", "Name"]
+    assert "taskList.addEventListener('toggle'" in html
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not available")
+    escape = re.search(r"function esc\(s\) \{.*?\n        \}", html, re.S).group(0)
+    helpers = re.search(r"function asText\(v\) \{.*?\n        function timeAgo\(iso\) \{.*?\n        \}", html, re.S).group(0)
+    drawer = re.search(r"function lastRunCard\(t\) \{.*?\n        function detailPanel\(t\) \{.*?\n        \}", html, re.S).group(0)
+    subprocess.run([node, "-e", escape + helpers + drawer + r'''
+const assert = require('node:assert/strict');
+const openSettings = new Set();
+const oneToOneHref = id => '/assistant?item=worker:' + id;
+const settingsForm = () => '<form class="task-settings"></form>';
+const ran = {id: 'brief', description: 'Daily <brief>', last_run: new Date(Date.now() - 7200e3).toISOString(),
+    last_duration: 41.6, last_output: {summary: 'Two items', details: {items: [1]}}};
+let html = detailPanel(ran);
+assert.ok(html.indexOf('Two items') < html.indexOf('task-settings'), 'result before settings');
+assert.match(html, /2h ago · took 42s/);
+assert.match(html, /<details class="output-details">/);
+assert.match(html, /Daily &lt;brief&gt;/);
+assert.match(html, /data-settings-for="brief" >/);
+openSettings.add('brief');
+assert.match(detailPanel(ran), /data-settings-for="brief" open>/);
+html = detailPanel({id: 'new', description: ''});
+assert.match(html, /Not run yet/);
+assert.doesNotMatch(html, /output-details/);
+html = detailPanel({id: 'quiet', last_run: ran.last_run, status: 'blocked', last_error: 'Sign in'});
+assert.match(html, /left no summary/);
+assert.match(html, /task-message blocked/);
+'''], check=True, capture_output=True, text=True)
+
+
 def test_worker_skill_preview_loads_in_page():
     html = (STATIC / "index.html").read_text()
-    assert html.count('data-skill="${esc(t.id)}"') == 2
+    assert html.count('data-skill="${esc(t.id)}"') == 1  # the row names the skill; the drawer doesn't repeat it
     assert '<dialog id="skill-preview" aria-labelledby="skill-preview-title">' in html
     node = shutil.which("node")
     if not node:

@@ -138,8 +138,7 @@
         .row-actions { display: flex; justify-content: center; gap: .3rem; }
         .task-chat { width: 32px; padding-left: 0; padding-right: 0; }
         .task-chat svg { width: 16px; height: 16px; }
-        .detail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .6rem; }
-        .detail-actions .hint { color: var(--console-tertiary); font-size: .72rem; }
+        .detail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; flex: none; }
         /* A status is ink, never a fill: a filled block beside the Run button
            reads as a second button, and a mint block on every healthy row
            leaves a genuine failure no room to stand out. Neutral by default so
@@ -179,31 +178,37 @@
             border-left: 3px solid var(--console-line);
             background: var(--console-canvas);
         }
+        /* Drawer order: what the worker does, what its last run said, then settings on demand. */
+        .detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: .65rem; }
         .task-description {
+            min-width: 0;
+            margin: 0;
             color: var(--console-tertiary);
             font-size: .76rem;
             line-height: 1.4;
-            margin-bottom: .6rem;
             overflow: hidden;
             text-overflow: ellipsis;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
         }
-        .task-meta {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: .35rem .8rem;
-            color: var(--console-tertiary);
-            font-size: .72rem;
-            margin-bottom: .55rem;
+        .worker-settings { margin-top: .65rem; }
+        .worker-settings > summary {
+            cursor: pointer;
+            color: var(--console-secondary);
+            font-size: .76rem;
+            font-weight: 600;
         }
-        .task-meta strong { color: var(--console-secondary); font-weight: 700; }
-        .task-settings {
-            margin: 0 0 .6rem;
-            padding: .55rem 0;
-            border-top: 1px solid var(--console-line);
-            border-bottom: 1px solid var(--console-line);
+        .worker-settings > summary .hint { color: var(--console-tertiary); font-weight: 400; margin-left: .3rem; }
+        .task-settings { margin: .55rem 0 0; }
+        .settings-group { margin: 0 0 .7rem; padding: 0 0 .7rem; border: 0; border-bottom: 1px solid var(--console-line); }
+        .settings-group legend {
+            float: none;
+            width: auto;
+            margin: 0 0 .35rem;
+            color: var(--console-secondary);
+            font-size: .7rem;
+            font-weight: 600;
         }
         .settings-grid {
             display: grid;
@@ -229,7 +234,7 @@
         .flag-pick { display: flex; align-items: baseline; gap: .4rem; color: var(--console-secondary); }
         .flag-pick .form-check-input { margin: 0; flex: none; }
         .flag-pick .hint { color: var(--console-tertiary); }
-        .settings-actions { display: flex; align-items: center; gap: .5rem; margin-top: .6rem; }
+        .settings-actions { display: flex; align-items: center; gap: .5rem; }
         .runtime-field label {
             color: var(--console-tertiary);
             font-size: .62rem;
@@ -254,16 +259,20 @@
             max-height: 300px;
             overflow-y: auto;
         }
-        .output-section + .output-section { margin-top: .7rem; }
         .output-label {
-            color: var(--console-tertiary);
-            font-size: .62rem;
+            color: var(--console-secondary);
+            font-size: .7rem;
             font-weight:600;
             letter-spacing:0;
             text-transform: none;
-            margin-bottom: .25rem;
+            margin-bottom: .3rem;
         }
-        .output-body { color: var(--console-secondary); white-space: pre-wrap; word-break: break-word; }
+        .output-when { color: var(--console-tertiary); font-weight: 400; margin-left: .3rem; }
+        .output-body { color: var(--console-secondary); white-space: pre-wrap; word-break: break-word; margin: 0; }
+        .output-empty { color: var(--console-tertiary); margin: 0; }
+        .output-details { margin-top: .5rem; }
+        .output-details > summary { cursor: pointer; color: var(--console-tertiary); font-size: .7rem; }
+        .output-details pre { margin: .35rem 0 0; }
         pre.output-body {
             background: var(--console-canvas);
             border: 1px solid var(--console-line);
@@ -384,6 +393,7 @@
             .list-head span:nth-child(2), .list-head span:nth-child(4), .list-head span:nth-child(5),
             .row-cell.schedule, .row-cell.took, .row-cell.runs { display: none; }
             .settings-grid { grid-template-columns: minmax(0, 1fr); }
+            .detail-head { flex-direction: column; }
         }
     </style>
 </head>
@@ -467,6 +477,7 @@
         let renderedSignature = '';
         const expanded = new Set();
         const dirtySettings = new Set();
+        const openSettings = new Set();  // Settings disclosures stay open across the 5s re-render
         const SORT_KEY = 'skill-runner-sort-v1';
         const SHOW_KEY = 'skill-runner-show-v1';
         const SORT_MODES = ['alphabetical', 'skill', 'status', 'last-run', 'schedule'];
@@ -610,22 +621,9 @@
             const defaultConnection = (runtimeOptions.connections || []).find(c => c.id === runtimeOptions.default_connection);
             return `
                 <form class="task-settings" data-task-id="${id}" data-connection="${esc(t.connection || '')}" novalidate>
+                    <fieldset class="settings-group">
+                    <legend>Schedule</legend>
                     <div class="settings-grid">
-                        <div class="runtime-field">
-                            <label for="name-${id}">Name</label>
-                            <input class="form-control form-control-sm" id="name-${id}" name="task_name"
-                                maxlength="60" value="${esc(t.name || '')}" placeholder="${id}">
-                        </div>
-                        <div class="runtime-field">
-                            <label for="nickname-${id}">Nickname <span class="hint">(The Office)</span></label>
-                            <input class="form-control form-control-sm" id="nickname-${id}" name="nickname"
-                                maxlength="24" value="${esc(t.nickname || '')}" placeholder="${id}">
-                        </div>
-                        <div class="runtime-field wide">
-                            <label for="description-${id}">Description <span class="hint">(blank uses the skill's)</span></label>
-                            <textarea class="form-control form-control-sm" id="description-${id}" name="description"
-                                rows="2" maxlength="500" placeholder="${esc(t.custom_description ? 'Skill description' : (t.description || 'Skill description'))}">${esc(t.custom_description || '')}</textarea>
-                        </div>
                         <div class="runtime-field">
                             <label for="mode-${id}">Schedule</label>
                             <div class="field-row">
@@ -663,31 +661,56 @@
                             </div>
                         </div>
                         <div class="runtime-field wide">
-                            <label>Blocking</label>
                             <div class="flag-picks">
                                 <label class="flag-pick"><input class="form-check-input" type="checkbox" name="writer"
-                                    ${t.writer ? 'checked' : ''}><span>Writer <span class="hint">- edits the workspace, so it waits for other writers to finish</span></span></label>
-                                ${(t.requires || []).length ? `<span class="hint">Needs ${esc(t.requires.join(', '))} - waits, shown as blocked, while that sign-in is down (set <code>requires</code> in tasks.yaml)</span>` : ''}
+                                    ${t.writer ? 'checked' : ''}><span>Edits the workspace <span class="hint">- waits for other writers to finish</span></span></label>
+                                ${(t.requires || []).length ? `<span class="hint">Waits, shown as blocked, while the ${esc(t.requires.join(', '))} sign-in is down (<code>requires</code> in tasks.yaml)</span>` : ''}
                             </div>
                         </div>
+                    </div>
+                    </fieldset>
+                    <fieldset class="settings-group">
+                    <legend>AI</legend>
+                    <div class="settings-grid">
                         <div class="runtime-field wide">
-                            <label for="connection-${id}">AI connection</label>
-                            <select class="form-select" id="connection-${id}" name="connection" ${busy ? 'disabled' : ''}>
+                            <label for="connection-${id}">Connection</label>
+                            <select class="form-select form-select-sm" id="connection-${id}" name="connection" ${busy ? 'disabled' : ''}>
                               <option value="" ${t.connection ? '' : 'selected'}>Default${defaultConnection ? ` · ${esc(defaultConnection.label)}` : ' · choose one in Settings'}</option>
                               ${(runtimeOptions.connections || []).map(c => `<option value="${esc(c.id)}" ${c.id === t.connection ? 'selected' : ''} ${!c.connected || !c.tested ? 'disabled' : ''}>${esc(c.label)} · ${esc(c.billing)}${!c.connected ? ' (disconnected)' : !c.tested ? ' (test first)' : ''}</option>`).join('')}
                             </select>
-                            <span class="hint">Default follows Settings and adds nothing to tasks.yaml. Choosing an account pins this worker to it. <a href="/settings">Manage connections</a></span>
+                            <span class="hint" title="Choosing an account pins this worker to it">Default follows Settings and adds nothing to tasks.yaml. <a href="/settings">Manage connections</a></span>
                         </div>
-                        <div class="runtime-field wide" data-model-field hidden>
-                            <label for="cmodel-${id}">Model</label>
-                            <select class="form-select" id="cmodel-${id}" name="connection_model" data-current="${esc(workerModel(t))}" ${busy ? 'disabled' : ''}></select>
-                            <span class="hint">The model this worker uses on the connection above. <a href="#" data-refresh-models>Refresh</a> <span class="model-error text-danger"></span></span>
+                        <div class="runtime-field" data-model-field hidden>
+                            <label for="cmodel-${id}">Model <a class="hint" href="#" data-refresh-models>Refresh</a></label>
+                            <select class="form-select form-select-sm" id="cmodel-${id}" name="connection_model" data-current="${esc(workerModel(t))}" ${busy ? 'disabled' : ''}></select>
+                            <span class="model-error hint text-danger"></span>
                         </div>
-                        <div class="runtime-field wide" data-effort-field hidden>
+                        <div class="runtime-field" data-effort-field hidden>
                             <label for="ceffort-${id}">Effort</label>
-                            <select class="form-select" id="ceffort-${id}" name="connection_effort" ${busy ? 'disabled' : ''}></select>
+                            <select class="form-select form-select-sm" id="ceffort-${id}" name="connection_effort" ${busy ? 'disabled' : ''}></select>
                         </div>
                     </div>
+                    </fieldset>
+                    <fieldset class="settings-group">
+                    <legend>Name</legend>
+                    <div class="settings-grid">
+                        <div class="runtime-field">
+                            <label for="name-${id}">Name</label>
+                            <input class="form-control form-control-sm" id="name-${id}" name="task_name"
+                                maxlength="60" value="${esc(t.name || '')}" placeholder="${id}">
+                        </div>
+                        <div class="runtime-field">
+                            <label for="nickname-${id}">Nickname <span class="hint">(The Office)</span></label>
+                            <input class="form-control form-control-sm" id="nickname-${id}" name="nickname"
+                                maxlength="24" value="${esc(t.nickname || '')}" placeholder="${id}">
+                        </div>
+                        <div class="runtime-field wide">
+                            <label for="description-${id}">Description <span class="hint">(blank uses the skill's)</span></label>
+                            <textarea class="form-control form-control-sm" id="description-${id}" name="description"
+                                rows="2" maxlength="500" placeholder="${esc(t.custom_description ? 'Skill description' : (t.description || 'Skill description'))}">${esc(t.custom_description || '')}</textarea>
+                        </div>
+                    </div>
+                    </fieldset>
                     <div class="settings-actions">
                         <button class="btn btn-sm btn-primary" type="submit">Save</button>
                         <button class="btn btn-sm btn-ghost-secondary" type="button" data-reset>Reset</button>
@@ -831,43 +854,47 @@
                 aria-label="1:1 chat with ${esc(who)}">${CHAT_ICON}</a>`;
         }
 
-        function detailPanel(t) {
-            const output = t.last_output && t.last_output.summary ? `
+        // The last run's result, read first. The row already carries schedule, runs and status,
+        // so the drawer adds only what the row cannot: what happened, and when exactly.
+        function lastRunCard(t) {
+            const summary = t.last_output?.summary;
+            const details = summary ? asText(t.last_output.details) : '';
+            const when = t.last_run
+                ? `<span class="output-when" title="${esc(new Date(t.last_run).toLocaleString())}">${timeAgo(t.last_run)}${t.last_duration ? ` · took ${Math.round(t.last_duration)}s` : ''}</span>`
+                : '';
+            const body = summary ? `<p class="output-body">${esc(summary)}</p>`
+                : `<p class="output-empty">${t.last_run ? 'The last run left no summary.' : 'Not run yet. Run starts it now.'}</p>`;
+            return `
                 <div class="card card-body task-output">
-                    <div class="output-section">
-                        <div class="output-label">Summary</div>
-                        <p class="output-body">${esc(t.last_output.summary) || '-'}</p>
-                    </div>
-                    ${asText(t.last_output.details) ? `
-                    <div class="output-section">
-                        <div class="output-label">Details</div>
-                        <pre class="output-body">${esc(asText(t.last_output.details))}</pre>
-                    </div>` : ''}
+                    <div class="output-label">Last run ${when}</div>
+                    ${body}
+                    ${details ? `
+                    <details class="output-details">
+                        <summary>Details</summary>
+                        <pre class="output-body">${esc(details)}</pre>
+                    </details>` : ''}
                 </div>
-            ` : '';
+            `;
+        }
+
+        function detailPanel(t) {
+            const settingsOpen = openSettings.has(t.id) ? 'open' : '';
             return `
                 <div class="task-detail" data-task-id="${esc(t.id)}">
-                    <div class="detail-actions">
-                        <a class="btn btn-sm btn-outline-secondary" href="${oneToOneHref(t.id)}">1:1 chat</a>
-                        <a class="btn btn-sm btn-ghost-secondary" href="/office?worker=${encodeURIComponent(t.id)}">See in The Office</a>
-                        <span class="hint">Talk its runs through with the worker; any change you agree goes into its SKILL.md.</span>
-                    </div>
-                    ${t.description ? `
-                        <div class="task-description" title="${esc(t.description)}">
-                            ${esc(t.description)}
+                    <div class="detail-head">
+                        <p class="task-description" title="${esc(t.description || '')}">${esc(t.description || 'No description.')}</p>
+                        <div class="detail-actions">
+                            <a class="btn btn-sm btn-outline-secondary" href="${oneToOneHref(t.id)}"
+                                title="Talk its runs through with the worker; any change you agree goes into its SKILL.md">1:1 chat</a>
+                            <a class="btn btn-sm btn-ghost-secondary" href="/office?worker=${encodeURIComponent(t.id)}">See in The Office</a>
                         </div>
-                    ` : ''}
-                    <div class="task-meta">
-                        <span><strong>Last run:</strong> ${timeAgo(t.last_run)}</span>
-                        <span><strong>Duration:</strong> ${t.last_duration ? t.last_duration + 's' : '-'}</span>
-                        <span><strong>Skill:</strong> <a href="#skill-preview" data-skill="${esc(t.id)}">${esc(t.skill)}</a></span>
-                        <span><strong>Runs:</strong> ${t.run_count}</span>
-                        <span><strong>Schedule:</strong> ${schedule(t)}</span>
-                        ${t.nickname ? `<span><strong>In the Office:</strong> ${esc(t.nickname)}</span>` : ''}
                     </div>
-                    ${settingsForm(t)}
                     ${t.last_error ? `<div class="task-message ${t.status === 'blocked' ? 'blocked' : 'error'}">${esc(t.last_error)}</div>` : ''}
-                    ${output}
+                    ${lastRunCard(t)}
+                    <details class="worker-settings" data-settings-for="${esc(t.id)}" ${settingsOpen}>
+                        <summary>Settings <span class="hint">schedule, AI and name</span></summary>
+                        ${settingsForm(t)}
+                    </details>
                 </div>
             `;
         }
@@ -1128,6 +1155,13 @@
             dirtySettings.delete(reset.closest('.task-settings').dataset.taskId);
             renderTasks(latestTasks, true);
         });
+        // `toggle` does not bubble, so listen in the capture phase.
+        taskList.addEventListener('toggle', (event) => {
+            const box = event.target.closest?.('[data-settings-for]');
+            if (!box || box !== event.target) return;
+            if (box.open) openSettings.add(box.dataset.settingsFor);
+            else openSettings.delete(box.dataset.settingsFor);
+        }, true);
         taskList.addEventListener('keydown', (event) => {
             if (event.key !== 'Enter' && event.key !== ' ') return;
             if (event.target.closest('a, button')) return;  // keys on Run or 1:1 act on that control
