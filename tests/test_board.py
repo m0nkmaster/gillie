@@ -587,6 +587,10 @@ def test_run_turn_remind_marker_persists_card_and_ends_reply(monkeypatch, tmp_pa
 
         def __init__(self):
             async def lines():
+                for subtype in ("started", "completed"):
+                    yield json.dumps({"type": "tool_call", "subtype": subtype,
+                        "tool_call": {"readToolCall": {"args": {"path": "private path"}}}}).encode()
+                yield b'{"type":"thinking","text":"private reasoning"}'
                 event = {
                     "type": "assistant",
                     "message": {"content": [{"type": "text", "text":
@@ -614,6 +618,8 @@ def test_run_turn_remind_marker_persists_card_and_ends_reply(monkeypatch, tmp_pa
 
     events = asyncio.run(run())
     assert events[-1]["kind"] == "reply_end"
+    assert [e["label"] for e in events if e["kind"] == "progress"] == ["Tool started · read", "Tool finished · read"]
+    assert "private" not in json.dumps(events)
     reminders = router.reminders()
     assert len(reminders) == 1 and reminders[0]["title"] == "Chase sign-off"
 
@@ -659,6 +665,8 @@ def test_board_surfaces_due_reminders_and_parks_future(monkeypatch):
 
         def conversation_history(self, item_id):
             return []
+
+        active_progress = {}
 
         def active_items(self):
             return []
@@ -1258,6 +1266,47 @@ def test_item_chat_does_not_retry_after_model_progress(monkeypatch, tmp_path, ev
     assert events[-1]["kind"] == "error"
 
 
+def test_progress_isolated_across_chats_and_queued_turns_after_stop(tmp_path):
+    router = cmod.ChatRouter(None, cmod.SessionMap(tmp_path / "sessions.json"), "/vault")
+
+    async def exercise():
+        release = asyncio.Event()
+
+        async def run(item_id, item, message, run_id):
+            yield {"kind": "progress", "label": message}
+            await release.wait()
+            if item_id == "b":
+                raise RuntimeError("private diagnostic")
+            yield {"kind": "reply_end"}
+
+        router.run_turn = run
+        a = router.start_turn("a", {}, "first").events
+        b = router.start_turn("b", {}, "other").events
+        assert router.start_turn("a", {}, "next").queued
+        await asyncio.sleep(0)
+        first, other = (router.active_progress[key].copy() for key in ("a", "b"))
+        assert first["label"] == "first" and other["label"] == "other"
+        router._active_runs["a"].cancel()
+        while (event := await a.get())["kind"] != "error":
+            assert event["run_id"] == first["run_id"]
+        assert event["payload"]["reason"] == "Reply stopped."
+        assert (await a.get())["kind"] == "_close"
+        await asyncio.sleep(0)
+        assert router.active_progress["a"]["label"] == "next"
+        assert router.active_progress["a"]["run_id"] != first["run_id"]
+        assert router.active_progress["b"] == other
+        release.set()
+        while router.active_items():
+            await asyncio.sleep(0)
+        assert router.active_progress == {}
+        events = [b.get_nowait() for _ in range(b.qsize())]
+        assert [e["kind"] for e in events] == ["progress", "progress", "error", "_close"]
+        assert all(e["item_id"] == "b" and e["run_id"] == other["run_id"] for e in events)
+        assert "private diagnostic" not in json.dumps(events)
+
+    asyncio.run(exercise())
+
+
 def test_detached_turn_continues_without_stream_consumer(tmp_path):
     router = cmod.ChatRouter(
         agent=None,
@@ -1268,7 +1317,7 @@ def test_detached_turn_continues_without_stream_consumer(tmp_path):
     async def exercise():
         release = asyncio.Event()
 
-        async def fake_run(item_id, item, message):
+        async def fake_run(item_id, item, message, run_id):
             await release.wait()
             yield {"kind": "text", "text": "Finished"}
 
@@ -1292,10 +1341,10 @@ def test_detached_turn_continues_without_stream_consumer(tmp_path):
         return drained
 
     drained = asyncio.run(exercise())
-    assert drained == [
-        {"kind": "text", "text": "Finished"},
-        {"kind": "_close"},
-    ]
+    assert [event["kind"] for event in drained] == ["progress", "text", "_close"]
+    assert {event["item_id"] for event in drained} == {"item-1"}
+    assert len({event["run_id"] for event in drained}) == 1
+    assert drained[1]["text"] == "Finished"
 
 
 def test_queued_messages_run_after_current_turn(tmp_path):
@@ -1306,7 +1355,7 @@ def test_queued_messages_run_after_current_turn(tmp_path):
     )
     seen = []
 
-    async def fake_run(item_id, item, message):
+    async def fake_run(item_id, item, message, run_id):
         seen.append((message, item.get('context_documents')))
         yield {"kind": "text", "text": message.upper()}
 
@@ -2054,6 +2103,50 @@ def test_composer_paste_keeps_links_hidden_in_rich_text():
     ]
 
 
+def test_chat_progress_js_rejects_stale_events_and_clears_on_terminal():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not available")
+    html = (Path(cmod.__file__).parent / "static" / "assistant.html").read_text()
+    handle = re.search(r"function handle\(id,ev,ai\)\{.*?\n\}", html, re.S).group()
+    js = handle + """
+const assert=require('node:assert/strict'), chats={};
+const convo=id=>chats[id], scrollLog=()=>{}, md=s=>s, esc=s=>s, visibleReply=s=>s;
+function start(id){
+  let status={remove(){status=null;}};
+  const bubble={innerHTML:'',insertAdjacentHTML(_,s){this.innerHTML+=s;},
+    hasChildNodes(){return !!this.innerHTML;}};
+  const ai={_raw:'',querySelector:s=>s==='.bubble'?bubble:status};
+  chats[id]={stream:ai,historyCount:0};
+  return ai;
+}
+const send=(ai,id,run,kind,data={})=>handle(id,{item_id:id,run_id:run,kind,...data},ai);
+const a=start('a'), b=start('b');
+send(a,'a','one','progress',{label:'Tool started · Read'});
+send(b,'b','other','progress',{label:'Reply running'});
+handle('a',{item_id:'b',run_id:'one',kind:'progress',label:'wrong chat'},a);
+send(a,'a','old','progress',{label:'wrong run'});
+assert.equal(a.querySelector('.reply-progress').textContent,'Tool started · Read');
+send(a,'a','one','text',{text:'Final reply'});
+assert.equal(a.querySelector('.reply-progress'),null);
+send(a,'a','one','reply_end');
+send(a,'a','one','progress',{label:'late'});
+send(a,'a','one','_close');
+assert.equal(a.querySelector('.bubble').innerHTML,'Final reply');
+assert.equal(a.querySelector('.reply-progress'),null);
+assert.equal(b.querySelector('.reply-progress').textContent,'Reply running');
+const next=start('b');
+send(b,'b','other','error',{payload:{reason:'stale error'}});
+assert.equal(b.querySelector('.bubble').innerHTML,'');
+send(next,'b','new','progress',{label:'Reply running'});
+send(next,'b','new','error',{payload:{reason:'Reply stopped.'}});
+send(next,'b','new','progress',{label:'late'});
+assert.equal(next.querySelector('.reply-progress'),null);
+assert.match(next.querySelector('.bubble').innerHTML,/Reply stopped/);
+"""
+    subprocess.run([node, "-e", js], check=True)
+
+
 def test_idle_poll_does_not_yank_chat_scroll():
     node = shutil.which("node")
     if not node:
@@ -2065,21 +2158,31 @@ def test_idle_poll_does_not_yank_chat_scroll():
 const chatContexts={}, activeId=null;
 let scrolls=0, pending=null;
 const scrollLog=()=>scrolls++, renderHistory=()=>{}, clearQueuedNotes=()=>{};
-const log={querySelector:()=>pending, insertAdjacentHTML:()=>{pending={remove(){pending=null;}};}};
+const assert=require('node:assert/strict');
+const chatProgress={a:{run_id:'one',label:'Reply running'}};
+const document={createElement:()=>({dataset:{}, lastElementChild:{}, remove(){pending=null;}})};
+const log={querySelector:()=>pending, appendChild:row=>{pending=row;}};
 const convos={a:{log, seeded:true, busy:false, historyCount:1}};
 const chatHistories={a:[{}]}, activeChats=new Set(), pendingApprovals={};
 const out=[];
 syncConversation('a'); out.push(scrolls);           // idle poll
 chatHistories.a.push({}); syncConversation('a'); out.push(scrolls);  // new message
 activeChats.add('a'); syncConversation('a'); out.push(scrolls);      // thinking appears
-syncConversation('a'); out.push(scrolls);           // still thinking
+chatProgress.a.label='Tool started · Read';
+syncConversation('a'); out.push(scrolls);
+assert.equal(pending.lastElementChild.textContent,chatProgress.a.label);
+const first=pending;
+chatProgress.a={run_id:'two',label:'Reply running'};
+syncConversation('a');
+assert.notEqual(pending,first);
+assert.equal(pending.dataset.run,'two');
 activeChats.delete('a'); syncConversation('a'); out.push(scrolls);   // thinking clears
 process.stdout.write(JSON.stringify(out));
 """
     output = subprocess.run(
         [node, "-e", js], capture_output=True, text=True, check=True
     ).stdout
-    assert json.loads(output) == [0, 1, 2, 2, 3]
+    assert json.loads(output) == [0, 1, 2, 2, 4]
 
 
 def _order_attention_items(items, mode, pins=()):
@@ -3190,6 +3293,8 @@ def test_board_returns_visible_history_for_open_chats_and_current_items(monkeypa
         def conversation_histories(self):
             return histories
 
+        active_progress = {"item-1": {"run_id": "run-2", "label": "Tool started · Read"}}
+
         def active_items(self):
             return ["item-1"]
 
@@ -3216,6 +3321,7 @@ def test_board_returns_visible_history_for_open_chats_and_current_items(monkeypa
     assert body["chat_histories"] == histories
     assert body["chat_contexts"] == {"item-1": {"boundaries": [boundary], "refreshed_at": None}}
     assert body["active_chat_ids"] == ["item-1"]
+    assert body["chat_progress"] == FakeRouter.active_progress
     assert body["pending_approvals"]["item-1"][0]["run_id"] == "run-1"
     assert [item["id"] for item in body["document"]["items"]] == ["item-1", "support-1"]
 

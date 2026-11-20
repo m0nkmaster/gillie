@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.12.0 - 2026-11-20
+
+- Assistant chats show live reply status and available tool activity, including when you reopen a running chat. Progress clears when the reply ends.
+
 ## 0.11.0 - 2026-11-20
 
 - Office gains a fireplace and stockings, fridge and clock interactions, a second café table, dart challenges, on-demand foosball and console players, and scored table tennis.

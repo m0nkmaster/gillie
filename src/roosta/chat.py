@@ -92,7 +92,7 @@ def _closed_snapshot(item: dict | None) -> dict | None:
 
 
 def parse_line(line: str) -> dict | None:
-    """One Cursor stream-json line -> a text delta, or None."""
+    """Extract visible Cursor deltas and tool call boundaries."""
     line = line.strip()
     if not line:
         return None
@@ -100,6 +100,14 @@ def parse_line(line: str) -> dict | None:
         evt = json.loads(line)
     except json.JSONDecodeError:
         return None
+    if not isinstance(evt, dict):
+        return None
+    if evt.get("type") == "tool_call" and evt.get("subtype") in ("started", "completed"):
+        call = evt.get("tool_call")
+        name = None
+        if isinstance(call, dict):
+            name = next((key.removesuffix("ToolCall") for key in call if key.endswith("ToolCall")), None)
+        return {"kind": "tool" if evt["subtype"] == "started" else "tool_end", "name": name, "text": ""}
     if (
         evt.get("type") == "assistant"
         and "timestamp_ms" in evt
@@ -115,6 +123,19 @@ def parse_line(line: str) -> dict | None:
         )
         return {"kind": "text", "text": text}
     return None
+
+
+def progress_label(event: dict) -> str | None:
+    kind = event["kind"]
+    if kind == "progress":
+        return event["label"] or "Reply running"
+    label = {"tool": "Tool started", "tool_running": "Tool running", "tool_end": "Tool finished"}.get(kind)
+    if label is None:
+        return None
+    name = event.get("name")
+    if isinstance(name, str) and re.fullmatch(r"[a-zA-Z0-9_.-]{1,100}", name):
+        return f"{label} · {name}"
+    return label
 
 
 _META_STARTS = ("i'll ", "i’ll ", "i will ", "let me ", "first ", "first, ")
@@ -873,6 +894,7 @@ class ChatRouter:
         self._persistent_history = persistent_history
         self._topic_locks: dict[str, asyncio.Lock] = {}
         self._sending: dict[asyncio.Task, str] = {}
+        self.active_progress: dict[str, dict] = {}
         self._active_runs: dict[str, asyncio.Task] = {}
         self._message_queues: dict[str, deque[tuple[dict, str]]] = {}
 
@@ -1194,73 +1216,67 @@ class ChatRouter:
         return {"boundaries": topics[item_id]["boundaries"], "history": history}
 
     def active_items(self) -> list[str]:
-        return sorted(
-            item_id for item_id, task in self._active_runs.items()
-            if not task.done()
-        )
+        return sorted(self._active_runs)
 
     def start_turn(self, item_id: str, item: dict, message: str) -> TurnHandle:
         """Start a turn immediately, or queue it until the current turn finishes."""
         active = self._active_runs.get(item_id)
-        if active and not active.done():
+        if active is not None:
             queue = self._message_queues.setdefault(item_id, deque())
             queue.append((item, message))
             return TurnHandle(queued=True, position=len(queue))
-        return TurnHandle(events=self._launch_turn(item_id, item, message))
+        events = asyncio.Queue()
+        self._launch_turn(item_id, item, message, events)
+        return TurnHandle(events=events)
 
-    def _launch_turn(self, item_id: str, item: dict, message: str) -> asyncio.Queue:
-        """Run independently of the browser stream so navigation cannot cancel the work."""
-        events: asyncio.Queue = asyncio.Queue()
+    def _launch_turn(self, item_id: str, item: dict, message: str, events: asyncio.Queue | None = None) -> None:
+        """Queued turns update the same board snapshot without buffering an unread stream."""
+        run_id = uuid.uuid4().hex[:12]
+
+        def publish(event: dict) -> None:
+            if events is not None:
+                events.put_nowait({**event, "item_id": item_id, "run_id": run_id})
+
+        def progress(label: str) -> None:
+            snapshot = {"run_id": run_id, "label": label}
+            if self.active_progress.get(item_id) == snapshot:
+                return
+            self.active_progress[item_id] = snapshot
+            publish({"kind": "progress", "label": label})
 
         async def produce() -> None:
             try:
-                async for event in self.run_turn(item_id, item, message):
-                    events.put_nowait(event)
-            except asyncio.CancelledError:
-                raise
+                async for event in self.run_turn(item_id, item, message, run_id):
+                    if event["kind"] == "progress":
+                        progress(event["label"])
+                    else:
+                        if event["kind"] == "text":
+                            self.active_progress[item_id] = {"run_id": run_id, "label": "Writing reply"}
+                        else:
+                            self.active_progress.pop(item_id, None)
+                        publish(event)
             except Exception:
-                events.put_nowait({
-                    "kind": "error",
-                    "payload": {"reason": "The Assistant could not finish this reply."},
-                })
-            finally:
-                events.put_nowait({"kind": "_close"})
-                await self._finish_turn(item_id)
+                publish({"kind": "error", "payload": {"reason": "The Assistant could not finish this reply."}})
 
-        self._active_runs[item_id] = asyncio.create_task(
-            produce(), name=f"chat-{item_id[:80]}"
-        )
-        return events
+        def finished(task: asyncio.Task) -> None:
+            if task.cancelled():
+                publish({"kind": "error", "payload": {"reason": "Reply stopped."}})
+            publish({"kind": "_close"})
+            if self._active_runs.get(item_id) is not task:
+                return
+            self._active_runs.pop(item_id)
+            self.active_progress.pop(item_id, None)
+            queue = self._message_queues.get(item_id)
+            if queue:
+                next_item, next_message = queue.popleft()
+                if not queue:
+                    self._message_queues.pop(item_id)
+                self._launch_turn(item_id, next_item, next_message)
 
-    async def _finish_turn(self, item_id: str) -> None:
-        current = asyncio.current_task()
-        if self._active_runs.get(item_id) is current:
-            self._active_runs.pop(item_id, None)
-        await self._drain_queue(item_id)
-
-    async def _drain_queue(self, item_id: str) -> None:
-        queue = self._message_queues.get(item_id)
-        if not queue:
-            return
-        item, message = queue.popleft()
-        if not queue:
-            self._message_queues.pop(item_id, None)
-        self._active_runs[item_id] = asyncio.create_task(
-            self._background_turn(item_id, item, message),
-            name=f"chat-{item_id[:80]}-queued",
-        )
-
-    async def _background_turn(self, item_id: str, item: dict, message: str) -> None:
-        """Process a queued message without an SSE consumer."""
-        try:
-            async for _ in self.run_turn(item_id, item, message):
-                pass
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            pass
-        finally:
-            await self._finish_turn(item_id)
+        progress("Reply running")
+        task = asyncio.create_task(produce(), name=f"chat-{item_id[:80]}")
+        self._active_runs[item_id] = task
+        task.add_done_callback(finished)
 
     async def _ensure_session(self, item_id: str, item: dict, record: dict | None = None) -> str:
         connection = self._sessions.connection(item_id)
@@ -1285,7 +1301,7 @@ class ChatRouter:
             self._topics.begin(item_id, item, sid)
         return sid
 
-    async def run_turn(self, item_id: str, item: dict, message: str):
+    async def run_turn(self, item_id: str, item: dict, message: str, run_id: str | None = None):
         """Async generator of events: text deltas, then a terminal event."""
         lock = self._topic_locks.setdefault(item_id, asyncio.Lock())
         async with lock:
@@ -1294,7 +1310,7 @@ class ChatRouter:
                 self._persistent_history.append(item_id, "user", message, [
                     {key: upload.get(key) for key in ("id", "name", "size", "image")}
                     for upload in uploads])
-            run_id = uuid.uuid4().hex[:12]
+            run_id = run_id or uuid.uuid4().hex[:12]
             record = self._topics.get(item_id, strict=True) if self._topics else {}
             summary = record.get("summary") or "No earlier summary."
             if record.get("summary") and not record.get("summary_current"):
@@ -1358,6 +1374,11 @@ class ChatRouter:
                         ev = parse(line)
                         if ev is None:
                             continue
+                        if (label := progress_label(ev)) is not None:
+                            if ev["kind"] == "tool":
+                                hold.feed(ev)
+                            yield {"kind": "progress", "label": label, "run_id": run_id}
+                            continue
                         if ev["kind"] == "separator" and (not assembled or assembled.endswith(("\n", " "))):
                             continue
                         assembled += ev["text"]
@@ -1391,6 +1412,11 @@ class ChatRouter:
                         raw_output = (raw_output + decoded)[-32768:]
                         ev = parse(decoded)
                         if ev is None:
+                            continue
+                        if (label := progress_label(ev)) is not None:
+                            if ev["kind"] == "tool":
+                                hold.feed(ev)
+                            yield {"kind": "progress", "label": label, "run_id": run_id}
                             continue
                         # Claude splits a reply into one message per tool round; keep a
                         # paragraph break between them but never lead with one.

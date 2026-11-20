@@ -175,7 +175,7 @@
   .empty h2{font-size:1.15rem;font-weight:500;color:var(--secondary)}.empty p{font-size:.8rem}
   .daysep{display:flex;align-items:center;gap:.75rem;font-size:.65rem;color:var(--tertiary);padding:.75rem 0}
   .daysep::before,.daysep::after{content:"";flex:1;border-top:1px solid var(--tblr-border-color-translucent)}
-  .thinking{color:var(--tertiary);font-style:italic}
+  .reply-progress{color:var(--tertiary);font-size:.875rem;overflow-wrap:anywhere}
   .busy{display:inline-flex;gap:3px;align-items:center;margin:0 .3rem;vertical-align:middle}
   .busy i{width:4px;height:4px;border-radius:50%;background:currentColor;animation:dot 1.2s ease-in-out infinite}
   .busy i:nth-child(2){animation-delay:.15s}.busy i:nth-child(3){animation-delay:.3s}
@@ -640,7 +640,8 @@ function closedAt(iso){
 let chatHistories={}, chatContexts={};
 let boardRequest=0, appliedBoardRequest=0;
 let pendingApprovals={};
-let activeChats=new Set();
+let activeChats=new Set(), chatProgress={};
+let sendSequence=0;
 let requestedItem=new URLSearchParams(location.search).get('item');
 // ?ask= links carry the question to ask. It is prefilled in the
 // composer, never auto-sent, so the user always sees the request before a turn runs.
@@ -955,14 +956,22 @@ function syncConversation(id){
     ai.innerHTML='<div class="who">Assistant</div><div class="bubble"></div>';
     c.log.appendChild(ai); renderApproval(id,ai,p.run_id,p); changed=true;
   });
-  const pending=c.log.querySelector('.server-thinking');
-  if(activeChats.has(id)&&!pending){
-    c.log.insertAdjacentHTML('beforeend',
-      '<div class="msg ai server-thinking"><div class="who">Assistant</div><div class="bubble"><span class="thinking">thinking<span class="busy"><i></i><i></i><i></i></span></span></div></div>');
-    changed=true;
-  }else if(!activeChats.has(id)&&pending){
-    pending.remove();
-    changed=true;
+  const pending=c.log.querySelector('.server-progress');
+  if(activeChats.has(id)){
+    const current=chatProgress[id], label=current?.label||'Reply running';
+    if(!pending||pending.dataset.run!==(current?.run_id||'')){
+      pending?.remove();
+      const row=document.createElement('div');
+      row.className='msg ai server-progress';
+      row.dataset.run=current?.run_id||'';
+      row.innerHTML='<div class="who">Assistant</div><div class="reply-progress" role="status"></div>';
+      row.lastElementChild.textContent=label;
+      c.log.appendChild(row); changed=true;
+    }else if(pending.lastElementChild.textContent!==label){
+      pending.lastElementChild.textContent=label;
+    }
+  }else if(pending){
+    pending.remove(); changed=true;
   }
   // Polls with nothing new must leave the user's scroll position alone.
   if(changed) scrollLog(c);
@@ -995,6 +1004,7 @@ async function load(){
   chatContexts=d.chat_contexts||{};
   if(Array.isArray(d.chats)) chats=d.chats;
   pendingApprovals=d.pending_approvals&&typeof d.pending_approvals==='object'?d.pending_approvals:{};
+  chatProgress=d.chat_progress||{};
   activeChats=new Set(Array.isArray(d.active_chat_ids)?d.active_chat_ids:[]);
   Object.keys(convos).forEach(syncConversation);
   renderRail();
@@ -1418,54 +1428,56 @@ function send(id,message){
     scope:isGeneralChatId(id)?'general':isDocId(id)?'document':isWorkerId(id)?'worker':isHireId(id)?'hire':'item',
     mode:sent?'message':'recommendation'
   });
-  if(c.busy||activeChats.has(id)){
-    if(sent){
-      c.log.insertAdjacentHTML('beforeend',
-        `<div class="msg you queued" data-queued="1"><div class="who">You${stamp(c.log,new Date())}</div><div class="bubble">${esc(message)}${files}<div class="queued-note">Queued…</div></div></div>`);
-      scrollLog(c);
-    }
-    fetch('/api/board/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:payload}).then(async res=>{
-        if(res.status===202){
-          const out=await res.json();
-          c.queuedCount=Math.max(c.queuedCount,out.position||1);
-          if(sent) c.historyCount+=1;
-          clearQueuedNotes(c);
-          return;
-        }
-        if(!res.ok){
-          const detail=await res.json().catch(()=>({}));
-          const err=c.log.querySelector('[data-queued="1"] .queued-note');
-          if(err) err.textContent=detail.error||'Could not queue - try again.';
-          return;
-        }
-        beginStream(id,res,sent,c);
-      }).catch(()=>{
-        const err=c.log.querySelector('[data-queued="1"] .queued-note');
-        if(err) err.textContent='Could not queue - try again.';
-      });
-    return true;
+  const queued=c.busy||activeChats.has(id), sequence=++sendSequence;
+  let note, ai;
+  if(sent){
+    c.log.insertAdjacentHTML('beforeend',
+      `<div class="msg you${queued?' queued':''}" ${queued?'data-queued="1"':''}><div class="who">You${stamp(c.log,new Date())}</div><div class="bubble">${esc(message)}${files}${queued?'<div class="queued-note">Queued…</div>':''}</div></div>`);
+    note=c.log.lastElementChild.querySelector('.queued-note');
+    scrollLog(c);
   }
-  if(sent){ c.log.insertAdjacentHTML('beforeend',
-    `<div class="msg you"><div class="who">You${stamp(c.log,new Date())}</div><div class="bubble">${esc(message)}${files}</div></div>`); }
-  const ai=document.createElement('div'); ai.className='msg ai';
-  ai.innerHTML='<div class="who">Assistant'+stamp(c.log,new Date())+'</div><div class="bubble"><span class="thinking">thinking<span class="busy"><i></i><i></i><i></i></span></span></div>';
-  ai._raw=''; ai._got=false; ai._closed=false; ai._userMessage=sent;
-  c.log.appendChild(ai); scrollLog(c); c.busy=true; activeChats.add(id); renderRail();
-  fetch('/api/board/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:payload}).then(res=>beginStream(id,res,sent,c,ai))
-    .catch(e=>{ ai.querySelector('.bubble').innerHTML='<span class="err-line">Connection lost. The reply will continue in the background.</span>';
-      c.busy=false; load(); renderRail(); });
-  return true;
-}
-function beginStream(id,res,sent,c,ai){
-  if(!ai){
+  function startReply(){
+    if(c.stream){
+      c.stream.querySelector('.reply-progress')?.remove();
+      if(!c.stream.querySelector('.bubble').hasChildNodes()) c.stream.remove();
+    }
+    c.log.querySelector('.server-progress')?.remove();
     ai=document.createElement('div'); ai.className='msg ai';
-    ai.innerHTML='<div class="who">Assistant</div><div class="bubble"><span class="thinking">thinking<span class="busy"><i></i><i></i><i></i></span></span></div>';
-    ai._raw=''; ai._got=false; ai._closed=false; ai._userMessage=sent;
+    ai.innerHTML='<div class="who">Assistant'+stamp(c.log,new Date())+'</div><div><div class="reply-progress" role="status">Sending…</div><div class="bubble"></div></div>';
+    ai._raw='';
+    c.stream=ai; c.sequence=sequence;
     c.log.appendChild(ai); scrollLog(c); c.busy=true; activeChats.add(id); renderRail();
   }
-  streamBody(id,res,ai);
+  if(!queued) startReply();
+  fetch('/api/board/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:payload})
+    .then(async res=>{
+      if(res.status===202){
+        const out=await res.json();
+        c.queuedCount=Math.max(c.queuedCount,out.position||1);
+        if(sent) c.historyCount+=1;
+        clearQueuedNotes(c);
+        ai?.remove();
+        if(ai&&c.stream===ai){ c.stream=null; c.busy=false; }
+        load(); return;
+      }
+      if(!res.ok){
+        const detail=await res.json().catch(()=>({}));
+        throw new Error(detail.error||'Could not start ('+res.status+').');
+      }
+      if(sequence<c.sequence){ res.body.cancel(); return; }
+      note?.remove();
+      if(!ai) startReply();
+      if(sent) c.historyCount+=1;
+      return streamBody(id,res,ai);
+    }).catch(error=>{
+      if(note) note.textContent=error.message;
+      if(ai&&c.stream===ai){
+        ai.querySelector('.reply-progress')?.remove();
+        ai.querySelector('.bubble').textContent=error.message;
+        c.busy=false; c.stream=null; load(); renderRail();
+      }
+    });
+  return true;
 }
 function clearQueuedNotes(c){
   c.log.querySelectorAll('[data-queued="1"] .queued-note').forEach(el=>el.remove());
@@ -1474,20 +1486,23 @@ function clearQueuedNotes(c){
 }
 async function streamBody(id,res,ai){
   const c=convo(id);
-  if(!res.ok){ const detail=await res.json().catch(()=>({}));
-    ai.querySelector('.bubble').innerHTML='<span class="err-line">'+esc(detail.error||'Could not start ('+res.status+').')+'</span>';
-    c.busy=false; activeChats.delete(id); renderRail(); return; }
-  if(ai._userMessage) c.historyCount+=1;
   try{
     const reader=res.body.getReader(), dec=new TextDecoder(); let buf='';
     for(;;){ const {value,done}=await reader.read(); if(done) break;
       buf+=dec.decode(value,{stream:true}); let i;
       while((i=buf.indexOf('\n\n'))>=0){ const chunk=buf.slice(0,i); buf=buf.slice(i+2);
         if(!chunk.startsWith('data: ')) continue; handle(id,JSON.parse(chunk.slice(6)),ai); } }
-  }catch(e){ ai.insertAdjacentHTML('beforeend','<div class="err-line">Connection lost. The reply will continue in the background.</div>'); }
+  }catch(e){
+    if(c.stream===ai&&!ai._terminal) ai.querySelector('.bubble').insertAdjacentHTML('beforeend',
+      '<div class="err-line">Connection lost. The reply will continue in the background.</div>');
+  }
   finally{
-    c.busy=false;
-    if(ai._closed) activeChats.delete(id); else load();
+    ai.querySelector('.reply-progress')?.remove();
+    if(c.stream!==ai) return;
+    c.stream=null; c.busy=false;
+    appliedBoardRequest=++boardRequest;
+    if(ai._closed) activeChats.delete(id);
+    load();
     renderRail();
     if(activeId===id) refreshDocPane();
   }
@@ -1505,6 +1520,22 @@ function showLearned(ai,learned,itemId){
 }
 function handle(id,ev,ai){
   const c=convo(id), b=ai.querySelector('.bubble');
+  if(c.stream!==ai||ai._closed||ev.item_id!==id||!ev.run_id||
+      (ai._run&&ev.run_id!==ai._run)) return;
+  ai._run=ev.run_id;
+  if(ev.kind==='progress'){
+    if(ai._terminal) return;
+    let status=ai.querySelector('.reply-progress');
+    if(!status){
+      status=document.createElement('div'); status.className='reply-progress';
+      status.setAttribute('role','status'); b.before(status);
+    }
+    if(status.textContent!==ev.label) status.textContent=ev.label;
+    return;
+  }
+  if(ai._terminal&&ev.kind!=='_close') return;
+  ai.querySelector('.reply-progress')?.remove();
+  if(ev.kind!=='text') ai._terminal=true;
   if(ev.kind==='text'){ ai._got=true; ai._raw+=ev.text; b.innerHTML=md(visibleReply(ai._raw)); }
   else if(ev.kind==='pause'){ renderApproval(id,ai,ev.run_id,ev.payload||{}); }
   else if(ev.kind==='defer'){
@@ -1542,7 +1573,7 @@ function handle(id,ev,ai){
   else if(ev.kind==='error'){ if(!ai._got) b.innerHTML=''; b.insertAdjacentHTML('beforeend',`<div class="err-line">${esc((ev.payload||{}).reason||'Failed')}</div>`); }
   else if(ev.kind==='reply_end'||ev.kind==='_close'){
     if(ev.payload&&ev.payload.learned) showLearned(ai,ev.payload.learned,id);
-    if(!ai._got && b.querySelector('.thinking')) b.innerHTML='<span class="err-line">No reply.</span>';
+    if(!ai._got&&!b.hasChildNodes()) b.innerHTML='<span class="err-line">No reply.</span>';
     if(ev.kind==='_close'){
       ai._closed=true;
       const visible=visibleReply(ai._raw).trim();
