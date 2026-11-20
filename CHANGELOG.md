@@ -2,6 +2,11 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.11.0 - 2026-11-20
+
+- Office gains a fireplace and stockings, fridge and clock interactions, a second café table, dart challenges, on-demand foosball and console players, and scored table tennis.
+- Office workers head back before their next shift and flag overdue starts; the lounge TV filters distressing headlines, and the click guide lists each room’s interactions.
+
 ## 0.10.2 - 2026-11-19
 
 - Chat actions now end with a compact More button for Start fresh and Continue with a summary.

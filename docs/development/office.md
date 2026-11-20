@@ -61,6 +61,27 @@ The page chrome follows the [shared UI rules](ui.md); simulation and art details
 
 ## Rendering and visual checks
 
+- **Office interactions.** The kitchen has two café tables and a clickable fridge
+  (lit interior and night light, snack trips and missing-yoghurt reactions). The lounge fireplace
+  follows `fireState`: daytime fires in cold months, embers in the evening, out overnight;
+  workers visit the hearth while it burns. Clicking pokes it, with flares, sparks or smoke.
+  The vendored fireplace accessories include tools and Christmas stockings. The grandfather
+  clock strikes on click and at daytime hour changes (visual speech, no audio); automatic
+  chimes and dart challenges are suppressed during initial warp/catch-up.
+- **Games stay ambient.** Clicking table tennis or foosball calls two distinct free off-shift
+  colleagues, or cheers an existing game; console clicks swap games and call up to two players.
+  Table tennis uses `pongPoint` (first to eleven, win by two), a flip counter and a maximum
+  four-minute stay; clicking a long rally jinxes the point. Real runs always take priority.
+  A colleague at the dartboard may challenge the user's next three darts to beat their best
+  (or 60). These interactions never start runner work or make API writes.
+- **Schedule cues.** `shiftPull` biases off-shift workers towards the ops floor within three
+  minutes of their next slot; `shiftNote` explains it on the dossier. `overdueBy` marks starts
+  over ten minutes late only after the open Office watches for another two minutes, excluding
+  running, queued and sign-in-blocked tasks. These cues do not change the schedule. `grimNews`
+  filters news/sport titles and summaries before building Ceefax pages. The roster footer lists
+  clickable toys by room. Saved scenes with an old furniture count restart the scene; task,
+  chat and worker records are unaffected.
+
 - **The Office page uses real pixel art on a plain 2D canvas, no build step.** Game-grade looks
   need real art, so it composites vendored LPC Revised sheets rather than hand-drawn shapes. The
   scene renders at a fixed 1280x720 logical resolution (roughly one art pixel per CSS pixel at
