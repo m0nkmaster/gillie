@@ -291,7 +291,7 @@ def test_hover_hint_names_what_a_click_does():
     assert out == ["click: dossier · drag to a desk to run", "click: cancel queued run · or drag off the floor", "click: dossier",
                    "click: dossier", "click: print a test page", "click: check badge reader",
                    "click: re-check sign-in", "click: inspect the frozen call", "click: test the video call",
-                   "click: pet the cat", "click: throw a dart", "click: swap game", "click: Ceefax",
+                   "click: pet the cat", "click: throw a dart", "click: swap game and call players", "click: Ceefax",
                    "click: open the Assistant board", None]
 
 
@@ -826,3 +826,132 @@ def test_due_at_mirrors_the_scheduler_gates():
     assert out["later_today"] == "2026-11-14T17:30:00.000Z"
     assert out["ran_today"] == "2026-11-15T09:00:00.000Z"
     assert out["missed_today"] == "2026-11-14T13:00:00.000Z"
+
+
+def test_darts_challenge_verdict():
+    js = (f"{_lift('challengeVerdict')}"
+          "process.stdout.write(JSON.stringify([challengeVerdict(61, 60), challengeVerdict(60, 60), challengeVerdict(0, 60)]))")
+    assert _node(js) == ["beat", "tie", "lost"]
+
+
+def test_fridge_shares_tempts_or_loses_a_yoghurt():
+    js = (f"{_lift('fridgeOutcome')}{_lift('actionFor')}{_lift('hintFor')}"
+          "process.stdout.write(JSON.stringify([fridgeOutcome(1, true, true), fridgeOutcome(2, false, true),"
+          " fridgeOutcome(3, false, false), fridgeOutcome(4, true, true), hintFor('fridge', null, false)]))")
+    assert _node(js) == ["share", "tempt", "alone", "yoghurt", "click: open the fridge"]
+
+
+def test_lounge_fire_burns_by_day_in_the_cold_months_embers_in_the_evening():
+    # [month (0-based), hour, weather] -> 0 cold grate, 1 embers, 2 burning
+    cases = [[10, 10, "clear"], [10, 7.9, "clear"], [10, 20.5, "clear"], [10, 23, "clear"], [0, 15, "rain"],
+             [9, 12, "clear"], [9, 12, "cloudy"], [3, 9, "rain"], [5, 12, "rain"], [7, 21, "clear"]]
+    out = _node(f"{_lift('fireState')}process.stdout.write(JSON.stringify({json.dumps(cases)}.map(([m,t,wx])=>fireState(m,{{t,wx}}))))")
+    assert out == [2, 0, 1, 0, 2, 0, 2, 2, 0, 0]
+
+
+def test_fire_poke_flares_revives_clunks_or_smokes():
+    js = (f"{_lift('pokeOutcome')}{_lift('actionFor')}{_lift('hintFor')}"
+          "process.stdout.write(JSON.stringify([pokeOutcome(1, 2, false), pokeOutcome(2, 2, true), pokeOutcome(3, 1, true),"
+          " pokeOutcome(5, 2, true), pokeOutcome(5, 1, false), pokeOutcome(7, 0, true), hintFor('fire', null, false)]))")
+    assert _node(js) == ["flare", "careful", "revive", "smoke", "smoke", "cold", "click: poke the fire"]
+
+
+def test_shift_pull_draws_workers_to_the_ops_floor_only_just_before_their_run():
+    js = (f"{_lift('shiftPull')}const SHIFT_SOON = 180000;"
+          "process.stdout.write(JSON.stringify([shiftPull(null, 'office'), shiftPull(0, 'office'), shiftPull(-5, 'lounge'),"
+          " shiftPull(240000, 'office'), shiftPull(120000, 'office'), shiftPull(120000, 'lounge'), shiftPull(180000, 'kitchen')]))")
+    assert _node(js) == [1, 1, 1, 1, 8, 0.3, 0.3]
+
+
+def test_grandfather_clock_strikes_the_hour_and_sometimes_thirteen():
+    js = (f"{_lift('chimeOutcome')}{_lift('hintFor')}"
+          "process.stdout.write(JSON.stringify([chimeOutcome(1, 0), chimeOutcome(2, 7), chimeOutcome(3, 12), chimeOutcome(4, 15),"
+          " chimeOutcome(5, 18), chimeOutcome(6, 23), chimeOutcome(7, 10), hintFor('clock', null, false)]))")
+    assert _node(js) == [{"bongs": 12, "mood": "late"}, {"bongs": 7, "mood": "early"}, {"bongs": 12, "mood": "lunch"},
+                         {"bongs": 3, "mood": "day"}, {"bongs": 6, "mood": "home"}, {"bongs": 11, "mood": "late"},
+                         {"bongs": 13, "mood": "thirteen"}, "click: strike the hour"]
+
+
+def test_grandfather_clock_strikes_by_itself_only_on_a_new_daytime_hour():
+    js = (f"{_lift('autoChime')}"
+          "process.stdout.write(JSON.stringify([autoChime(9, null), autoChime(9, 9), autoChime(10, 9), autoChime(7, 6),"
+          " autoChime(22, 21), autoChime(3, 2), autoChime(21, 20)]))")
+    assert _node(js) == [False, False, True, True, False, False, True]
+
+
+def test_shift_note_says_when_an_off_shift_worker_is_heading_back():
+    js = (f"{_lift('shiftNote')}const SHIFT_SOON = 180000;"
+          "process.stdout.write(JSON.stringify([shiftNote(null, true), shiftNote(0, false), shiftNote(240000, true),"
+          " shiftNote(120000, true), shiftNote(120000, false), shiftNote(5000, false), shiftNote(180000, false)]))")
+    assert _node(js) == ["", "", "", " · heading back for the next shift", " · on shift in 2m", " · on shift in 1m", " · on shift in 3m"]
+
+
+def test_pong_click_calls_jinxes_or_starts_a_game():
+    js = (f"{_lift('pongClickOutcome')}{_lift('actionFor')}{_lift('hintFor')}"
+          "process.stdout.write(JSON.stringify([pongClickOutcome(true, 0, 2, 0), pongClickOutcome(true, 3, 2, 0), pongClickOutcome(false, 0, 2, 1),"
+          " pongClickOutcome(false, 0, 2, 0), pongClickOutcome(false, 0, 1, 1), pongClickOutcome(false, 0, 0, 0),"
+          " hintFor('pong', null, false), hintFor('foos', null, false)]))")
+    assert _node(js) == ["cheer", "jinx", "game", "warmup", "alone", "alone", "click: call the rally", "click: call a game"]
+
+
+def test_pong_point_is_first_to_eleven_win_by_two():
+    js = (f"{_lift('pongPoint')}"
+          "process.stdout.write(JSON.stringify([pongPoint([0, 0], 1), pongPoint([10, 4], 0), pongPoint([10, 10], 1), pongPoint([11, 10], 0), pongPoint([9, 12], 1)]))")
+    assert _node(js) == [{"score": [0, 1], "won": -1}, {"score": [11, 4], "won": 0}, {"score": [10, 11], "won": -1},
+                         {"score": [12, 10], "won": 0}, {"score": [9, 13], "won": 1}]
+
+
+@pytest.mark.parametrize("game,click", [("pong", "clickPong"), ("foos", "clickFoos")])
+@pytest.mark.parametrize("available", [1, 2])
+def test_click_game_recruits_two_distinct_idle_workers_or_leaves_them_alone(game, click, available):
+    js = (f"{_lift('coffeeRunner')}{_lift('pongClickOutcome')}{_lift(click)}" + """
+const PONG = {x:100,y:100,w:80}, FOOS = PONG, pong = {active:false}, foos = pong;
+const PONG_POIS = [{x:90,y:120,pair:9}, {x:190,y:120,pair:9}], FOOS_POIS = PONG_POIS;
+const workers = new Map(Array.from({length:AVAILABLE}, (_,i) => [String(i),
+  {id:String(i),state:'resting',x:100+i*50,y:130,path:[]}]));
+const sent = [], floatText = () => {}, cheerer = () => null, say = () => {}, pick = a => a[0];
+const leaveSpot = () => {};
+const sendTo = (w,p) => {p.taken = w.id; w.poi = p; w.path = [1]; sent.push(w.id);};
+CLICK(1000);
+process.stdout.write(JSON.stringify({sent, spots:PONG_POIS.map(p => p.taken || null)}));
+""".replace("AVAILABLE", str(available)).replace("CLICK", click))
+    out = _node(js)
+    assert out == ({"sent": ["0", "1"], "spots": ["0", "1"]} if available == 2
+                   else {"sent": [], "spots": [None, None]})
+
+
+def test_ceefax_keeps_distressing_stories_off_the_wall_tv():
+    items = [{"title": "Men guilty of abusing woman drugged by husband", "summary": "He raped his wife."},
+             {"title": "Covid inquiry report: key findings", "summary": "Early efforts were doomed to fail."},
+             {"title": "UK joins in GTA 6 frenzy", "summary": "The game was in development for 13 years."},
+             {"title": "Two dead after flat fire", "summary": ""},
+             {"title": "Deadline set for leasehold reform", "summary": "Studies show a ban is expected."},
+             {"title": "Eight-year ban for player who threw rock", "summary": "Hit an assistant referee."},
+             {}, None]
+    out = _node(f"{_lift('grimNews')}process.stdout.write(JSON.stringify({json.dumps(items)}.map(grimNews)))")
+    assert out == [True, False, False, True, False, False, False, False]
+
+
+def test_overdue_only_when_the_scheduler_is_well_past_a_slot_it_could_have_run():
+    # Thursday 19 Nov 2026, 13:00 GMT.
+    now = "Date.parse('2026-11-19T13:00:00Z')"
+    cases = {
+        "on_time": {"interval": 3600, "last_run": "2026-11-19T12:30:00Z"},
+        "just_late": {"interval": 3600, "last_run": "2026-11-19T11:55:00Z"},
+        "stalled": {"interval": 3600, "last_run": "2026-11-19T11:30:00Z"},
+        "running": {"interval": 3600, "last_run": "2026-11-19T11:30:00Z", "status": "running"},
+        "lock_wait": {"interval": 3600, "last_run": "2026-11-19T11:30:00Z", "waiting_behind": "other"},
+        "manual_queued": {"interval": 3600, "last_run": "2026-11-19T11:30:00Z", "queued": True},
+        "sign_in": {"interval": 3600, "last_run": "2026-11-19T11:30:00Z", "status": "blocked"},
+        "daily_missed": {"run_at": "09:00", "last_run": "2026-11-18T09:00:05Z"},
+        "daily_done": {"run_at": "09:00", "last_run": "2026-11-19T09:00:05Z"},
+        "never_ran": {"interval": 3600},
+        "off_day": {"run_at": "09:00", "days_of_week": ["monday"]},
+    }
+    js = (f"{_lift('dueAt')}{_lift('overdueBy')}const OVERDUE = 600000;const now={now};const c={json.dumps(cases)};const o={{}};"
+          "for (const k in c) o[k] = Math.round(overdueBy(c[k], now) / 60000);"
+          "process.stdout.write(JSON.stringify(o))")
+    out = json.loads(subprocess.run([shutil.which("node") or pytest.skip("node not available"), "-e", js],
+                                    capture_output=True, text=True, check=True, env={**os.environ, "TZ": "Europe/London"}).stdout)
+    assert out == {"on_time": 0, "just_late": 0, "stalled": 30, "running": 0, "lock_wait": 0, "manual_queued": 0,
+                   "sign_in": 0, "daily_missed": 240, "daily_done": 0, "never_ran": 0, "off_day": 0}

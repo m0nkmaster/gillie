@@ -43,6 +43,8 @@ hair/<style>/<colour>        Characters/Hair (Short 01-08, Medium 01-04 and 06-1
 hair-behind/<style>/<colour> The same styles' _Behind sheets
 glasses/round, /halfmoon     Characters/Head Accessories/Eyewear 01 - Glasses, Eyewear 02 - Halfmoon Glasses
 furniture, items, wall       Objects/Furniture, Objects/Small Items, Objects/Wall Items
+                             (furniture/Fireplace.png is Objects/Furniture/Fireplace.png - Lanea Zimmerman (Sharm), Eliza Wyatt)
+                             (items/Fireplace_Accessories.png is Objects/Small Items/Fireplace, Accessories A.png - Lanea Zimmerman (Sharm), Eliza Wyatt)
 structure, floor, rugs       Structure/Walls (Painted Walls), Windows (Ornamental A), Doors (15 Panel A), Floor; Objects/Furniture/Rugs
 seasonal/                    Objects/Furniture/Christmas Tree; Objects/Wall Items (Christmas Wall Decor, Pride Flags);
                              Objects/Small Items (Presents, Flowers, Skeletons A, Dungeon Elements, Food/Eggs, Food/Vegetables C)

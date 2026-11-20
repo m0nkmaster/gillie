@@ -91,6 +91,9 @@
         .keys { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem 1rem; font-size:.75rem; color:var(--console-tertiary); }
         .keys kbd { font-family:var(--font-ui); font-size:.65rem; background:var(--console-raised); color:var(--console-text); border-radius:4px; padding:.1rem .35rem; box-shadow:none; }
         .keys .credit { margin-left:auto; }
+        .keys b { font-weight:600; color:var(--console-text); margin-right:.4rem; }
+        .keys .toys { flex-basis:100%; display:flex; flex-wrap:wrap; gap:.25rem 1.25rem; }
+        .keys .toys i { font-style:normal; color:var(--console-text); opacity:.75; margin-right:.3rem; }
         #names-btn[aria-pressed="true"] { border-color:var(--signal-violet); color:var(--console-text); }
         @media (prefers-reduced-motion: reduce) { .ticker .run { animation:none; } .crew.working .dot { animation:none; } }
         /* lounge TV, full size: a Ceefax page (40 columns, Mode 7 colours) on a fixed 4:3 screen.
@@ -171,7 +174,15 @@
             </div>
             <div class="card-body"><div class="roster" id="roster" aria-label="Crew roster"></div></div>
             <div class="card-footer keys">
-                <span><kbd>N</kbd> names</span><span><kbd>Esc</kbd> close</span><span>Click a worker for their card (drag onto the ops floor to run, or off it to leave the queue), the call screen in the meeting room, the copier or front door, the cat, the dartboard for a throw, the console TV to swap games, the coffee machine to brew, the employee-of-the-week frame by the door, or the whiteboard for the Assistant</span>
+                <span><kbd>N</kbd> names</span><span><kbd>Esc</kbd> close</span><span><b>Workers</b> click for their card · drag onto the ops floor to run · drag off it to leave the queue</span>
+                <span class="toys" aria-label="Things to click in the office"><b>Click to play</b>
+                    <span><i>Ops floor</i> copier · front door · employee-of-the-week frame</span>
+                    <span><i>Meeting room</i> call screen · whiteboard (opens the Assistant board)</span>
+                    <span><i>Kitchen</i> coffee machine · fridge</span>
+                    <span><i>Lounge</i> fireplace · grandfather clock · TV (Ceefax)</span>
+                    <span><i>Games room</i> dartboard · console TV · table tennis · foosball</span>
+                    <span><i>Anywhere</i> the cat</span>
+                </span>
                 <span class="credit">Art: <a class="text-link" href="https://github.com/ElizaWy/LPC">LPC Revised</a> (OGA-BY 3.0)</span>
             </div>
         </section>
@@ -264,7 +275,7 @@
             fridge: "furniture/Fridge.png", planter: "furniture/Planter.png", bin: "furniture/Bin.png", cabinet: "furniture/Cabinet.png",
             sofa: "furniture/Sofa.png", vending: "furniture/Vending_Machine.png", cooler: "furniture/Water_Cooler.png", tv: "furniture/TV.png",
             lampFloor: "furniture/Lamp_Floor.png", screen: "furniture/Standing_Screen.png", bed: "furniture/Bed.png", endTable: "furniture/End_Table.png",
-            gclock: "furniture/Clock__Grandfather.png", shelf: "furniture/Shelf.png", counter: "furniture/Countertop.png", tileB: "floor/tile.png",
+            gclock: "furniture/Clock__Grandfather.png", fireplace: "furniture/Fireplace.png", fireTools: "items/Fireplace_Accessories.png", shelf: "furniture/Shelf.png", counter: "furniture/Countertop.png", tileB: "floor/tile.png",
             laptop: "items/Laptop.png", lampTable: "items/Lamp_Table.png", coffee: "items/Coffee_Maker.png", paper: "items/Loose_Paper.png", boxes: "items/Boxes.png",
             paintL: "wall/Paintings_Landscape.png", paintA: "wall/Paintings_Abstract.png", posters: "wall/Posters.png", lampWall: "wall/Lamp_Wall.png",
             walls: "structure/Painted_Walls.png", window: "structure/Windows.png", door: "structure/Door.png",
@@ -320,6 +331,8 @@
             counterA: ["counter", 48, 140, 144, 46], counterB: ["counter", 48, 140, 144, 46], mediaUnit: ["shelf", 0, 75, 64, 21], coffeeTable: ["shelf", 1, 43, 62, 21], cabinetLow: ["shelf", 112, 11, 32, 21],
             sofaSideR: ["sofa", 416, 128, 29, 82], sofaSideL: ["sofa", 451, 128, 29, 82],
             gclock0: ["gclock", 7, 22, 18, 71], gclock1: ["gclock", 39, 22, 18, 71], gclock2: ["gclock", 71, 22, 18, 71],
+            fireplace: ["fireplace", 8, 114, 80, 74], // stone surround, wooden mantel; the firebox is the dark arch at +18..+57, +28..+43
+            fireTools: ["fireTools", 11, 0, 10, 29], stockingR: ["fireTools", 33, 15, 9, 15], stockingG: ["fireTools", 44, 15, 8, 16], stockingW: ["fireTools", 53, 15, 10, 17],
             // seasonal decor (seasonal/*): the tree's two frames differ only in which lights are lit
             xtree0: ["xtree", 4, 4, 85, 114], xtree1: ["xtree", 100, 4, 85, 114], wreath: ["xdecor", 6, 6, 20, 22], swag: ["xdecor", 13, 32, 72, 22],
             garland: ["xdecor", 0, 64, 128, 22], xlights: ["xdecor", 0, 96, 128, 14],
@@ -515,9 +528,10 @@
         const RACK = { x: 530, y: 272 };
         const TABLE = { x: 644, y: 196 };
         const ISLAND = { x: 960, y: 190 };
-        const CAFE = [{ x: 1236, y: 296 }];
+        const CAFE = [{ x: 1004, y: 300 }, { x: 1236, y: 296 }]; // one by the breakfast bar, one in the far corner
         const DINING = { x: 1112, y: 190 };
         const BED = { x: 26, y: 476 };
+        const FP = { x: 182, y: 386 }; // lounge fireplace, hearth on the floor line (FLOOR2)
         const TV = { x: 442, y: 364, w: 116, h: 64 }; // the screen; the bezel is drawn around it
         const SOFA_BACK = { x: 453, y: 578 }, SOFA_L = { x: 380, y: 492 }, SOFA_R = { x: 591, y: 492 };
         const DOCK = { x: 272, y: 707 };
@@ -578,7 +592,7 @@
         prop("plantFern", 840, 288, { base: 339 }); prop("lampFloor", 610, 272, { base: 321 }); prop("cabinetLow", 606, 96, { base: 117 });
         // --- kitchen: fitted units along the back wall, breakfast bar with stools, two café tables
         prop("counterA", 886, 56, { base: 94 }); prop("coffee", 1000, 33, { base: 95, block: false });
-        prop("fridge", 1032, 32, { base: 96 });
+        prop("fridge", 1032, 32, { base: 96, after: (now) => drawFridgeOpen(now) });
         prop("counterB", 1066, 48, { base: 94, after: () => drawSink(1150, 50) });
         prop("vending", 1212, 31, { base: 95 }); prop("cooler", 1250, 40, { base: 93 });
         prop("island", ISLAND.x, ISLAND.y, { block: [ISLAND.x, ISLAND.y + 10, ISLAND.x + 96, ISLAND.y + 40], after: () => drawIslandTop() });
@@ -609,12 +623,17 @@
         prop("sofaSideL", SOFA_R.x, SOFA_R.y, { block: [SOFA_R.x + 3, SOFA_R.y + 8, SOFA_R.x + 29, SOFA_R.y + 82] });
         prop("coffeeTable", 469, 520, { base: 541, block: [469, 528, 531, 541], after: () => drawCoffeeTableTop() });
         prop("books1", 322, 382, { base: 452 }); prop("books2", 354, 382, { base: 452 });
+        prop("fireplace", FP.x, FP.y, { block: [FP.x, FP.y + 58, FP.x + 80, FP.y + 74], draw: (now) => {
+            blit(ctx, "fireplace", FP.x, FP.y); drawFire(now, fireNow());
+            blit(ctx, "fireTools", FP.x + 3, FP.y + 43); // poker, brush and shovel on the hearth, by the left pillar
+            if (XMAS) { blit(ctx, "stockingR", FP.x + 1, FP.y + 17); blit(ctx, "stockingG", FP.x + 36, FP.y + 17); blit(ctx, "stockingW", FP.x + 69, FP.y + 17); } // hung from the mantel
+        } });
         prop("gclock0", 390, 382, { base: 453, draw: (now) => blit(ctx, "gclock" + [0, 1, 2, 1][Math.floor(now / 520) % 4], 390, 382) });
         const NOOK = { x: 168, y: 512 };
         prop("sofaGreen", NOOK.x, NOOK.y, { block: [NOOK.x, NOOK.y + 10, NOOK.x + 94, NOOK.y + 38] });
         prop("endTable", NOOK.x + 100, NOOK.y + 12, { base: NOOK.y + 36 }); prop("lampTable", NOOK.x + 98, NOOK.y - 10, { base: NOOK.y + 37, block: false });
         prop("lampFloor", 640, 456, { base: 505 }); prop("lampFloor", 342, 560, { base: 609 });
-        prop("plantTree", 724, 616, { base: 694, block: [728, 680, 752, 694] }); prop("plantFern", 158, 452, { base: 503 });
+        prop("plantTree", 724, 616, { base: 694, block: [728, 680, 752, 694] }); prop("plantFern", 160, 650, { base: 701 });
         // --- games room: arcades along the wall, console den, table tennis, foosball, darts
         for (const a of ARCADES) prop("arcade", a.x, a.y, { w: 24, h: 46, block: [a.x, a.y + 32, a.x + 24, a.y + 46], draw: (now) => drawArcade(a, now) });
         prop("pong", PONG.x, PONG.y - 4, { w: PONG.w, h: PONG.h + 10, base: PONG.y + PONG.h + 4, block: [PONG.x, PONG.y + 12, PONG.x + PONG.w, PONG.y + PONG.h + 4], draw: (now) => drawPong(now) });
@@ -680,6 +699,7 @@
         for (let i = 0; i < 3; i++) poi("sofa", SOFA_R.x + 14, SOFA_R.y + 30 + i * 22, "left", { pose: "sit", sort: SOFA_R.y + 83 + i, approach: { x: SOFA_R.x - 9, y: SOFA_R.y + 30 + i * 22 } });
         poi("tv", 446, 496, "up"); poi("tv", 556, 496, "up");
         poi("books", 338, 462, "up"); poi("books", 370, 462, "up");
+        poi("fire", FP.x + 22, FP.y + 88, "up"); poi("fire", FP.x + 56, FP.y + 88, "up"); // warming hands at the hearth (only while it's lit)
         for (let i = 0; i < 3; i++) poi("read", NOOK.x + 18 + i * 29, NOOK.y + 30, "down", { pose: "sit", sort: NOOK.y + 39, approach: { x: NOOK.x + 18 + i * 29, y: NOOK.y + 48 } });
         poi("read", 420, 676, "down", { pose: "floor" }); poi("read", 640, 660, "left", { pose: "floor" });
         poi("chat", 668, 560, "right", { pair: 5 }); poi("chat", 694, 560, "left", { pair: 5 });
@@ -753,6 +773,28 @@
             }
             if (!t.interval) return null;
             return isNaN(last) ? now : last + t.interval * 1000;
+        }
+        // In the last few minutes before the scheduler starts them, off-shift workers drift back to the ops floor
+        // (still off shift: only a real run seats them). Weight for a spot in `room`, due in `dueIn` ms (lifted into tests/test_office.py).
+        const SHIFT_SOON = 180000;
+        function shiftPull(dueIn, room) {
+            if (dueIn === null || !(dueIn > 0) || dueIn > SHIFT_SOON) return 1;
+            return room === "office" ? 8 : .3;
+        }
+        // The card's note for an off-shift worker inside that window: walking back, or already there (lifted into tests/test_office.py).
+        function shiftNote(dueIn, moving) {
+            if (dueIn === null || !(dueIn > 0) || dueIn > SHIFT_SOON) return "";
+            return moving ? " · heading back for the next shift" : ` · on shift in ${Math.max(1, Math.ceil(dueIn / 60000))}m`;
+        }
+        // How late (ms) the scheduler is starting a worker whose slot has passed. The runner checks every 30s, so 10 minutes
+        // late means it is stalled or asleep; never for a run in hand, a writer-lock wait or a sign-in block (lifted into tests/test_office.py).
+        const OVERDUE = 600000, LATE_WATCH = 120000;
+        function overdueBy(t, now) {
+            if (t.status === "running" || t.status === "blocked" || t.status === "auth-failed" || t.queued || t.waiting_behind) return 0;
+            let at = dueAt(t, now);
+            if (at === now && t.run_at && !t.retry_at) { const [h, m] = t.run_at.split(":").map(Number), d = new Date(now); d.setHours(h, m, 0, 0); at = +d; }
+            const late = at === null ? 0 : now - at;
+            return late > OVERDUE ? late : 0;
         }
         function queueOrder(list, since = {}) {
             return list.map((t, i) => [t, i]).sort((a, b) => ((since[a[0].id] ?? Infinity) - (since[b[0].id] ?? Infinity)) || a[1] - b[1]).map((p) => p[0]);
@@ -919,6 +961,7 @@
             return "afternoon";
         }
         function dayBias(tag, phase, room) {
+            if (tag === "fire") return phase === "morning" || phase === "weekend" ? 2.5 : 1.5; // a cold start draws the crew to the hearth
             if (tag === "visit") return phase === "morning" || phase === "afternoon" ? .8 : phase === "lunch" || phase === "evening" ? .25 : 0; // the user's office: working hours only
             if (phase === "weekend") return weekendBias(tag);
             if (phase === "morning") {
@@ -972,12 +1015,13 @@
         }
         function choosePoi(w) {
             const r = ROLES[w.role], phase = phaseNow();
+            const due = w.task ? dueAt(w.task, Date.now()) : null, dueIn = due === null ? null : due - Date.now();
             if (w.role === "guard" && phase !== "night" && phase !== "lunch") { const d = POIS.find((p) => p.only === "guard"); if (d && !d.taken && w.lastPoi !== d && Math.random() < .6) return d; }
-            const free = POIS.filter((p) => !p.taken && (!p.only || p.only === w.role) && p !== w.lastPoi && !(p.tag === "meeting" && counts.locked) && (p.tag !== "peek" || (deskBusy(p.desk) && p.desk.owner !== w.id)));
+            const free = POIS.filter((p) => !p.taken && (!p.only || p.only === w.role) && p !== w.lastPoi && !(p.tag === "meeting" && counts.locked) && (p.tag !== "fire" || fireNow() === 2) && (p.tag !== "peek" || (deskBusy(p.desk) && p.desk.owner !== w.id)));
             const weights = free.map((p) => {
                 const rm = roomAt(p.x, p.y), bias = dayBias(p.tag, phase, rm);
                 if (!bias) return 0;
-                let k = (r.likes.includes(p.tag) ? 4 : 1) * bias;
+                let k = (r.likes.includes(p.tag) ? 4 : 1) * bias * shiftPull(dueIn, rm);
                 if (p.pair && free.length && POIS.some((q) => q.pair === p.pair && q !== p && q.taken)) k *= 3.5;
                 if (p.tag === "peek") k *= 1.5;
                 k *= 1 / (1 + Math.hypot(p.x - w.x, p.y - w.y) / 260);
@@ -1001,7 +1045,7 @@
         const DRINKS = new Set(["mug", "water"]), FOODS = new Set(["snack", "sandwich"]);
         const DWELL = { fetch: [4000, 7000], browse: [6000, 10000], tv: [30000, 70000], read: [30000, 60000], eat: [25000, 45000], sip: [20000, 35000],
             talk: [20000, 40000], phone: [12000, 25000], gaze: [10000, 20000], water: [10000, 16000], write: [14000, 26000], meet: [30000, 60000],
-            papers: [8000, 14000], guard: [20000, 40000], nap: [40000, 80000], peek: [6000, 11000], pong: [8000, 14000], foos: [9000, 16000], darts: [10000, 20000], wash: [6000, 10000], arcade: [25000, 50000], console: [30000, 70000], pose: [9000, 11000], visit: [15000, 30000] };
+            papers: [8000, 14000], guard: [20000, 40000], nap: [40000, 80000], peek: [6000, 11000], pong: [8000, 14000], foos: [9000, 16000], darts: [10000, 20000], wash: [6000, 10000], arcade: [25000, 50000], console: [30000, 70000], pose: [9000, 11000], visit: [15000, 30000], warm: [12000, 22000] };
         function chooseAct(w, p) {
             const c = w.carry, night = isNight(), tag = p.tag;
             if (KITCHEN[tag]) return "fetch";
@@ -1014,6 +1058,7 @@
             if (tag === "frame") return "pose";
             if (tag === "visit") return "visit";
             if (tag === "chat") return "talk";
+            if (tag === "fire") return "warm";
             if (tag === "table") return tableAct(c, phaseNow(), Math.random());
             if (["peek", "bedside", "pong", "arcade", "phone", "foos", "darts", "console"].includes(tag)) return tag;
             if (tag === "sink") return "wash";
@@ -1036,6 +1081,7 @@
             if (a === "eat") return FOODS.has(c) ? c : w.poi && w.poi.tag === "table" ? null : "snack";
             if (a === "sip") return w.poi && w.poi.tag === "table" ? null : (c || "mug");
             if (a === "tv" || a === "talk") return c && c !== "book" ? c : null;
+            if (a === "warm") return DRINKS.has(c) ? c : null;
             if (a === "gaze") return c && c !== "book" ? c : (hash(w.id + "ph") > .5 ? "phone" : null);
             return null;
         }
@@ -1191,6 +1237,9 @@
             water: ["heart", "note"], write: ["bulb", "q"], meet: ["q", "bulb", "note"], gaze: ["star", "note"], nap: ["z"], browse: ["book", "q"], fetch: ["cup", "star"] };
         const FOCUSED = new Set(["read", "phone", "eat", "sip", "tv", "write", "water", "browse", "meet", "papers", "arcade", "pong", "foos", "darts", "wash", "fetch", "nap", "console"]);
         const QUIPS = {
+            warm: ["lovely and toasty", "warming my hands", "proper cosy, this", "who's on log duty?", "nippy out there", "mind the sparks"],
+            overdue: ["wasn't I due on?", "still waiting for the call-up", "my shift started ages ago", "has the runner nodded off?", "anyone seen the rota?"],
+            tapWatch: ["*taps watch*", "aren't you meant to be on?", "you're late, you know", "runner's having a lie-in"],
             shiftSoon: ["nearly my shift", "back to it in a minute", "is that the time?", "one more sip, then work", "right, nearly on"],
             console: ["gotta go fast!", "one more go", "Hadouken!", "who paused it?", "my turn next", "blow on the cartridge", "pass the pad", "rematch?"],
             tv: ["no way!", "did you see that?", "page 302 please", "turn it up", "big news", "Ceefax, eh?", "remember this?"],
@@ -1458,6 +1507,40 @@
             if (d > 0) return clamp(d / .22, 0, 1);
             return T.wx === "rain" ? .55 : T.wx === "cloudy" ? .3 : 0;
         }
+        // The lounge fire: lit through the day in the cold months (October and April only when it's grey),
+        // down to embers in the evening and out overnight. 0 = cold grate, 1 = embers, 2 = burning (tests/test_office.py).
+        function fireState(mo, T) {
+            const cold = mo >= 10 || mo <= 2 || ((mo === 9 || mo === 3) && T.wx !== "clear");
+            if (!cold || T.t < 8 || T.t >= 23) return 0;
+            return T.t < 20 ? 2 : 1;
+        }
+        const fireNow = () => fireState(SMO, clock());
+        const FLAME = [4, 7, 9, 11, 10, 11, 9, 7, 4];
+        function drawFire(now, st) {
+            const x0 = FP.x + 22, fl = FP.y + 43, tt = REDUCED ? 0 : now; // logs' left end, firebox floor
+            let flare = 0; // a poke flares the flames, fading over fireFlare.until ms on the render clock
+            if (fireFlare.until) { if (fireFlare.at === null) fireFlare.at = now; flare = 1 - (now - fireFlare.at) / fireFlare.until; if (flare <= 0) { fireFlare.until = 0; flare = 0; } }
+            ctx.fillStyle = "#3b2414"; ctx.fillRect(x0 + 2, fl - 3, 32, 3); ctx.fillStyle = "#6b4226"; ctx.fillRect(x0 + 6, fl - 5, 24, 2);
+            ctx.fillStyle = "#8a5a34"; ctx.fillRect(x0 + 2, fl - 3, 1, 3); ctx.fillRect(x0 + 6, fl - 5, 1, 2); // cut log ends
+            if (!st) { ctx.fillStyle = "#5c5a58"; ctx.fillRect(x0 + 4, fl - 1, 28, 1); return; } // cold grate, grey ash
+            if (st === 1) { // embers glowing along the logs
+                for (let i = 0; i < 7; i++) { const k = Math.sin(tt / 400 + i * 2.3); if (k > -.3) { ctx.fillStyle = k > .5 ? "#ff8a2a" : "#b8321a"; ctx.fillRect(x0 + 4 + i * 4, fl - 3 - (i % 2) * 2, 2, 1); } }
+            }
+            if (st === 2 || flare > 0) { // embers only show flames while a poke revives them
+                const sc = st === 2 ? 1 + .55 * flare : .8 * flare;
+                for (let i = 0; i < FLAME.length; i++) {
+                    const h = Math.max(2, Math.round(sc * FLAME[i] * (.72 + .28 * Math.sin(tt / 90 + i * 1.7) * Math.sin(tt / 53 + i)))), x = x0 + 4 + i * 3, y = fl - 4;
+                    ctx.fillStyle = "#e0501c"; ctx.fillRect(x, y - h, 3, h);
+                    ctx.fillStyle = "#ffa62b"; ctx.fillRect(x, y - Math.round(h * .65), 3, Math.round(h * .65));
+                    ctx.fillStyle = "#ffe27a"; ctx.fillRect(x + 1, y - Math.round(h * .35), 1, Math.round(h * .35));
+                }
+            }
+            // warm glow on the hearth that shows even by day (the night lamp pool is in lighting())
+            const r = st === 2 ? 44 : 26, a = (st === 2 ? .2 : .1) * (.85 + .15 * Math.sin(tt / 70)), cx = FP.x + 40, cy = FP.y + 52;
+            ctx.save(); ctx.globalCompositeOperation = "lighter";
+            const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, `rgba(255,150,60,${a.toFixed(3)})`); g.addColorStop(1, "rgba(255,150,60,0)");
+            ctx.fillStyle = g; ctx.fillRect(cx - r, cy - r, r * 2, r * 2); ctx.restore();
+        }
         function golden(T) { // warm low-sun strength, 0..1, peaking just before sunset and just after sunrise
             const { t, rise, set } = T;
             if (Math.abs(t - set + .25) < 2) return clamp(1 - Math.abs(t - set + .25) / 1.5, 0, 1);
@@ -1582,7 +1665,7 @@
                 blit(bx, "webL", 155, MID); blit(bx, "webR", 1256, MID); blit(bx, "webL", 765, MID);
                 blit(bx, "skeleton", 206, 370); // hung up in the lounge for the party
             }
-            if (SEASON === "pride") { blit(bx, "prideProgress", 196, 380); blit(bx, "prideRainbow", 1222, 376); }
+            if (SEASON === "pride") { blit(bx, "prideProgress", FP.x + 15, 356); blit(bx, "prideRainbow", 1222, 376); }
         }
         function firstAidBox(x, y) {
             bx.fillStyle = "#1b1830"; bx.fillRect(x - 1, y - 1, 26, 22); bx.fillStyle = "#f4f6f8"; bx.fillRect(x, y, 24, 20); bx.fillStyle = "#d4d8e0"; bx.fillRect(x, y + 17, 24, 3);
@@ -1835,18 +1918,42 @@
         }
 
         // ================================================================ ping-pong
-        const pong = { t: .5, dir: 1, pause: 0, speed: .8, swingL: 0, swingR: 0, active: false, rally: 0, serve: 0 };
+        const pong = { t: .5, dir: 1, pause: 0, speed: .8, swingL: 0, swingR: 0, active: false, rally: 0, serve: 0, score: [0, 0], pair: "", gameAt: 0 };
+        // Table-tennis scoring (lifted into tests/test_office.py): first to eleven, win by two. side 0 = left player.
+        function pongPoint(score, side) {
+            const s = score.slice(); s[side]++;
+            return { score: s, won: s[side] >= 11 && s[side] - s[1 - side] >= 2 ? side : -1 };
+        }
+        // Award a point on the flip counter; a won game gets a cheer and both players head off soon after. Ambient.
+        function scorePoint(side, now) {
+            const [pl, pr] = PONG_POIS.map((p) => p.taken && workers.get(p.taken));
+            const r = pongPoint(pong.score, side), winner = side ? pr : pl, loser = side ? pl : pr;
+            pong.score = r.score;
+            if (r.won < 0) return false;
+            floatText(PONG.x + (PONG.w >> 1), PONG.y - 14, "GAME! " + Math.max(...r.score) + "-" + Math.min(...r.score), "#ffd166");
+            starBurst(PONG.x + (PONG.w >> 1), PONG.y + 8);
+            if (winner) { winner.emote = "star"; winner.emoteUntil = now + 2600; say(winner, pick(["get in!", "game, set, tea", "winner stays on!", "you make the tea"], Math.random()), now); }
+            if (loser) { loser.emote = "bang"; loser.emoteUntil = now + 2600; }
+            for (const w of [pl, pr]) if (w) w.dwellUntil = now + rnd(3000, 6000);
+            pong.score = [0, 0]; pong.gameAt = 0;
+            return true;
+        }
         function pongStep(dt, now) {
             const [pl, pr] = PONG_POIS.map((p) => p.taken && workers.get(p.taken));
             pong.active = !!(pl && pr && !pl.path.length && !pr.path.length);
             if (!pong.active) { pong.t = .5; pong.rally = 0; return; }
+            const pair = pl.id + "|" + pr.id;
+            if (pair !== pong.pair) { pong.pair = pair; pong.score = [0, 0]; pong.gameAt = now; } // new pairing, fresh game
+            // a game in progress keeps both players at the table (up to 4 minutes); a real run still calls them away
+            if (pong.score[0] + pong.score[1] && now - pong.gameAt < 240000) for (const w of [pl, pr]) w.dwellUntil = Math.max(w.dwellUntil, now + 4000);
             if (pong.pause > 0) { pong.pause -= dt; if (pong.pause <= 0) { pong.t = pong.serve; pong.dir = pong.serve ? -1 : 1; } return; }
             const prevT = pong.t; pong.t += pong.dir * dt / pong.speed;
             const u = pong.dir > 0 ? pong.t : 1 - pong.t, pu = pong.dir > 0 ? prevT : 1 - prevT;
             if (pong.t >= 1 || pong.t <= 0) {
                 const right = pong.t >= 1; pong.t = clamp(pong.t, 0, 1);
-                if (pong.rally > 3 && Math.random() < .08) {
+                if (pong.rally > 2 && Math.random() < .14) {
                     const winner = right ? pl : pr; pong.pause = 1.5; pong.rally = 0; pong.serve = right ? 0 : 1;
+                    if (scorePoint(right ? 0 : 1, now)) return;
                     winner.emote = "star"; winner.emoteUntil = now + 1400;
                     if (now - lastQuip > 3000) say(winner, pick(QUIPS.pong, Math.random()), now);
                 } else { pong.dir *= -1; pong[right ? "swingR" : "swingL"] = now + 160; pong.rally++; pong.speed = rnd(.6, .95); }
@@ -1866,6 +1973,11 @@
             ctx.fillStyle = "#3a3a4a"; ctx.fillRect(nx, y - 3, 1, h + 5);
             ctx.fillStyle = "#d8d8e4"; ctx.fillRect(nx - 1, y - 3, 1, h + 4);
             ctx.fillStyle = "#1b1830"; ctx.fillRect(nx - 1, y - 4, 2, 2); ctx.fillRect(nx - 1, y + h, 2, 2);
+            if (pong.active) { // flip score counter on the table's near edge; digits are drawn after the upscale in present()
+                ctx.fillStyle = "#14141c"; ctx.fillRect(nx - 10, y + h - 6, 21, 9);
+                ctx.fillStyle = "#f4f1e8"; ctx.fillRect(nx - 9, y + h - 5, 8, 7); ctx.fillRect(nx + 2, y + h - 5, 8, 7);
+                ctx.fillStyle = "#c9c4bc"; ctx.fillRect(nx - 9, y + h - 2, 8, 1); ctx.fillRect(nx + 2, y + h - 2, 8, 1);
+            }
             // ball
             if (pong.active && pong.pause <= 0) {
                 const u = pong.dir > 0 ? pong.t : 1 - pong.t;
@@ -1874,6 +1986,61 @@
                 if (bxp > x && bxp < x + w) { ctx.fillStyle = "#00000055"; ctx.fillRect(bxp, by, 2, 1); }
                 ctx.fillStyle = "#fffaf0"; ctx.fillRect(bxp, Math.round(by - hgt - 2), 2, 2);
             } else if (!pong.active) { ctx.fillStyle = "#fffaf0"; ctx.fillRect(x + 12, y + 8, 2, 2); }
+        }
+
+        // Click the table-tennis table: call a rally in progress (a long one gets jinxed and the point ends), or, when it's
+        // free, two idle colleagues come over for a game (lifted into tests/test_office.py). World-only.
+        const hitPong = (p) => p.x >= PONG.x && p.x <= PONG.x + PONG.w && p.y >= PONG.y - 4 && p.y <= PONG.y + PONG.h + 6;
+        function pongClickOutcome(active, rally, players, recruits) {
+            return active ? (rally >= 3 ? "jinx" : "cheer") : players < 2 ? "alone" : recruits ? "game" : "warmup";
+        }
+        function clickPong(now) {
+            const ws = [...workers.values()], cx = PONG.x + (PONG.w >> 1), cy = PONG.y - 6;
+            const [pl, pr] = PONG_POIS.map((p) => p.taken && workers.get(p.taken));
+            const react = (w, emote, lines) => { if (w && now >= w.quipUntil) { w.emote = emote; w.emoteUntil = now + 2200; say(w, pick(lines, Math.random()), now); } };
+            const free = PONG_POIS.filter((p) => !p.taken), fans = [];
+            if (!pong.active) for (const spot of free) { const f = coffeeRunner(spot, ws.filter((o) => !fans.some(([fan]) => fan === o))); if (f) fans.push([f, spot]); }
+            const out = pongClickOutcome(pong.active, pong.rally, PONG_POIS.length - free.length + fans.length, fans.length);
+            if (out === "jinx") {
+                const loser = pong.dir > 0 ? pr : pl; // the ball was heading their way
+                floatText(cx, cy, "rally " + pong.rally + "! *tok* ...out", "#fffaf0");
+                pong.pause = 1.5; pong.serve = pong.dir > 0 ? 1 : 0; pong.rally = 0;
+                if (scorePoint(pong.dir > 0 ? 0 : 1, now)) return;
+                react(loser, "bang", ["you jinxed it!", "don't count out loud!", "that was going so well"]); return;
+            }
+            if (out === "cheer") { floatText(cx, cy, "come on!", "#fffaf0"); react(pong.dir > 0 ? pl : pr, "star", ["watch this", "no pressure then", "spin incoming"]); return; }
+            if (out === "game") {
+                for (const [f, spot] of fans) { leaveSpot(f); f.carry = null; f.item = null; sendTo(f, spot); f.emote = "star"; f.emoteUntil = now + 2400; }
+                if (fans[0]) say(fans[0][0], pick(["fancy a game?", "first to eleven?", "loser makes the tea"], Math.random()), now);
+                floatText(cx, cy, "*tok tok*", "#fffaf0"); return;
+            }
+            if (out === "warmup") { floatText(cx, cy, "warming up", "#fffaf0"); return; }
+            floatText(cx, cy, "*tok... tok... tok*", "#c9c4bc");
+            react(cheerer({ x: cx, y: PONG.y + 30 }, ws, 200), "q", ["no one free for a game", "everyone's busy", "I'll play you later"]);
+        }
+
+        // Click the foosball table: cheer a game on, or when it's free two idle colleagues come over (same outcomes as table tennis, never a jinx). World-only.
+        const hitFoos = (p) => p.x >= FOOS.x && p.x <= FOOS.x + FOOS.w && p.y >= FOOS.y - 4 && p.y <= FOOS.y + FOOS.h + 6;
+        function clickFoos(now) {
+            const ws = [...workers.values()], cx = FOOS.x + (FOOS.w >> 1), cy = FOOS.y - 6;
+            const free = FOOS_POIS.filter((p) => !p.taken), fans = [];
+            if (!foos.active) for (const spot of free) { const f = coffeeRunner(spot, ws.filter((o) => !fans.some(([fan]) => fan === o))); if (f) fans.push([f, spot]); }
+            const out = pongClickOutcome(foos.active, 0, FOOS_POIS.length - free.length + fans.length, fans.length);
+            if (out === "cheer") {
+                floatText(cx, cy, "shoot!", "#fffaf0");
+                const w = workers.get(pick(FOOS_POIS, Math.random()).taken);
+                if (w && now >= w.quipUntil) { w.emote = "star"; w.emoteUntil = now + 2200; say(w, pick(["no spinning!", "top corner, watch", "goalie's asleep"], Math.random()), now); }
+                return;
+            }
+            if (out === "game") {
+                for (const [f, spot] of fans) { leaveSpot(f); f.carry = null; f.item = null; sendTo(f, spot); f.emote = "star"; f.emoteUntil = now + 2400; }
+                if (fans[0]) say(fans[0][0], pick(["foosball?", "first to five?", "no spinning, mind"], Math.random()), now);
+                floatText(cx, cy, "*clack clack*", "#fffaf0"); return;
+            }
+            if (out === "warmup") { floatText(cx, cy, "lining up", "#fffaf0"); return; }
+            floatText(cx, cy, "*clack*", "#c9c4bc");
+            const c = cheerer({ x: cx, y: FOOS.y + 30 }, ws, 200);
+            if (c && now >= c.quipUntil) { c.emote = "q"; c.emoteUntil = now + 2200; say(c, pick(["no one free for a game", "everyone's busy", "fancy a game later?"], Math.random()), now); }
         }
 
         // ================================================================ foosball and darts (games room, ambient)
@@ -1939,12 +2106,39 @@
             if (robDarts.n < 3) return;
             const t = robDarts.total, fan = [...workers.values()].find((w) => w.act === "darts" && !w.path.length);
             const line = t >= 180 ? "ONE HUNDRED AND EIGHTY!" : t >= 100 ? `ton-plus, ${USER_NAME}!` : t >= 60 ? "tidy arrows" : t ? `unlucky, ${USER_NAME}` : "mind the wallpaper!";
-            if (fan) { say(fan, line, now); fan.emote = t >= 100 ? "star" : "q"; fan.emoteUntil = now + 1800; }
+            const ch = dartsChallenge.by && workers.get(dartsChallenge.by), live = ch && ch.act === "darts" && !ch.path.length && now < dartsChallenge.until;
+            if (live) settleChallenge(ch, t, now);
+            else if (fan) { say(fan, line, now); fan.emote = t >= 100 ? "star" : "q"; fan.emoteUntil = now + 1800; }
             else floatText(DARTS.x, DARTS.y - 30, USER_NAME + ": " + t, "#7ee0b5");
             if (t > robDarts.best) { // chalked on the scoreboard
                 if (robDarts.best) { floatText(SCORE.x + 19, SCORE.y - 26, "NEW BEST!", "#ffd166"); starBurst(SCORE.x + 19, SCORE.y + 15); }
                 robDarts.best = t; try { sessionStorage.setItem("office.robBest", String(t)); } catch { /* ignore */ }
             }
+        }
+        // A colleague who has settled in at the board throws down a challenge: beat the user's chalked best (or 60 before
+        // they have one) with the next three darts inside a minute. World-only; challengeVerdict is lifted into tests/test_office.py.
+        const dartsChallenge = { by: null, target: 0, until: 0 };
+        function challengeVerdict(total, target) { return total > target ? "beat" : total === target ? "tie" : "lost"; }
+        function dartsStep(now) {
+            if (dartsChallenge.by && now >= dartsChallenge.until) dartsChallenge.by = null;
+            if (dartsChallenge.by || !booted) return; // never during ?warp or away catch-up
+            for (const w of workers.values()) {
+                if (w.act !== "darts" || w.path.length || w.challenged === w.arrivedAt || now - w.arrivedAt < 5000 || now < w.quipUntil) continue;
+                w.challenged = w.arrivedAt; // once per visit to the board
+                if (hash(w.id + w.arrivedAt) > .5) continue;
+                const target = robDarts.best || 60;
+                Object.assign(dartsChallenge, { by: w.id, target, until: now + 60000 });
+                w.emote = "bang"; w.emoteUntil = now + 2400;
+                say(w, pick(robDarts.best ? [`bet you can't beat ${target}, {user}`, `${target}? beat that, {user}`, "go on, {user}, best of three"] : ["fancy a game, {user}? first to 60", "{user}! three darts, beat 60"], Math.random()), now);
+                floatText(DARTS.x - 24, DARTS.y + 22, "CHALLENGE: beat " + target, "#ffd166");
+                return;
+            }
+        }
+        function settleChallenge(ch, t, now) {
+            const v = challengeVerdict(t, dartsChallenge.target); dartsChallenge.by = null;
+            ch.emote = v === "beat" ? "star" : v === "tie" ? "q" : "heart"; ch.emoteUntil = now + 2400;
+            say(ch, pick(v === "beat" ? ["fine, you win. rematch?", "lucky arrows, {user}!", "I'll get you next time"] : v === "tie" ? ["a draw! sudden death?", "dead level!"] : [`${t}? told you, {user}`, "the board's safe from you", "better luck next time!"], Math.random()), now);
+            if (v === "beat") starBurst(DARTS.x, DARTS.y);
         }
         function drawRobDarts(now) {
             if (tnow() - robDarts.at > 20000) return;
@@ -2021,11 +2215,15 @@
             catch { ceefax.failed = true; }
             if (ceefax.open) renderCeefax();
         }
+        // The wall TV is ambient office scenery, so distressing stories (violence, abuse, death) never air on it.
+        function grimNews(it) {
+            return /\b(rap(e|ed|es|ing|ist)|abus(e|ed|es|er|ing)|sex(ual|ually)?|murder\w*|kill(s|ed|er|ing)?|stab(s|bed|bing)?|shot dead|shooting|assault\w*|paedophil\w*|grooming|suicide|terror\w*|massacre|genocide|tortur\w*|traffick\w*|drugged|died|dies|death|deaths|dead|bod(y|ies) found|bomb\w*|famine|war crimes?)\b/i.test(`${(it && it.title) || ""} ${(it && it.summary) || ""}`);
+        }
         function ceefaxPages() {
             const s = (ceefax.data && ceefax.data.sections) || {}, out = [];
-            (s.news || []).forEach((it, k) => out.push({ no: 101 + k, sec: "NEWS", col: "#ffff00", title: it.title, summary: it.summary, body: it.body || [] }));
+            (s.news || []).filter((it) => !grimNews(it)).forEach((it, k) => out.push({ no: 101 + k, sec: "NEWS", col: "#ffff00", title: it.title, summary: it.summary, body: it.body || [] }));
             if (bz.data) out.push({ no: 152, sec: "QUIZ", col: "#ff00ff", quiz: true, title: "BAMBOOZLE!", summary: "Ten questions. Click to play!" });
-            (s.sport || []).forEach((it, k) => out.push({ no: 302 + k, sec: "SPORT", col: "#00ff00", title: it.title, summary: it.summary, body: it.body || [] }));
+            (s.sport || []).filter((it) => !grimNews(it)).forEach((it, k) => out.push({ no: 302 + k, sec: "SPORT", col: "#00ff00", title: it.title, summary: it.summary, body: it.body || [] }));
             return out;
         }
         function ceefaxPage(now) {
@@ -2832,11 +3030,15 @@
                 say(p0, pick(g.quips, Math.random()), now); p0.emote = "star"; p0.emoteUntil = now + 2200;
                 const p1 = players.find((w) => w !== p0);
                 if (p1 && p1.quipUntil <= now) { p1.quip = pick(["pass the pad!", "my turn next!", "player two ready!", "hey, I was winning!"], Math.random()); p1.quipStart = now + 1300; p1.quipUntil = now + 4100; }
-                return;
             }
-            if ([...workers.values()].some((w) => w.state === "resting" && w.poi && w.poi.tag === "console")) return;
-            const spot = POIS.find((p) => p.tag === "console" && !p.taken), fan = spot && coffeeRunner({ x: DEN.x + 32, y: DEN.y + 60 }, workers.values());
-            if (fan) { leaveSpot(fan); fan.carry = null; fan.item = null; sendTo(fan, spot); fan.emote = "star"; fan.emoteUntil = now + 2400; say(fan, pick(["ooh, " + g.name + "!", "who put " + g.name + " on?", "save me a beanbag!"], Math.random()), now); }
+            // on demand: call idle colleagues over until two are on the pads (counting anyone already heading there)
+            const ws = [...workers.values()], coming = ws.filter((w) => w.state === "resting" && w.poi && w.poi.tag === "console").length, fans = [];
+            for (let i = coming; i < 2; i++) {
+                const spot = POIS.find((p) => p.tag === "console" && !p.taken), fan = spot && coffeeRunner({ x: DEN.x + 32, y: DEN.y + 60 }, ws.filter((o) => !fans.includes(o)));
+                if (!fan) break;
+                fans.push(fan); leaveSpot(fan); fan.carry = null; fan.item = null; sendTo(fan, spot); fan.emote = "star"; fan.emoteUntil = now + 2400;
+                say(fan, pick(fans.length + coming > 1 ? ["player two!", "I'm on the blue pad", "budge up!"] : ["ooh, " + g.name + "!", "who put " + g.name + " on?", "save me a beanbag!"], Math.random()), now);
+            }
         }
         // Click the kitchen coffee machine to brew a fresh pot; every fifth brew it wants descaling (lifted into tests/test_office.py).
         const hitCoffee = (p) => p.x >= 996 && p.x <= 1019 && p.y >= 30 && p.y <= 66;
@@ -2861,6 +3063,102 @@
             floatText(1007, 70, "fresh pot", "#e8c39e");
             if (out === "serve") { here.emote = "heart"; here.emoteUntil = now + 2200; say(here, pick(["ooh, fresh pot!", "perfect timing", "smells amazing"], Math.random()), now); }
             else if (out === "tempt") { leaveSpot(fan); fan.carry = null; fan.item = null; sendTo(fan, spot); fan.emote = "cup"; fan.emoteUntil = now + 2400; say(fan, pick(["do I smell coffee?", "fresh pot? don't mind if I do", "coffee!"], Math.random()), now); }
+        }
+        // Click the fridge to open it: the light comes on, and every fourth look someone's yoghurt has gone (lifted into tests/test_office.py).
+        const hitFridge = (p) => p.x >= 1033 && p.x <= 1063 && p.y >= 36 && p.y <= 94;
+        let fridgeOpens = 0; const fridgeDoor = { at: null, until: 0 };
+        function fridgeOutcome(n, atFridge, hasFan) {
+            return n % 4 === 0 ? "yoghurt" : atFridge ? "share" : hasFan ? "tempt" : "alone";
+        }
+        function openFridge(now) {
+            fridgeOpens++; fridgeDoor.at = null; fridgeDoor.until = 1500;
+            const ws = [...workers.values()], spot = POIS.find((q) => q.tag === "fridge");
+            const at = spot && spot.taken && workers.get(spot.taken), here = at && !at.path.length ? at : null;
+            const fan = !here && spot && !spot.taken && coffeeRunner(spot, ws);
+            const out = fridgeOutcome(fridgeOpens, !!here, !!fan);
+            if (out === "yoghurt") {
+                floatText(1048, 104, "who ate my yoghurt?", "#ffb3c7");
+                const near = here || cheerer({ x: 1048, y: 108 }, ws, 220);
+                if (near && now >= near.quipUntil) { near.emote = "bang"; near.emoteUntil = now + 2200; say(near, pick(["it had my NAME on it", "not again!", "I'm putting a note up", "who's been at the yoghurt?"], Math.random()), now); }
+            } else if (out === "share") { here.emote = "q"; here.emoteUntil = now + 2200; say(here, pick(["shut the door, it's beeping", "just looking!", "any cheese left?"], Math.random()), now); }
+            else if (out === "tempt") { leaveSpot(fan); fan.carry = null; fan.item = null; sendTo(fan, spot); fan.emote = "q"; fan.emoteUntil = now + 2400; say(fan, pick(["ooh, what's in there?", "snack time?", "is that cheese?"], Math.random()), now); }
+            else floatText(1048, 104, "*hmmm*", "#e8eef4");
+        }
+        function drawFridgeOpen(now) { // lit interior on the render clock, door swung open to the right
+            if (!fridgeDoor.until) return;
+            if (fridgeDoor.at === null) fridgeDoor.at = now;
+            if (now - fridgeDoor.at > fridgeDoor.until) { fridgeDoor.until = 0; return; }
+            const R = (c, x, y, w, h) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
+            R("#d8cfae", 1034, 55, 28, 38); R("#fff7dc", 1035, 56, 26, 36);
+            for (const y of [66, 77, 88]) R("#cbbf98", 1035, y, 26, 1);
+            R("#f4f4f0", 1037, 59, 4, 7); R("#5a9bd4", 1037, 59, 4, 2); // milk
+            R("#ffb3c7", 1045, 62, 4, 4); R("#ffb3c7", 1050, 62, 4, 4); // yoghurts
+            R("#f2c84b", 1054, 73, 5, 4); R("#7cc36b", 1038, 72, 8, 5); R("#d9534f", 1040, 84, 4, 4); R("#e6a04b", 1047, 83, 9, 5);
+            R("#3b2f2f", 1063, 52, 5, 42); R("#9a8a88", 1064, 53, 3, 40); R("#c9bdb0", 1064, 70, 3, 1);
+            ctx.save(); ctx.globalAlpha = .22; pxEllipse(ctx, 1048, 102, 18, 5, "#fff2c0"); ctx.restore();
+        }
+        // Click the lounge fire to poke it: sparks and a flare, embers briefly revive, a cold grate just clunks,
+        // and every fifth poke of a lit fire sends a puff of smoke into the room (lifted into tests/test_office.py).
+        const hitFire = (p) => p.x >= FP.x + 12 && p.x <= FP.x + 68 && p.y >= FP.y + 14 && p.y <= FP.y + 60;
+        let firePokes = 0; const fireFlare = { at: null, until: 0 };
+        function pokeOutcome(n, st, atFire) {
+            return !st ? "cold" : n % 5 === 0 ? "smoke" : st === 1 ? "revive" : atFire ? "careful" : "flare";
+        }
+        function pokeFire(now) {
+            const st = fireNow(), ws = [...workers.values()], cx = FP.x + 40, cy = FP.y + 36;
+            if (st) firePokes++;
+            const here = POIS.filter((q) => q.tag === "fire" && q.taken).map((q) => workers.get(q.taken)).find((w) => w && !w.path.length);
+            const out = pokeOutcome(firePokes, st, !!here), near = here || cheerer({ x: cx, y: FP.y + 88 }, ws, 220);
+            const react = (w, emote, lines) => { if (w && now >= w.quipUntil) { w.emote = emote; w.emoteUntil = now + 2200; say(w, pick(lines, Math.random()), now); } };
+            if (out === "cold") { floatText(cx, FP.y + 64, "*clunk*", "#c9c4bc"); react(near, "q", ["it's not lit", "fire's out till morning", "nothing in there but ash"]); return; }
+            if (out === "smoke") {
+                for (let i = 0; i < 14; i++) spawn({ type: "steam", x: cx - 8 + Math.random() * 16, y: cy, vx: 0, vy: -6 - Math.random() * 8, life: 2, max: 2 });
+                floatText(cx, FP.y + 64, "*cough*", "#c9c4bc"); react(near, "bang", ["open a window!", "is the flue open?", "who poked it?"]); return;
+            }
+            fireFlare.at = null; fireFlare.until = st === 1 ? 2200 : 1400;
+            for (let i = 0; i < 9; i++) spawn({ type: "spark", x: cx + rnd(-12, 12), y: cy + 4, vx: rnd(-10, 10), vy: rnd(-30, -12), life: .7, max: .7, c: i % 3 ? "#ffa62b" : "#ffe27a" });
+            floatText(cx, FP.y + 64, out === "revive" ? "*whoomph*" : "*crackle*", "#ffb46b");
+            if (out === "revive") react(near, "heart", ["still some life in it", "ooh, it's back", "one more log?"]);
+            else if (out === "careful") react(here, "bang", ["careful!", "mind my eyebrows", "steady on"]);
+            else react(near, "heart", ["lovely", "that's better", "toasty"]);
+        }
+        // Click the lounge grandfather clock to make it strike the hour: one bong per hour (12-hour), and every
+        // seventh strike it loses count and strikes thirteen. The nearest colleague reacts to the time (lifted into tests/test_office.py).
+        const hitClock = (p) => p.x >= 389 && p.x <= 409 && p.y >= 382 && p.y <= 453;
+        let clockStrikes = 0, chiming = false;
+        function chimeOutcome(n, h) {
+            const mood = h >= 22 || h < 6 ? "late" : h < 9 ? "early" : h >= 12 && h < 14 ? "lunch" : h >= 17 ? "home" : "day";
+            return n % 7 === 0 ? { bongs: 13, mood: "thirteen" } : { bongs: h % 12 || 12, mood };
+        }
+        const CHIME_LINES = {
+            late: ["shh, people are napping", "is it really that late?", "go to bed, {user}"],
+            early: ["too early for bongs", "is it that time already?", "coffee first"],
+            lunch: ["lunch o'clock!", "that's my stomach's cue", "sandwich time"],
+            home: ["home time?", "I hear you, clock", "nearly time to log off"],
+            day: ["already?", "where does the day go?", "back to it then"],
+            thirteen: ["thirteen?!", "someone wind that thing properly", "that clock needs a service"],
+        };
+        // It also strikes on its own as office time turns each hour, silenced overnight like a real clock's night switch.
+        function autoChime(h, prev) {
+            return prev != null && h !== prev && h >= 7 && h < 22;
+        }
+        let chimeHour = null;
+        function clockStep() {
+            if (!booted) return; // never during ?warp or away catch-up
+            const h = clock().h;
+            if (autoChime(h, chimeHour)) strikeClock(true);
+            chimeHour = h;
+        }
+        function strikeClock(auto = false) {
+            if (chiming) return; // let one strike finish before the next
+            chiming = true;
+            const h = clock().h, out = auto ? chimeOutcome(1, h) : chimeOutcome(++clockStrikes, h), gap = REDUCED ? 260 : 520;
+            for (let i = 0; i < out.bongs; i++) setTimeout(() => floatText(399 + (i % 2 ? 6 : -6), 398, "*bong*", "#e8d9a8"), i * gap);
+            setTimeout(() => {
+                chiming = false;
+                const now = last || tnow(), w = cheerer({ x: 399, y: 470 }, [...workers.values()], 240);
+                if (w && now >= w.quipUntil) { w.emote = out.mood === "thirteen" ? "q" : "bang"; w.emoteUntil = now + 2200; say(w, pick(CHIME_LINES[out.mood], Math.random()), now); }
+            }, out.bongs * gap);
         }
         function consolePlayed() {
             for (const p of POIS) if (p.tag === "console" && p.taken) { const w = workers.get(p.taken); if (w && !w.path.length) return true; }
@@ -3184,6 +3482,8 @@
             ];
             for (const d of DESKS) if (deskBusy(d)) lights.push({ x: d.x + 18, y: d.y + 2, r: 46, c: "120,200,255" });
             for (const b of bursts) if (b.on && b.age >= .3 && b.age < 1.4) { const k = clamp(1.5 - b.age, 0, 1); lights.push({ x: b.x, y: b.y, r: Math.round(8 + 18 * k), c: FW_RGB[b.col] }, { x: b.x, y: WALL + 20, r: Math.round(60 * k), c: FW_RGB[b.col] }); } // firework flash through the glass
+            const fire = fireNow(); if (fire) lights.push({ x: FP.x + 40, y: FP.y + 64, r: fire === 2 ? 84 + (REDUCED ? 0 : Math.round(Math.sin(now / 80) * 3 + Math.sin(now / 37) * 2)) : 42, c: "255,140,60" });
+            if (fridgeDoor.until && fridgeDoor.at !== null) lights.push({ x: 1048, y: 80, r: 44, c: "255,244,214" }); // the open fridge's bulb lights a dark kitchen
             if (XMAS) lights.push({ x: 460, y: 290, r: 58 + (REDUCED ? 0 : Math.floor(now / 900) % 2) * 6, c: "255,190,110" }); // tree lights
             if (SEASON === "halloween") for (const [x, y] of [[912, 58], [511, 89], [617, 94], [1165, 206]]) lights.push({ x, y, r: 20 + (REDUCED ? 0 : Math.round(Math.sin(now / 110 + x) * 2)), c: "255,140,40" });
             if (counts.locked) lights.push({ x: CALL.x + 15, y: CALL.y + 11, r: 26 + (Math.floor(now / 350) % 2) * 8, c: tasks.some((t) => t.status === "auth-failed") ? "255,90,110" : "150,140,255" });
@@ -3268,6 +3568,12 @@
             if (robDarts.best) { // the user's best three darts, chalked on the games-room scoreboard
                 vctx.font = `500 ${Math.round(6.5 * S)}px "Pixelify Sans"`; vctx.textBaseline = "alphabetic"; vctx.textAlign = "center";
                 vctx.fillStyle = "#e8e4d8d0"; vctx.fillText(USER_NAME.toUpperCase() + " " + robDarts.best, Math.round((SCORE.x + 19) * S), Math.round((SCORE.y + 26) * S)); vctx.textAlign = "left";
+            }
+            if (pong.active) { // table-tennis flip counter digits
+                const nx = PONG.x + (PONG.w >> 1), by = PONG.y + PONG.h + 1;
+                vctx.font = `600 ${Math.round(6 * S)}px "Pixelify Sans"`; vctx.textBaseline = "alphabetic"; vctx.textAlign = "center"; vctx.fillStyle = "#1b1830";
+                vctx.fillText(String(pong.score[0]), Math.round((nx - 5) * S), Math.round(by * S)); vctx.fillText(String(pong.score[1]), Math.round((nx + 6) * S), Math.round(by * S));
+                vctx.textAlign = "left";
             }
             const sorted = [...workers.values()].sort((a, b) => a.y - b.y);
             quipRects.length = 0;
@@ -3532,11 +3838,11 @@
             const el = document.getElementById("ticker");
             if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html + html; el.style.setProperty("--dur", Math.max(30, bits.length * 7) + "s"); }
         }
-        const WHERE = { chat: "chatting", sofa: "on the sofa", tv: "watching TV", window: "at the window", books: "browsing the shelves", coffee: "at the coffee machine", cooler: "at the water cooler",
+        const WHERE = { fire: "at the fireplace", chat: "chatting", sofa: "on the sofa", tv: "watching TV", window: "at the window", books: "browsing the shelves", coffee: "at the coffee machine", cooler: "at the water cooler",
             vending: "at the vending machine", fridge: "raiding the fridge", plant: "tending a plant", door: "guarding the door", art: "admiring the art", meeting: "in a meeting",
             board: "at the whiteboard", copier: "loitering by the copier", roam: "wandering", read: "reading in the lounge", peek: "looking over a shoulder", bedside: "visiting the sick bay", pong: "at the table tennis table", arcade: "on the arcade machine", console: "on the games console", foos: "at the foosball table", darts: "at the dartboard", frame: "at the employee-of-the-week frame", visit: "in " + officeName().replace(/^Your/, "your"), sink: "at the kitchen sink", table: "in the kitchen", phone: "on their phone" };
         const ITEM_NAME = { mug: "a coffee", water: "some water", snack: "a snack", sandwich: "a sandwich", book: "a book" };
-        const ACT_LABEL = { tv: () => "watching TV", read: () => "reading", eat: (w) => w.poi.tag === "table" && phaseNow() === "lunch" ? "having lunch" : "having a snack", sip: (w) => "having " + (ITEM_NAME[w.carry] || "a cuppa"),
+        const ACT_LABEL = { warm: () => "warming up by the fire", tv: () => "watching TV", read: () => "reading", eat: (w) => w.poi.tag === "table" && phaseNow() === "lunch" ? "having lunch" : "having a snack", sip: (w) => "having " + (ITEM_NAME[w.carry] || "a cuppa"),
             fetch: (w) => "grabbing " + (ITEM_NAME[KITCHEN[w.poi.tag]] || "something"), browse: () => "picking a book", phone: () => "scrolling their phone", gaze: () => "taking in the view",
             water: () => "watering the plants", write: () => "sketching on the whiteboard", meet: () => "in a meeting", papers: () => "sorting papers by the copier", talk: () => "chatting",
             guard: () => "guarding the door", nap: () => "napping", peek: (w) => { const o = w.poi && w.poi.desk && workers.get(w.poi.desk.owner); return o ? "looking over " + whoOf(o) + "'s shoulder" : "looking over a shoulder"; }, bedside: (w) => { const so = w && w.sendOffFor && w.sendOffUntil > tnow() && workers.get(w.sendOffFor); if (so) return "wishing " + whoOf(so) + " luck from the sick bay"; const o = [...workers.values()].find((p) => p.state === "hurt" && !p.path.length); return o ? "visiting " + whoOf(o) + " in the sick bay" : "visiting the sick bay"; }, pong: () => "playing table tennis", arcade: () => "on the arcade machine",
@@ -3619,7 +3925,7 @@
             if (!t || !w) { dossier.hidden = true; return; }
             const st = behaviour(t), r = ROLES[roleOf(t)], lv = levelOf(t.run_count), xp = ((t.run_count || 0) - lv * lv) / ((lv + 1) ** 2 - lv * lv);
             const ew = w.errand && workers.get(w.errand), rw = (w.reliefWith && w.reliefUntil > tnow() && workers.get(w.reliefWith)) || (w.greetPeer && w.greetUntil > tnow() && workers.get(w.greetPeer)), rk = w.reliefKind || w.greetKind, rd = w.reliefDesk || w.greetDesk, wf = waitingForOf(t, tasks);
-            const where = { working: w.desk ? `desk ${DESKS.indexOf(w.desk) + 1}${cat.onDesk === w.id ? " · cat on the keyboard" : ""}` : "hot-desking", queued: (w.desk ? `gaming at desk ${DESKS.indexOf(w.desk) + 1}` : "staring out the window") + (wf ? ` · waiting for ${wf.nick}` : " · waiting for the writer lock"), locked: t.status === "auth-failed" ? "meeting room · redialling the call" : "meeting room · waiting on a sign-in", hurt: "sick bay" + (w.streak >= 2 ? ` · ${w.streak} failed runs in a row` : "") + (cat.onBed === w.id ? " · cat on the bed" : "") + (w.hasTea ? " · nursing a cuppa" : ""), resting: rw ? `celebrating ${rk === "welcome" ? "probation " : rk === "comeback" ? "recovery " : ""}with ${whoOf(rw)}${rd ? ` at desk ${rd}` : ""}` : ew ? (w.errandKind === "welcome" ? `walking over to congratulate ${whoOf(ew)}` : w.errandKind === "comeback" ? `walking over to welcome ${whoOf(ew)} back` : w.errandKind === "peek" ? `checking on ${whoOf(ew)}` : w.errandKind === "tea" ? `bringing a cuppa to ${whoOf(ew)} in the sick bay` : `fetching a coffee for ${whoOf(ew)}`) : w.poi ? (w.act && ACT_LABEL[w.act] && !w.path.length ? ACT_LABEL[w.act](w) : (w.path.length ? "on the way to " + (WHERE[w.poi.tag] || "roaming").replace(/^(at|on|in) /, "") : (WHERE[w.poi.tag] || "roaming"))) : "roaming" }[st];
+            const where = { working: w.desk ? `desk ${DESKS.indexOf(w.desk) + 1}${cat.onDesk === w.id ? " · cat on the keyboard" : ""}` : "hot-desking", queued: (w.desk ? `gaming at desk ${DESKS.indexOf(w.desk) + 1}` : "staring out the window") + (wf ? ` · waiting for ${wf.nick}` : " · waiting for the writer lock"), locked: t.status === "auth-failed" ? "meeting room · redialling the call" : "meeting room · waiting on a sign-in", hurt: "sick bay" + (w.streak >= 2 ? ` · ${w.streak} failed runs in a row` : "") + (cat.onBed === w.id ? " · cat on the bed" : "") + (w.hasTea ? " · nursing a cuppa" : ""), resting: rw ? `celebrating ${rk === "welcome" ? "probation " : rk === "comeback" ? "recovery " : ""}with ${whoOf(rw)}${rd ? ` at desk ${rd}` : ""}` : ew ? (w.errandKind === "welcome" ? `walking over to congratulate ${whoOf(ew)}` : w.errandKind === "comeback" ? `walking over to welcome ${whoOf(ew)} back` : w.errandKind === "peek" ? `checking on ${whoOf(ew)}` : w.errandKind === "tea" ? `bringing a cuppa to ${whoOf(ew)} in the sick bay` : `fetching a coffee for ${whoOf(ew)}`) : w.poi ? (w.act && ACT_LABEL[w.act] && !w.path.length ? ACT_LABEL[w.act](w) : (w.path.length ? "on the way to " + (WHERE[w.poi.tag] || "roaming").replace(/^(at|on|in) /, "") : (WHERE[w.poi.tag] || "roaming"))) : "roaming" }[st] + (st === "resting" && !rw && !ew ? shiftNote((dueAt(t, Date.now()) ?? Infinity) - Date.now(), w.path.length > 0) : "") + (w.late && st !== "working" ? ` · ${fmtDur(w.late / 1000)} overdue, not started yet` : "");
             let prog = "";
             if (st === "working") {
                 const p = progressOf(t), s = runStart.get(t.id);
@@ -3748,7 +4054,7 @@
             if (kind === "call") return st === "locked" ? (demo ? "click: inspect the frozen call" : "click: re-check sign-in") : "click: test the video call";
             if (kind === "copier") return "click: print a test page";
             if (kind === "door") return "click: check badge reader";
-            return { cat: "click: pet the cat", darts: "click: throw a dart", console: "click: swap game", coffee: "click: brew a fresh pot", tv: "click: Ceefax", board: "click: open the Assistant board", frame: "click: employee of the week", egg: "click: pick up the egg" }[kind] || null;
+            return { cat: "click: pet the cat", darts: "click: throw a dart", console: "click: swap game and call players", pong: "click: call the rally", foos: "click: call a game", coffee: "click: brew a fresh pot", fridge: "click: open the fridge", fire: "click: poke the fire", clock: "click: strike the hour", tv: "click: Ceefax", board: "click: open the Assistant board", frame: "click: employee of the week", egg: "click: pick up the egg" }[kind] || null;
         }
         // drag a worker onto the ops floor to arm its Run now confirm, or a queued worker off it to arm Cancel; never fires itself (lifted into tests/test_office.py)
         function dropAction(st, room, demo, canCancel = true) {
@@ -3766,7 +4072,7 @@
         const hintCount = {}; // cached so the render loop never touches localStorage
         const hintUses = (kind) => { if (!(kind in hintCount)) { try { hintCount[kind] = Number(localStorage.getItem("office-hint-" + kind)) || 0; } catch (e) { hintCount[kind] = HINT_LEARNT; } } return hintCount[kind]; };
         function hintUsed(kind) { if (kind) { hintCount[kind] = hintUses(kind) + 1; try { localStorage.setItem("office-hint-" + kind, hintCount[kind]); } catch (e) { /* ignore */ } } hint.since = Infinity; }
-        function hintKind(p, w, c) { return c ? "cat" : w ? "worker" : hitEgg(p) ? "egg" : hitFrame(p) ? "frame" : hitCall(p) ? "call" : hitCopier(p) ? "copier" : hitDoor(p) ? "door" : hitDartboard(p) ? "darts" : hitConsole(p) ? "console" : hitCoffee(p) ? "coffee" : hitTV(p) ? "tv" : hitBoard(p) ? "board" : null; }
+        function hintKind(p, w, c) { return c ? "cat" : w ? "worker" : hitEgg(p) ? "egg" : hitFrame(p) ? "frame" : hitCall(p) ? "call" : hitCopier(p) ? "copier" : hitDoor(p) ? "door" : hitDartboard(p) ? "darts" : hitConsole(p) ? "console" : hitPong(p) ? "pong" : hitFoos(p) ? "foos" : hitCoffee(p) ? "coffee" : hitFridge(p) ? "fridge" : hitFire(p) ? "fire" : hitClock(p) ? "clock" : hitTV(p) ? "tv" : hitBoard(p) ? "board" : null; }
         view.addEventListener("mousemove", (e) => {
             const p = worldPoint(e), c = hitCat(p), w = c ? null : hit(p), cl = !c && !w && hitCall(p), cp = !c && !w && !cl && hitCopier(p), dr = !c && !w && !cl && !cp && hitDoor(p), cn = !c && !w && !cl && !cp && !dr && hitConsole(p);
             hoverEgg = !c && !w ? hitEgg(p) : null;
@@ -3827,7 +4133,12 @@
             if (hitDoor(p)) { clickDoor(now); return; }
             if (hitDartboard(p)) { throwDart(now); return; }
             if (hitConsole(p)) { swapConsole(now); return; }
+            if (hitPong(p)) { clickPong(now); return; }
+            if (hitFoos(p)) { clickFoos(now); return; }
             if (hitCoffee(p)) { brewCoffee(now); return; }
+            if (hitFridge(p)) { openFridge(now); return; }
+            if (hitFire(p)) { pokeFire(now); return; }
+            if (hitClock(p)) { strikeClock(); return; }
             if (hitTV(p)) { openCeefax(!ceefax.open); return; }
             if (hitBoard(p)) { location.href = "/assistant"; return; }
             select(null);
@@ -4166,8 +4477,22 @@
             bellCheck = now + 1000;
             const wall = Date.now();
             for (const w of workers.values()) {
+                // overdue only once the Office itself has watched it stay late for LATE_WATCH (a waking laptop's runner catches up in 30s)
+                const late = overdueBy(w.task, wall);
+                w.lateSeen = late ? (w.lateSeen || wall) : 0;
+                w.late = late && wall - w.lateSeen >= LATE_WATCH ? late : 0;
                 if (w.state !== "resting" || w.errand || w.greetPeer || w.celebrateUntil > now) continue;
+                if (w.late && now > (w.lateNag || 0) && now > w.quipUntil + 1500 && !w.path.length) {
+                    w.lateNag = now + rnd(50000, 80000); w.emote = "clock"; w.emoteUntil = now + 3000;
+                    say(w, pick(QUIPS.overdue, Math.random()), now);
+                    const o = cheerer(w, [...workers.values()], 200);
+                    if (o) setTimeout(() => { const t2 = last || tnow(); if (t2 >= o.quipUntil) { o.emote = "clock"; o.emoteUntil = t2 + 2400; say(o, pick(QUIPS.tapWatch, Math.random()), t2); } }, 1800);
+                }
                 const at = dueAt(w.task, wall);
+                // a few minutes out, cut a long sit short so they wander back towards the ops floor (choosePoi does the pull)
+                if (at !== null && w.pullFor !== at && shiftPull(at - wall, roomAt(w.x, w.y)) < 1 && !w.path.length && !w.reliefWith && !w.sendOffFor) {
+                    w.pullFor = at; w.dwellUntil = Math.min(w.dwellUntil, now + rnd(1500, 5000));
+                }
                 if (at === null || at <= wall || at - wall > 60000 || w.bellFor === at) continue;
                 w.bellFor = at; w.emote = "clock"; w.emoteUntil = now + 3000;
                 if (now > w.quipUntil + 1500) say(w, pick(QUIPS.shiftSoon, Math.random()), now);
@@ -4191,7 +4516,7 @@
                 }
                 if (w.path.length) moveAlong(w, dt, now); else idle(w, dt, now, night);
             }
-            separate(dt); greet(now); shiftBell(now); coffeeRuns(now); pongStep(dt, now); foosStep(dt, now); catStep(dt, now); botStep(dt, now); ambient(dt, now); stepParts(dt);
+            separate(dt); greet(now); shiftBell(now); coffeeRuns(now); pongStep(dt, now); foosStep(dt, now); dartsStep(now); clockStep(); catStep(dt, now); botStep(dt, now); ambient(dt, now); stepParts(dt);
         }
         let last = tnow(), booted = false;
         function frame(raf) {
