@@ -122,10 +122,14 @@ test("notifications turned off in Settings are marked seen, not shown", () => {
   }
 });
 
-test("only the macOS notification settings link escapes the web allowlist", () => {
+test("ordinary external navigation only opens HTTP and HTTPS", () => {
   const main = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
   const opener = main.slice(main.indexOf("function openExternal(raw)"), main.indexOf("function hardenWindow("));
-
-  assert.ok(opener.includes('process.platform === "darwin" && raw === MAC_NOTIFICATION_SETTINGS'));
-  assert.ok(opener.includes('url.protocol === "https:" || url.protocol === "http:"'));
+  const opened = [];
+  const open = require("node:vm").runInNewContext(opener + "\nopenExternal", {
+    URL, process: { platform: "darwin" }, shell: { openExternal: url => opened.push(url) },
+  });
+  for (const url of ["https://example.org/", "http://example.org/", "file:///tmp/test",
+    "x-apple.systempreferences:com.apple.Notifications-Settings.extension", "invalid"]) open(url);
+  assert.deepEqual(opened, ["https://example.org/", "http://example.org/"]);
 });

@@ -45,8 +45,6 @@ const WORKSPACE_ROOT = path.resolve(
   process.env.ROOSTA_WORKSPACE || configuredWorkspace() || path.join(os.homedir(), "workspace"),
 );
 const POLL_INTERVAL_MS = 5_000;
-// The only non-web link the dashboard may open: the Notifications pane of System Settings.
-const MAC_NOTIFICATION_SETTINGS = "x-apple.systempreferences:com.apple.preference.notifications";
 
 app.setName("Roosta");
 
@@ -133,10 +131,6 @@ function requireControlPage(event, allowed) {
 }
 
 function openExternal(raw) {
-  if (process.platform === "darwin" && raw === MAC_NOTIFICATION_SETTINGS) {
-    shell.openExternal(MAC_NOTIFICATION_SETTINGS);
-    return;
-  }
   try {
     const url = new URL(raw);
     if (url.protocol === "https:" || url.protocol === "http:") {
@@ -602,6 +596,15 @@ async function readSkillLogs() {
 }
 
 function registerIpc() {
+  ipcMain.handle("notification-settings-open", (event) => {
+    const frame = event.senderFrame;
+    if (process.platform !== "darwin" || event.sender !== mainWindow?.webContents ||
+        !frame || frame !== event.sender.mainFrame || !allowedDashboardUrl(frame.url) ||
+        new URL(frame.url).pathname !== "/settings") {
+      throw new Error("Desktop control request rejected");
+    }
+    return shell.openExternal("x-apple.systempreferences:com.apple.Notifications-Settings.extension");
+  });
   ipcMain.handle("runner-retry", async (event) => {
     requireControlPage(event, ["recovery.html"]);
     await startRunner();

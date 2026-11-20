@@ -372,10 +372,8 @@ def test_notifications_setting_is_local_only(env):
     assert not cli.CONFIG_FILE.exists()
 
 
-def test_settings_page_has_the_notifications_switch_and_macos_link():
+def test_settings_page_has_the_notifications_switch_and_manual_macos_guidance():
     page = (STATIC / 'settings.html').read_text()
     assert 'id="notifications-enabled"' in page and 'role="switch"' in page
     assert "fetch('/api/settings/notifications'" in page
-    assert 'href="x-apple.systempreferences:com.apple.preference.notifications"' in page
-    desktop = (Path(__file__).resolve().parents[1] / 'desktop' / 'src' / 'main.js').read_text()
-    assert '"x-apple.systempreferences:com.apple.preference.notifications"' in desktop
+    assert 'System Settings → Notifications' in page

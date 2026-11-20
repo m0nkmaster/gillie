@@ -106,6 +106,8 @@ up to 1024px using macOS `sips`, then compiles the `.icns` with `iconutil`. It a
 
 ## Notifications troubleshooting
 
+In Roosta, choose **Settings → Notifications → Open macOS notification settings**. From a browser, or if the pane fails to open, go to **System Settings → Notifications** and select **Roosta** to adjust banners and sounds.
+
 The local self-signed identity is sufficient for banner + sound notifications; notarisation is
 **not** required. If notifications go silently to Notification Centre with no banner or sound,
 the cause is almost always one of these, in order of likelihood:
