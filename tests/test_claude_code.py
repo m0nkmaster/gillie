@@ -218,6 +218,12 @@ def test_chat_turn_streams_claude_deltas(claude, monkeypatch, tmp_path):
     captured = {}
     events = [
         {"type": "system", "subtype": "init"},
+        {"type": "stream_event", "event": {"type": "content_block_delta",
+         "delta": {"type": "thinking_delta", "thinking": "private thought"}}},
+        {"type": "stream_event", "event": {"type": "content_block_start",
+         "content_block": {"type": "tool_use", "name": "Read", "input": {"path": "private file"}}}},
+        {"type": "tool_progress", "tool_name": "Read"},
+        {"type": "tool_use_summary", "summary": "Read project notes."},
         {"type": "stream_event", "event": {"type": "message_start"}},
         {"type": "stream_event", "event": {"type": "content_block_delta",
                                            "delta": {"type": "text_delta", "text": "Checked."}}},
@@ -255,6 +261,10 @@ def test_chat_turn_streams_claude_deltas(claude, monkeypatch, tmp_path):
 
     out = asyncio.run(run())
     text = "".join(e["text"] for e in out if e["kind"] == "text")
+    assert [e["label"] for e in out if e["kind"] == "progress"] == [
+        "Tool started · Read", "Tool running · Read", "Read project notes."]
+    assert "private" not in json.dumps(out)
+    assert "Read project notes." not in text
     assert text.startswith("Checked.\n\nAll clear.")
     assert captured["args"][0] == claude_code.CLAUDE_BIN
     assert "--include-partial-messages" in captured["args"]

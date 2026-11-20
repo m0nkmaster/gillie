@@ -57,7 +57,11 @@ def parse_line(line: str) -> dict | None:
         if kind == "message_start" and event.get("message", {}).get("role") == "assistant":
             return {"kind": "separator", "text": "\n\n"}
         if kind == "tool_execution_start":
-            return {"kind": "tool", "text": ""}
+            return {"kind": "tool", "text": "", "name": event.get("toolName")}
+        if kind == "tool_execution_update":
+            return {"kind": "tool_running", "name": event.get("toolName")}
+        if kind == "tool_execution_end":
+            return {"kind": "tool_end", "name": event.get("toolName")}
         update = event.get("assistantMessageEvent", {})
         if kind == "message_update" and update.get("type") == "text_delta":
             return {"kind": "text", "text": update["delta"]}

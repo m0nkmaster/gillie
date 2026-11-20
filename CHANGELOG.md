@@ -4,6 +4,7 @@ Record each release newest first. Bump minor for features and visible behaviour,
 
 ## 0.12.0 - 2026-11-20
 
+- Assistant chats show live reply status and available tool activity, including when you reopen a running chat. Progress clears when the reply ends.
 - Roosta checks for stable releases in the background. Settings shows the running version and manual update instructions for the installation serving your workspace.
 
 ## 0.11.0 - 2026-11-20

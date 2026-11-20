@@ -1144,6 +1144,7 @@ async def api_board(threads: str = "", thread: Annotated[list[str] | None, Query
         "agent_up": agent.alive,
         "ai_backend": ai_backend.label(),
         "health": {**board_health(states), "restart_pending": restart_pending()},
+        "chat_progress": chat_router.active_progress if chat_router else {},
         "active_chat_ids": chat_router.active_items() if chat_router else [],
         "chat_histories": chat_histories,
         "chat_contexts": {
