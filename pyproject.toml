@@ -11,13 +11,15 @@ license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi",
+    "httpx",
+    "packaging",
     "uvicorn[standard]",
     "pyyaml",
     "keyring>=25",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "httpx"]
+dev = ["pytest"]
 
 [project.scripts]
 roosta = "roosta.cli:main"
