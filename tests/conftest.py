@@ -38,3 +38,13 @@ def test_profile(monkeypatch):
     me = profile.Profile(name="Sam Example", language="British English")
     monkeypatch.setattr(profile, "load", lambda path=None: me)
     return me
+
+
+@pytest.fixture(autouse=True)
+def offline_release_checks(monkeypatch):
+    from roosta import updates
+
+    async def offline(url):
+        raise OSError("Offline test")
+
+    monkeypatch.setattr(updates, "read_json", offline)

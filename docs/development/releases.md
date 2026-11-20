@@ -89,3 +89,11 @@ or replace an already-published package.
 
 If the initial Git push fails, the local release commit and tag remain. Resolve the Git issue
 and retry the exact atomic push printed by the command. Do not rerun version preparation.
+
+## Dashboard update checks
+
+The backend checks GitHub's latest stable release at startup and every six hours. The
+desktop shell displays the same dashboard, including when attached to a separate Python
+runner. Guidance uses the backend's own version, frozen status and Python installation.
+Python package commands require a matching, non-yanked universal wheel on PyPI that
+supports the running interpreter. Checks keep state in memory and updates are manual.
