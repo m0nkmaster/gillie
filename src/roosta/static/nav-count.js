@@ -126,12 +126,45 @@
     } catch (e) {}
   }
 
+  async function showUpdateNotice() {
+    if (document.hidden || isCurrent('/settings')) return;
+    try {
+      const response = await fetch('/api/updates');
+      if (!response.ok) return;
+      const {latest, notes} = await response.json();
+      if (!latest) return;
+      const key = 'roosta-update-notice-' + latest;
+      if (sessionStorage.getItem(key)) return;
+      const header = document.querySelector('header.workspace-header');
+      if (!header) return;
+      const notice = document.createElement('div');
+      notice.className = 'alert alert-info m-0 py-1 d-flex align-items-center gap-2 flex-wrap';
+      notice.setAttribute('role', 'status');
+      const release = document.createElement('a');
+      release.href = notes;
+      release.textContent = 'Release notes';
+      const settings = document.createElement('a');
+      settings.href = '/settings#updates';
+      settings.textContent = 'Update instructions';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'btn btn-ghost-secondary btn-sm';
+      close.textContent = 'Dismiss';
+      close.onclick = () => notice.remove();
+      notice.append('Roosta ' + latest + ' is available.', release, settings, close);
+      sessionStorage.setItem(key, '1');
+      header.after(notice);
+    } catch {} // Background checks stay silent when offline or storage is unavailable.
+  }
+
   function ready() {
     renderHeader(cachedPages());
     setAssistantReturn();
     setNavCount(cachedCount()); // the last known count at once; the fetch corrects it
     showVersion();
     refreshPages();
+    showUpdateNotice();
+    setInterval(showUpdateNotice, 60000);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready);
   else ready();

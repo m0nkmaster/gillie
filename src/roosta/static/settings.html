@@ -108,6 +108,15 @@
     <div class="card-header"><h2 class="card-title" id="workspace-title">Workspace and runner</h2></div>
     <div class="list-group list-group-flush" id="ws-rows"><div class="list-group-item text-secondary">Loading…</div></div>
   </section>
+  <section class="card mb-3" id="updates" aria-labelledby="updates-title">
+    <div class="card-header"><h2 class="card-title" id="updates-title">Roosta updates</h2></div>
+    <div class="card-body">
+      <p id="running-version"></p>
+      <p id="update-status" role="status">Loading update status…</p>
+      <div id="update-details"></div>
+      <button class="btn btn-sm" type="button" id="check-updates">Check for updates</button>
+    </div>
+  </section>
   <section class="card mb-3" aria-labelledby="notifications-title" id="notifications-card">
     <div class="card-header"><h2 class="card-title" id="notifications-title">Notifications</h2></div>
     <div class="card-body">
@@ -217,6 +226,7 @@ window.addEventListener('pageshow',event=>{ if(event.persisted) loadClosedChats(
   });
 })();
 </script>
+<script src="/static/updates.js" defer></script>
 <script src="/static/ai-settings.js" defer></script>
 <script src="/static/workspace-settings.js" defer></script>
 </body></html>

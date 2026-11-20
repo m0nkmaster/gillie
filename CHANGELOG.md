@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.12.0 - 2026-11-20
+
+- Roosta checks for stable releases in the background. Settings shows the running version and manual update instructions for the installation serving your workspace.
+
 ## 0.11.0 - 2026-11-20
 
 - Office gains a fireplace and stockings, fridge and clock interactions, a second café table, dart challenges, on-demand foosball and console players, and scored table tennis.
