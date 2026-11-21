@@ -31,7 +31,7 @@ See [Assistant contracts](assistant.md) and [Office rendering](office.md) for pa
   or light mode leaves dark patches. The constellation canvas carries its own `data-bs-theme="dark"`
   because it draws light text; the Office canvas and Ceefax TV are art and stay as they are
 
-- **Settings → Notifications** shows Mac users the manual System Settings path. The native button appears when the desktop preload provides the action, independently of which process started the runner. An open failure is reported inline.
+- **Settings → Notifications** shows Mac users the manual path to Roosta’s notification preferences and points them to the menu-bar test notification if Roosta is missing.
 
 - **Recently closed chats** in Settings lists up to 50 named threads. Restore opens the original conversation in Assistant. The Chats rail also offers a ten-second Undo toast. See the [chat archive contract](assistant.md).
 

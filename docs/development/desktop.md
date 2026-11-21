@@ -43,10 +43,8 @@ keep stale nav.
 - Settings → Notifications writes `"notifications": false` to `~/.config/roosta/config.json`
   (absent means on). `deliverNotices` reads it before every delivery and, while off, confirms notices
   without showing them so re-enabling does not replay a backlog. The first-run prompt is skipped and
-  the tray says "off in Settings"; **Send Test Notification** still works. The Settings button uses a
-  parameterless preload action. Main checks the macOS dashboard window, main frame, origin and
-  Settings path before opening the fixed Notifications extension URL. Ordinary external links
-  remain limited to HTTP and HTTPS.
+  the tray says "off in Settings"; **Send Test Notification** still works. Settings gives Mac users manual instructions.
+  External links remain limited to HTTP and HTTPS.
 - **Notifications work with the local self-signed identity; notarisation is not required.** If they
   go silently to Notification Centre with no banner/sound, do **not** chase notarisation or
   `terminal-notifier` (Homebrew's bottle isn't notarised anyway). The real causes are: a duplicate

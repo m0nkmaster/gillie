@@ -596,15 +596,6 @@ async function readSkillLogs() {
 }
 
 function registerIpc() {
-  ipcMain.handle("notification-settings-open", (event) => {
-    const frame = event.senderFrame;
-    if (process.platform !== "darwin" || event.sender !== mainWindow?.webContents ||
-        !frame || frame !== event.sender.mainFrame || !allowedDashboardUrl(frame.url) ||
-        new URL(frame.url).pathname !== "/settings") {
-      throw new Error("Desktop control request rejected");
-    }
-    return shell.openExternal("x-apple.systempreferences:com.apple.Notifications-Settings.extension");
-  });
   ipcMain.handle("runner-retry", async (event) => {
     requireControlPage(event, ["recovery.html"]);
     await startRunner();

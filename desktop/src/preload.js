@@ -13,9 +13,4 @@ if (globalThis.location.protocol === "file:") {
       ipcRenderer.on("recovery-status", (_event, value) => callback(value));
     },
   });
-} else if (process.platform === "darwin" && location.origin === "http://127.0.0.1:7667" &&
-           location.pathname === "/settings") {
-  contextBridge.exposeInMainWorld("assistantDesktop", {
-    openNotificationSettings: () => ipcRenderer.invoke("notification-settings-open"),
-  });
 }

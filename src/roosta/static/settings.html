@@ -115,8 +115,7 @@
         <span class="setting-copy"><strong id="notifications-label">Desktop notifications</strong><span id="notifications-help">The Roosta app tells you about new board items and sign-ins workers are waiting for. Turning this off keeps everything on the board.</span></span>
         <span class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="notifications-enabled" aria-labelledby="notifications-label" aria-describedby="notifications-help" disabled></span>
       </label>
-      <p class="text-secondary small mt-3 mb-0" id="notifications-os" hidden>For banners and sounds, go to System Settings → Notifications and select Roosta.
-        <button type="button" class="btn btn-sm" id="open-notification-settings" hidden>Open macOS notification settings</button></p>
+      <p class="text-secondary small mt-3 mb-0" id="notifications-os" hidden>Open Apple menu → System Settings → Notifications → Roosta. Turn on Allow notifications and choose your banner and sound preferences. If Roosta is missing, choose Send Test Notification from Roosta’s menu-bar icon, then check the list again.</p>
       <div id="notifications-message" class="small mt-2" role="status" aria-live="polite"></div>
     </div>
   </section>
@@ -192,20 +191,7 @@ window.addEventListener('pageshow',event=>{ if(event.persisted) loadClosedChats(
   const help = document.getElementById('notifications-help');
   const message = document.getElementById('notifications-message');
   const say = (text, tone = 'text-secondary') => { message.className = `small mt-2 ${tone}`; message.textContent = text; };
-  const openSettings = window.assistantDesktop?.openNotificationSettings;
-  document.getElementById('notifications-os').hidden = !openSettings && !navigator.userAgent.includes('Mac');
-  if (openSettings) {
-    const button = document.getElementById('open-notification-settings');
-    button.hidden = false;
-    button.onclick = async () => {
-      say('');
-      try {
-        await openSettings();
-      } catch {
-        say('Could not open System Settings. Open it manually and choose Notifications.', 'text-danger');
-      }
-    };
-  }
+  document.getElementById('notifications-os').hidden = !navigator.userAgent.includes('Mac');
   const show = data => {
     toggle.checked = data.enabled === true;
     toggle.disabled = false;

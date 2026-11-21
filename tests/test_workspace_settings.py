@@ -376,4 +376,5 @@ def test_settings_page_has_the_notifications_switch_and_manual_macos_guidance():
     page = (STATIC / 'settings.html').read_text()
     assert 'id="notifications-enabled"' in page and 'role="switch"' in page
     assert "fetch('/api/settings/notifications'" in page
-    assert 'System Settings → Notifications' in page
+    assert 'Apple menu → System Settings → Notifications → Roosta' in page
+    assert 'Allow notifications' in page and 'Send Test Notification' in page

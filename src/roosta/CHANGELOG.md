@@ -2,6 +2,10 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
+## 0.11.1 - 2026-11-20
+
+- Settings now shows Mac users how to enable banners and sounds manually and where to send a test notification if Roosta is missing from the list.
+
 ## 0.11.0 - 2026-11-20
 
 - Office gains a fireplace and stockings, fridge and clock interactions, a second café table, dart challenges, on-demand foosball and console players, and scored table tennis.
