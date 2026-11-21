@@ -112,16 +112,18 @@ or invoking a harness. Existing conversations and established workspaces keep th
 
 - **Queued messages.** While a turn is in progress, further sends for the same item are queued
   server-side and run automatically when the current reply finishes. The UI shows a dashed
-  "Queued…" bubble immediately; background turns rely on `/api/board` polling and the existing
-  server-thinking indicator when there is no live SSE consumer.
+  "Queued…" bubble immediately; background turns rely on `/api/board` polling for the current reply’s progress.
 
 - **Chat** (`chat.py`, `ChatRouter` + the `actor` skill): under Cursor each turn runs
   `agent --print --output-format stream-json --stream-partial-output --resume <chat-id>`; under
   Claude, the equivalent `claude --print` stream with `--resume`.
   `start_turn` owns the run in a background task and puts events on a queue consumed by SSE, so
   changing page or losing the browser stream cannot cancel the model process. `GET /api/board`
-  exposes active item ids; the UI keeps showing Working and polls until the persisted answer
-  arrives. `SessionMap` (`assistant/sessions.json`), `TopicStore` (`assistant/topics.json`) and
+  exposes active item ids and `chat_progress`, keyed by item id with the current `run_id` and
+  display `label`. SSE events carry both ids. A transient `progress` event reports running
+  status, tool activity or an explicit harness tool summary. Tool inputs, results and reasoning
+  stay out of progress. Terminal events clear it, and history stores only the conversation.
+  `SessionMap` (`assistant/sessions.json`), `TopicStore` (`assistant/topics.json`) and
   `ConversationHistoryStore` (`assistant/chat-history.json`) are keyed only by stable item id.
   Non-UUID session ids are discarded. The history store
   preserves the visible transcript when the user switches tabs or reloads the app; the topic store

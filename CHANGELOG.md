@@ -2,15 +2,16 @@
 
 Record each release newest first. Bump minor for features and visible behaviour, patch for fixes and polish.
 
-## 0.11.1 - 2026-11-20
+## 0.12.0 - 2026-11-21
 
+- Assistant chats show live reply status and available tool activity, including when you reopen a running chat. Progress clears when the reply ends.
+- Roosta checks for stable releases in the background. Settings shows the running version and manual update instructions for the installation serving your workspace.
 - Settings now shows Mac users how to enable banners and sounds manually and where to send a test notification if Roosta is missing from the list.
 
 ## 0.11.0 - 2026-11-20
 
 - Office gains a fireplace and stockings, fridge and clock interactions, a second café table, dart challenges, on-demand foosball and console players, and scored table tennis.
 - Office workers head back before their next shift and flag overdue starts; the lounge TV filters distressing headlines, and the click guide lists each room’s interactions.
-- Fix the macOS notification settings button in the desktop app. Mac browser users can find the same controls under System Settings → Notifications.
 
 ## 0.10.2 - 2026-11-19
 

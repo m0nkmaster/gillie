@@ -26,7 +26,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from roosta import attachments
+from roosta import attachments, updates
 from roosta import connectors as connectors_mod
 from roosta import cli, paths, profile, skills
 from roosta import __version__
@@ -221,8 +221,11 @@ async def lifespan(app: FastAPI):
         log.warning("Could not detect an existing Claude Code account; open AI settings to continue")
     runner.start()
     await _start_chat_router()
+    app.state.release_checks = updates.ReleaseChecks()
+    update_task = asyncio.create_task(app.state.release_checks.run())
     yield
     jobs = [task for task in ai_settings.job_tasks.values() if not task.done()]
+    jobs.append(update_task)
     for task in jobs:
         task.cancel()
     await asyncio.gather(*jobs, return_exceptions=True)
@@ -316,6 +319,23 @@ def connection_affected(connection_id: str) -> dict:
     titles = {item: (chat_router.known_item(item) or {}).get("title", item) for item in chats}
     return {"workers": workers, "chats": chats, "chat_count": chat_count, "chat_titles": titles,
             "pending_approvals": pending}
+
+
+@app.get("/api/updates")
+async def api_update_notice():
+    result = app.state.release_checks.result
+    return ai_settings_result({k: result[k] for k in ("latest", "notes") if k in result})
+
+
+@app.get("/api/settings/updates", dependencies=[Depends(local_ai_settings)])
+async def api_settings_updates():
+    return ai_settings_result({"version": __version__, **app.state.release_checks.result})
+
+
+@app.post("/api/settings/updates", dependencies=[Depends(local_ai_settings)])
+async def api_check_updates():
+    result = await app.state.release_checks.refresh()
+    return ai_settings_result({"version": __version__, **result})
 
 
 @app.get("/api/settings/workspace", dependencies=[Depends(local_ai_settings)])
@@ -1124,6 +1144,7 @@ async def api_board(threads: str = "", thread: Annotated[list[str] | None, Query
         "agent_up": agent.alive,
         "ai_backend": ai_backend.label(),
         "health": {**board_health(states), "restart_pending": restart_pending()},
+        "chat_progress": chat_router.active_progress if chat_router else {},
         "active_chat_ids": chat_router.active_items() if chat_router else [],
         "chat_histories": chat_histories,
         "chat_contexts": {

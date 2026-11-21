@@ -190,3 +190,10 @@ The Assistant **More** menu opens a local handoff preview or a Start fresh confi
 Cancel and Escape dismiss the preview. After acceptance, each previous segment is
 readable through a collapsed, dated **Previous conversation** disclosure. Automatic
 24-turn rotation displays a small context refresh indicator in the conversation header.
+
+## Release notices
+
+The shared header checks the cached release status on page load and once a minute.
+A newer release gets a dismissible notice once per release per tab session, with release
+notes and a link to Settings. Settings reads the running backend version and can request a
+fresh check through the existing loopback and same-origin guard.

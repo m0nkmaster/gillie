@@ -107,3 +107,7 @@ rewrites framework links to absolute build-machine paths, which invalidates the 
 
 The frozen backend collects keyring and its macOS backend for Keychain API-key storage. The
 packaging smoke test checks the AI setup API and Settings with an empty home and restricted PATH.
+
+The dashboard's shared release notice and Settings check use the serving backend for
+version and installation guidance. A frozen Mac backend links its architecture's DMG.
+A shell attached to a Python runner shows that runner's instructions instead.

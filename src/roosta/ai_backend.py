@@ -444,7 +444,7 @@ def repair_message(output: str) -> str:
         return "This account is rate limited; wait and retry (no account was switched)"
     if any(word in lowered for word in ("model", "404", "not found")):
         return "This model is unavailable on this connection; change the model in Settings"
-    return "AI request failed; check the connection in Settings. " + output[-300:]
+    return "AI request failed; check the connection in Settings."
 
 
 async def stream(run: ConnectionRun, prompt: str, *, idle: float = 300, maximum: float = 3600):

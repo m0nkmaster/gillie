@@ -344,7 +344,7 @@ def claude_result_text(stdout: str) -> str:
 
 
 def parse_claude_chat_line(line: str) -> dict | None:
-    """One Claude partial stream line -> a text delta, a message separator, or None."""
+    """Extract visible text, message boundaries and public tool activity."""
     line = line.strip()
     if not line:
         return None
@@ -352,6 +352,12 @@ def parse_claude_chat_line(line: str) -> dict | None:
         event = json.loads(line)
     except json.JSONDecodeError:
         return None
+    if not isinstance(event, dict):
+        return None
+    if event.get("type") == "tool_progress":
+        return {"kind": "tool_running", "name": event.get("tool_name")}
+    if event.get("type") == "tool_use_summary" and isinstance(event.get("summary"), str):
+        return {"kind": "progress", "label": " ".join(event["summary"].split())[:160]}
     if event.get("type") != "stream_event":
         return None
     inner = event.get("event") or {}
@@ -359,7 +365,7 @@ def parse_claude_chat_line(line: str) -> dict | None:
         return {"kind": "separator", "text": "\n\n"}
     block = inner.get("content_block") or {}
     if inner.get("type") == "content_block_start" and block.get("type") == "tool_use":
-        return {"kind": "tool", "text": ""}
+        return {"kind": "tool", "text": "", "name": block.get("name")}
     delta = inner.get("delta") or {}
     if (
         inner.get("type") == "content_block_delta"

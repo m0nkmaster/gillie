@@ -152,7 +152,7 @@ def test_pi_errors_override_successful_exit_and_tools_are_not_replies():
     line = json.dumps({'type':'message_end', 'message':{'role':'assistant','stopReason':'error','errorMessage':'401 invalid key','content':[]}})
     assert pi_agent.failure(line) == '401 invalid key'
     assert 'reconnect' in ai_backend.repair_message(pi_agent.failure(line))
-    assert pi_agent.parse_line(json.dumps({'type':'tool_execution_start'})) == {'kind':'tool','text':''}
+    assert pi_agent.parse_line(json.dumps({'type':'tool_execution_start'})) == {'kind':'tool','text':'','name':None}
     assert pi_agent.result_text(line) == ''
 
 
@@ -234,6 +234,40 @@ def test_sender_retains_original_account_when_default_changes(accounts, tmp_path
     monkeypatch.setattr(ai_backend,'stream',stream)
     result = asyncio.run(router.approve('send',True,None))
     assert result['sent'] and seen == [(a['id'],True)]
+
+
+def test_pi_chat_progress_is_transient_and_uses_only_tool_identifiers(accounts, tmp_path, monkeypatch):
+    create, _ = accounts
+    sessions = chat.SessionMap(tmp_path / "sessions.json")
+    sessions.bind("item", create()["id"])
+    history = chat.ConversationHistoryStore(tmp_path / "history.json")
+    router = chat.ChatRouter(None, sessions, str(tmp_path), persistent_history=history)
+
+    async def stream(run, prompt):
+        yield json.dumps({"type": "message_update", "assistantMessageEvent":
+                          {"type": "thinking_delta", "delta": "private thought"}})
+        for phase in ("start", "update", "update", "end"):
+            yield json.dumps({"type": "tool_execution_" + phase, "toolName": "read",
+                              "args": {"path": "private"}, "partialResult": "private", "result": "private"})
+        yield json.dumps({"type": "message_update", "assistantMessageEvent":
+                          {"type": "text_delta", "delta": "All clear."}})
+
+    monkeypatch.setattr(ai_backend, "stream", stream)
+
+    async def collect():
+        queue = router.start_turn("item", {}, "Check").events
+        events = []
+        while (event := await queue.get())["kind"] != "_close":
+            events.append(event)
+        return events
+
+    events = asyncio.run(collect())
+    assert [event["label"] for event in events if event["kind"] == "progress"] == [
+        "Reply running", "Tool started · read", "Tool running · read", "Tool finished · read"]
+    assert "private" not in json.dumps(events)
+    assert [message["text"] for message in history.read("item")] == ["Check", "All clear."]
+    assert router.active_progress == {}
+    assert "private" not in ai_backend.repair_message('{"thinking":"private"}')
 
 
 def test_parallel_runs_keep_credentials_and_session_directories(accounts, tmp_path, monkeypatch):
